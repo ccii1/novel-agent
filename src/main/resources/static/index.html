@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Novel Agent · 创作工作台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside>
+    <a class="brand" href="/">NOVEL<span>AGENT</span></a>
+    <p class="muted">持续创作 · 人工审核</p>
+    <nav>
+      <button data-view="new">＋ 创建小说</button>
+      <button data-view="research">选题研究</button>
+      <button data-view="budget">费用与调用</button>
+    </nav>
+    <div class="section-label">我的作品</div>
+    <div id="novelList"></div>
+    <div class="sidebar-footer"><span id="engineStatus">正在连接服务</span><br><span id="budgetStatus"></span></div>
+  </aside>
+  <main>
+    <header><span id="breadcrumb">创作工作台</span><button id="refreshButton" class="secondary">刷新</button></header>
+    <div id="notice" role="status" hidden></div>
+    <section id="content"><p>正在加载工作台…</p></section>
+  </main>
+  <dialog id="reader"><div class="reader-head"><h2 id="readerTitle"></h2><button id="closeReader" class="secondary">关闭</button></div><article id="readerBody"></article></dialog>
+</body>
+</html>

@@ -1,0 +1,8 @@
+/target/
+/data/
+/.work/
+/.idea/
+*.log
+/config/application-local.yml
+.env
+.env.*

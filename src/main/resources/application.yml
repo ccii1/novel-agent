@@ -1,0 +1,31 @@
+server:
+  address: 127.0.0.1
+  port: ${PORT:8096}
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/novel;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ${DATABASE_PASSWORD:}
+  sql:
+    init:
+      mode: always
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  task:
+    scheduling:
+      pool:
+        size: 1
+novel:
+  workers: 4
+  monthly-budget: 300
+  max-context-bytes: 60000
+  model:
+    endpoint: ${NOVEL_MODEL_ENDPOINT:}
+    api-key: ${NOVEL_MODEL_API_KEY:}
+    name: ${NOVEL_MODEL_NAME:}
+    input-per-million: ${NOVEL_INPUT_PRICE:0}
+    output-per-million: ${NOVEL_OUTPUT_PRICE:0}
+    max-output-tokens: ${NOVEL_MAX_OUTPUT:8192}
+    timeout-seconds: 180
+    requests-per-minute: 30

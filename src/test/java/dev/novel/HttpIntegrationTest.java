@@ -1,0 +1,40 @@
+package dev.novel;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import java.net.URI;
+import java.net.http.*;
+import static org.assertj.core.api.Assertions.*;
+
+@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"spring.datasource.url=jdbc:h2:mem:http;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
+class HttpIntegrationTest {
+    @LocalServerPort int port;
+    @Autowired Json json;
+    final HttpClient http=HttpClient.newHttpClient();
+    private HttpResponse<String> request(String path,String body) throws Exception {
+        var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path));
+        if(body!=null) builder.header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body));
+        return http.send(builder.build(),HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void servesWorkspaceAndPublicStatusWithoutExposingSecrets() throws Exception {
+        assertThat(request("/",null).body()).contains("Novel Agent","app.js");
+        var response=request("/api/status",null);assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("modelConfigured").doesNotContain("api-key","Authorization");
+    }
+    @Test void createsNovelThroughRealHttpAndEnforcesApprovalState() throws Exception {
+        var created=request("/api/novels","""
+            {"title":"密信","premise":"追查一封密信的去向","bible":"保持人物知情范围","stageSize":2,"novelBudget":100,"chapterBudget":5}
+            """);
+        assertThat(created.statusCode()).isEqualTo(200);String id=json.read(created.body()).get("id").asText();
+        var detail=request("/api/novels/"+id,null);assertThat(detail.body()).contains("PLANNING","PLAN");
+        assertThat(request("/api/novels/"+id+"/approve-plan","null").statusCode()).isEqualTo(409);
+        assertThat(request("/api/novels/"+id+"/graph",null).statusCode()).isEqualTo(200);
+    }
+    @Test void validatesInputAndMissingRecords() throws Exception {
+        assertThat(request("/api/novels","{}").statusCode()).isEqualTo(400);
+        assertThat(request("/api/novels/missing",null).statusCode()).isEqualTo(404);
+        assertThat(request("/api/research","{\"urls\":[]}").statusCode()).isEqualTo(400);
+    }
+}
