@@ -7,7 +7,7 @@ import java.util.*;
 
 @Component
 public class RewriterAgent extends ChapterAuthorAgent {
-    public RewriterAgent(AgentContextService context,ModelClient model,Json json) { super(context,model,json); }
+    public RewriterAgent(AgentContextService context,ModelClient model,Json json,AgentOutputReader outputs) { super(context,model,json,outputs); }
     public Set<String> kinds() { return Set.of("REWRITE"); }
     public String purpose() { return "依据统一修改计划修订正文并保留已通过内容"; }
     protected String instructions(Map<String,Object> task) {

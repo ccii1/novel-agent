@@ -2,6 +2,10 @@ package dev.novel.service;
 
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
+import dev.novel.agent.AgentOutputReader;
+import dev.novel.dto.AgentOutputs;
+import dev.novel.repository.mapper.MemoryMapper;
+import dev.novel.repository.model.MemoryEntry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.tinkerpop.gremlin.structure.*;
@@ -14,15 +18,22 @@ import java.util.*;
 public class MemoryService {
     private final Store store;
     private final Json json;
-    public MemoryService(Store store, Json json) { this.store=store; this.json=json; }
+    private final MemoryMapper memories;
+    private final AgentOutputReader outputs;
+    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs) {
+        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;
+    }
     public List<Map<String,Object>> snapshot(String novel, long version) {
-        return store.list("memories.snapshot", novel,version,version);
+        return memories.snapshot(novel,version);
     }
     public Map<String,Object> graph(String novel, long version, List<String> characters, int depth) {
+        return graph(snapshot(novel,version),version,characters,depth);
+    }
+    private Map<String,Object> graph(List<Map<String,Object>> facts,long version,List<String> characters,int depth) {
         if (depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
         TinkerGraph graph = TinkerGraph.open();
         Map<String,Vertex> vertices = new LinkedHashMap<>();
-        for (var row : snapshot(novel,version)) {
+        for (var row : facts) {
             if (!"RELATION".equals(row.get("kind"))) continue;
             var data = json.read((String)row.get("content"));
             if (data.path("deleted").asBoolean(false)) continue;
@@ -51,6 +62,9 @@ public class MemoryService {
         return Map.of("version",version,"nodes",nodes,"edges",edges);
     }
     public String context(Map<String,Object> novel, int chapter) {
+        return json.write(contextData(novel,chapter));
+    }
+    public Map<String,Object> contextData(Map<String,Object> novel,int chapter) {
         String id=(String)novel.get("id"); long version=Store.number(novel,"memory_version");
         var plan=Store.string(novel,"plan").isBlank()?json.read("{}"):json.read(Store.string(novel,"plan"));
         List<String> characters=new ArrayList<>();
@@ -58,12 +72,13 @@ public class MemoryService {
             if (item.path("number").asInt()==chapter) item.path("characters").forEach(c->characters.add(c.asText()));
         });
         List<Map<String,Object>> relevant=new ArrayList<>();
-        var relatedGraph=graph(id,version,characters,2);
+        var snapshot=snapshot(id,version);
+        var relatedGraph=graph(snapshot,version,characters,2);
         String terms=json.write(relatedGraph.get("nodes"));
         Set<String> requestedKeys=new HashSet<>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) item.path("foreshadowIds").forEach(key->requestedKeys.add(key.asText()));});
         List<Map.Entry<Integer,Map<String,Object>>> ranked=new ArrayList<>();
-        for (var row : snapshot(id,version)) {
+        for (var row : snapshot) {
             var data=json.read((String)row.get("content"));
             if (data.path("deleted").asBoolean(false) || "RELATION".equals(row.get("kind"))) continue;
             int score=0;
@@ -87,41 +102,39 @@ public class MemoryService {
         context.put("approvedPlan",plan);context.put("chapter",chapter);context.put("memoryVersion",version);
         context.put("facts",relevant);context.put("relationships",relatedGraph);context.put("recentSummaries",summaries);
         context.put("previousEnding",tail);context.put("omittedMatchingFacts",Math.max(0,ranked.size()-50));
-        return json.write(context);
+        return context;
     }
     public Object planningContext(Map<String,Object> novel) {
         var snapshot=snapshot((String)novel.get("id"),Store.number(novel,"memory_version"));
-        Map<String,Object> result=new LinkedHashMap<>();
-        for(String kind:List.of("WORLD","CHARACTER","FORESHADOW","EVENT")) {
-            var selected=snapshot.stream().filter(row->kind.equals(row.get("kind")))
-                    .filter(row->!json.read((String)row.get("content")).path("deleted").asBoolean(false))
-                    .filter(row->!kind.equals("FORESHADOW") || json.read((String)row.get("content")).path("active").asBoolean(false))
-                    .limit(kind.equals("FORESHADOW")?30:15)
-                    .map(row->Map.of("key",row.get("memory_key"),"chapter",row.get("chapter_no"),"data",json.read((String)row.get("content")))).toList();
-            result.put(kind,selected);
+        Map<String,List<Map<String,Object>>> grouped=new LinkedHashMap<>();
+        for(String kind:List.of("WORLD","CHARACTER","FORESHADOW","EVENT")) grouped.put(kind,new ArrayList<>());
+        for(var row:snapshot) {
+            String kind=Store.string(row,"kind");
+            var selected=grouped.get(kind);
+            if(selected==null || selected.size()>=(kind.equals("FORESHADOW")?30:15)) continue;
+            var data=json.read(Store.string(row,"content"));
+            if(data.path("deleted").asBoolean(false) || (kind.equals("FORESHADOW") && !data.path("active").asBoolean(false))) continue;
+            selected.add(Map.of("key",row.get("memory_key"),"chapter",row.get("chapter_no"),"data",data));
         }
+        Map<String,Object> result=new LinkedHashMap<>(grouped);
         result.put("retainedMemoryCount",snapshot.size());return result;
     }
     public void validateDelta(JsonNode delta, String body) {
-        json.text(delta,"summary");
-        if (!delta.path("facts").isArray() || !delta.path("relations").isArray()) throw new IllegalArgumentException("记忆变更必须包含 facts 与 relations 数组");
-        if(delta.get("facts").size()+delta.get("relations").size()>40) throw new IllegalArgumentException("单章记忆变更最多40条");
+        var output=outputs.read(delta,AgentOutputs.MemoryDelta.class);
+        if(output.facts().size()+output.relations().size()>40) throw new IllegalArgumentException("单章记忆变更最多40条");
         Set<String> keys=new HashSet<>();
-        for(var fact:delta.get("facts")) {
-            if(!Set.of("WORLD","CHARACTER","EVENT","FORESHADOW").contains(json.text(fact,"kind"))) throw new IllegalArgumentException("记忆种类无效");
-            String key=json.text(fact,"key");
-            if(key.length()>350 || !keys.add(key)) throw new IllegalArgumentException("记忆 key 重复或过长");
-            json.text(fact,"name"); evidence(fact,body);
+        for(var fact:output.facts()) {
+            if(!keys.add(fact.key())) throw new IllegalArgumentException("记忆 key 重复");
+            evidence(fact.evidence(),body);
         }
-        for(var relation:delta.get("relations")) {
-            String key=relationKey(relation);
+        for(var relation:output.relations()) {
+            String key="relation:"+relation.subject()+":"+relation.predicate()+":"+relation.object();
             if(key.length()>350 || !keys.add(key)) throw new IllegalArgumentException("关系 key 重复或过长");
-            evidence(relation,body);
+            evidence(relation.evidence(),body);
         }
     }
-    private void evidence(JsonNode item,String body) {
-        String evidence=json.text(item,"evidence");
-        if(evidence.length()<4 || !body.contains(evidence)) throw new IllegalArgumentException("记忆证据必须引用正文中至少4个字符的原文");
+    private void evidence(String evidence,String body) {
+        if(!body.contains(evidence)) throw new IllegalArgumentException("记忆证据必须引用正文中至少4个字符的原文");
     }
     private String relationKey(JsonNode relation) {
         return "relation:"+json.text(relation,"subject")+":"+json.text(relation,"predicate")+":"+json.text(relation,"object");
@@ -131,7 +144,6 @@ public class MemoryService {
         for(var relation:delta.path("relations")) save(novel,chapter,version,relationKey(relation),"RELATION",relation);
     }
     private void save(String novel,int chapter,long version,String key,String kind,JsonNode content) {
-        store.update("memories.create",
-                UUID.randomUUID().toString(),novel,key,kind,chapter,version,json.write(content));
+        memories.insert(new MemoryEntry(UUID.randomUUID().toString(),novel,key,kind,chapter,version,json.write(content)));
     }
 }

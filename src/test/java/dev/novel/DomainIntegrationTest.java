@@ -43,7 +43,7 @@ class DomainIntegrationTest {
         start.countDown();int accepted=0;for(var result:results) if(result.get(15,TimeUnit.SECONDS)) accepted++;
         executor.shutdownNow();
         assertThat(accepted).isEqualTo(15);
-        assertThat(budget.used("billing_month=?",budget.month())).isEqualByComparingTo("300");
+        assertThat(budget.monthlyUsed(budget.month())).isEqualByComparingTo("300");
     }
     @Test void chapterLimitIncludesOtherTasksReservations() {
         String id=novel();var first=task(id,1);var second=task(id,1);
@@ -62,7 +62,7 @@ class DomainIntegrationTest {
         budget.reserve(task(null,0),new BigDecimal("300"),"configured-model",BigDecimal.ONE,BigDecimal.ONE);
         store.update("UPDATE model_calls SET billing_month='2000-01'");
         budget.reserve(task(null,0),new BigDecimal("300"),"configured-model",BigDecimal.ONE,BigDecimal.ONE);
-        assertThat(budget.used("billing_month=?",budget.month())).isEqualByComparingTo("300");
+        assertThat(budget.monthlyUsed(budget.month())).isEqualByComparingTo("300");
     }
     @Test void graphUsesVersionedKnowledgeAndClosedRelationships() {
         String id=novel();String body="林舟将仓库钥匙交给沈月。沈月没有透露密信内容。";
@@ -139,7 +139,7 @@ class DomainIntegrationTest {
         String call=(String)store.one("SELECT id FROM model_calls WHERE task_id=?",task.get("id")).get("id");
         budget.reconcile(call,new BigDecimal("0.4"));projects.retry((String)task.get("id"));
         assertThat(store.novel(first).get("status")).isEqualTo("PLANNING");
-        assertThat(budget.used("novel_id=?",first)).isEqualByComparingTo("0.4");
+        assertThat(budget.novelUsed(first)).isEqualByComparingTo("0.4");
     }
     @Test void simultaneousFailedChecksCanEachBeExplicitlyRetried() {
         String id=novel();store.update("UPDATE novels SET status='ERROR',resume_status='CHECKING' WHERE id=?",id);

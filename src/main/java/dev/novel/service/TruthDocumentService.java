@@ -28,19 +28,20 @@ public class TruthDocumentService {
     }
     public Map<String,Object> prompt(Map<String,Object> novel,int chapter,List<String> requestedFiles) {
         String id=(String)novel.get("id");
-        JsonNode context=json.read(memory.context(novel,chapter));
+        var context=memory.contextData(novel,chapter);
         boolean metrics=requestedFiles.stream().anyMatch(Set.of("progress_tracker.md","dialogue-monitor.md","pattern-detection.md")::contains);
         List<Map<String,Object>> recent=metrics?quality.recent(id,chapter,chapter%10==0?9:4):List.of();
         Map<String,Object> files=new LinkedHashMap<>();
         files.put("story_bible.md",Map.of("title",novel.get("title"),"premise",novel.get("premise"),"bible",novel.get("bible")));
         files.put("outline.md",context.get("approvedPlan"));
         files.put("current_state.md",Map.of("memoryVersion",context.get("memoryVersion"),"relatedFacts",context.get("facts"),"previousEnding",context.get("previousEnding")));
-        files.put("pending_hooks.md",hooks(context.get("facts")));
+        files.put("pending_hooks.md",hooks(json.tree(context.get("facts"))));
         files.put("handoff_current.md",Map.of("completedChapter",Math.max(0,chapter-1),"nextChapter",chapter,
                 "memoryVersion",novel.get("memory_version"),"recentSummaries",context.get("recentSummaries")));
         files.put("chapter_summaries.md",context.get("recentSummaries"));
-        files.put("character_matrix.md",matrix(context.get("relationships")));
-        files.put("character_knowledge.md",knowledge(context.get("relationships")));
+        var relationships=json.tree(context.get("relationships"));
+        files.put("character_matrix.md",matrix(relationships));
+        files.put("character_knowledge.md",knowledge(relationships));
         files.put("progress_tracker.md",Map.of("stage",novel.get("stage_no"),"nextChapter",chapter,"recentMetrics",recent));
         files.put("dialogue-monitor.md",Map.of("recentMetrics",recent,"rising",quality.rising(recent),"ratioDefinition","含引号的非空行数 / 全部非空行数"));
         files.put("pattern-detection.md",Map.of("reviewDue",chapter%5==0,"recentMetrics",recent,"fullReviewDue",chapter%10==0));
@@ -78,7 +79,7 @@ public class TruthDocumentService {
                     .filter(row->json.read((String)row.get("content")).path("active").asBoolean(false))
                     .filter(row->!json.read((String)row.get("content")).path("deleted").asBoolean(false)).toList());
             documents.put("chapter_summaries.md",store.list("chapters.allSummaries",id));
-            var graph=json.read(json.write(memory.graph(id,Store.number(novel,"memory_version"),List.of(),2)));
+            var graph=json.tree(memory.graph(id,Store.number(novel,"memory_version"),List.of(),2));
             documents.put("character_matrix.md",matrix(graph));
             documents.put("character_knowledge.md",knowledge(graph));
             documents.put("progress_tracker.md",quality.dashboard(id));

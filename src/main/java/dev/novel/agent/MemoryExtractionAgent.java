@@ -27,7 +27,6 @@ public class MemoryExtractionAgent implements NovelAgent {
                 "人物获知秘密用 KNOWS 关系，秘密作为 object。evidence 必须逐字引用当前正文至少4个字符。只抽取已有事实，最多40条增量。"+
                 "上下文="+context.context(task,contextFiles())+"；正文="+json.write(draft));
         memory.validateDelta(result,(String)draft.get("body"));
-        if(result.path("summary").asText().length()>1200) throw new IllegalArgumentException("章节摘要过长");
         return result;
     }
 }

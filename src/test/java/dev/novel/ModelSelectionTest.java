@@ -49,14 +49,14 @@ class ModelSelectionTest {
         var call=store.one("SELECT * FROM model_calls WHERE task_id=?",task.get("id"));
         assertThat(call.get("model")).isEqualTo("paid-model");
         assertThat(call.get("billing_mode")).isEqualTo("metered");
-        assertThat(budget.used("novel_id=?",id)).isEqualByComparingTo("1");
+        assertThat(budget.novelUsed(id)).isEqualByComparingTo("1");
     }
     @Test void freeCallsRemainAvailableAfterPaidBudgetIsConsumed() {
         String first=store.enqueue(null,"RESEARCH",0,0,0,"paid",Map.of());
         budget.reserve(store.one("SELECT * FROM tasks WHERE id=?",first),new BigDecimal("300"),"paid-model",BigDecimal.ONE,BigDecimal.ONE);
         String second=store.enqueue(null,"RESEARCH",0,0,0,"free",Map.of());
         budget.reserve(store.one("SELECT * FROM tasks WHERE id=?",second),BigDecimal.ZERO,"text-model",BigDecimal.ZERO,BigDecimal.ZERO,null,null,"local-test","unmetered");
-        assertThat(budget.used("billing_month=?",budget.month())).isEqualByComparingTo("300");
+        assertThat(budget.monthlyUsed(budget.month())).isEqualByComparingTo("300");
         assertThat(store.one("SELECT billing_mode FROM model_calls WHERE task_id=?",second).get("billing_mode")).isEqualTo("unmetered");
         store.update("UPDATE model_calls SET status='UNCERTAIN' WHERE task_id=?",second);
         String call=(String)store.one("SELECT id FROM model_calls WHERE task_id=?",second).get("id");

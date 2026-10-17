@@ -3,6 +3,8 @@ package dev.novel.service;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelClient;
+import dev.novel.agent.AgentOutputReader;
+import dev.novel.dto.AgentOutputs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,7 +19,8 @@ public class ResearchService {
     private final Store store;
     private final Json json;
     private final ModelClient model;
-    public ResearchService(Store store,Json json,ModelClient model) { this.store=store;this.json=json;this.model=model; }
+    private final AgentOutputReader outputs;
+    public ResearchService(Store store,Json json,ModelClient model,AgentOutputReader outputs) { this.store=store;this.json=json;this.model=model;this.outputs=outputs; }
     public String create(List<String> urls,String brief) {
         var links=urls==null?List.<String>of():List.copyOf(urls);
         String instruction=Objects.toString(brief,"").trim();
@@ -64,7 +67,7 @@ public class ResearchService {
                 if(text.length()<200) throw new IllegalStateException("页面可读取资料不足，请提供具体榜单或作品详情页面");
                 collected.add(Map.of("url",url,"title",doc.title(),"retrievedAt",Instant.now().toString(),"text",text.substring(0,Math.min(text.length(),10000))));
             }
-            ObjectNode updated=payload.deepCopy();updated.set("evidence",json.read(json.write(collected)));
+            ObjectNode updated=payload.deepCopy();updated.set("evidence",json.tree(collected));
             store.update("tasks.payload",json.write(updated),task.get("id"));
             sources=updated.get("evidence");
         }
@@ -77,16 +80,13 @@ public class ResearchService {
                 "；本轮用户意见="+payload.path("message").asText()+"。具体回应本轮意见，保留用户认可的设定，返回更新后的三个完整方案。";
         var result=model.call(task,system+"你负责原创选题和持续讨论。",instruction);
         validateResult(result,sources);
-        return json.read(json.write(Map.of("sources",sources,"ideas",result.get("ideas"),"reply",result.get("reply"),"brief",payload.path("brief").asText())));
+        return json.tree(Map.of("sources",sources,"ideas",result.get("ideas"),"reply",result.get("reply"),"brief",payload.path("brief").asText()));
     }
     void validateResult(JsonNode result,JsonNode sources) {
-        if(json.text(result,"reply").length()>6000) throw new IllegalArgumentException("选题回复超过长度限制");
-        if(!result.path("ideas").isArray() || result.get("ideas").size()!=3) throw new IllegalArgumentException("选题结果必须包含3个创意");
+        var report=outputs.read(result,AgentOutputs.Research.class);
         Set<String> urls=new HashSet<>();sources.forEach(source->urls.add(source.path("url").asText()));
-        for(var idea:result.get("ideas")) {
-            for(String field:List.of("title","premise","audience","genre","hook","longTermConflict")) json.text(idea,field);
-            if(!idea.path("risks").isArray() || !idea.path("sources").isArray()) throw new IllegalArgumentException("选题缺少风险或来源列表");
-            for(var source:idea.get("sources")) if(!urls.contains(source.asText())) throw new IllegalArgumentException("选题引用了未采集的资料地址");
+        for(var idea:report.ideas()) {
+            for(String source:idea.sources()) if(!urls.contains(source)) throw new IllegalArgumentException("选题引用了未采集的资料地址");
         }
     }
     public void finished(Map<String,Object> task,JsonNode result) {

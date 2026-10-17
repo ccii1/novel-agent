@@ -2,6 +2,7 @@ package dev.novel.engine;
 
 import dev.novel.repository.Store;
 import dev.novel.repository.mapper.TaskDispatchMapper;
+import dev.novel.repository.mapper.ModelCallMapper;
 import dev.novel.service.AgentService;
 import dev.novel.service.WorkflowService;
 import dev.novel.service.BudgetService;
@@ -24,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TaskEngine {
     private final Store store;
     private final TaskDispatchMapper dispatchMapper;
+    private final ModelCallMapper calls;
     private final AgentService agents;
     private final WorkflowService workflow;
     private final AsyncTaskExecutor workers;
@@ -32,20 +34,20 @@ public class TaskEngine {
     private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,AgentService agents,WorkflowService workflow,
+    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,
             @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers,@Value("${novel.workers}") int limit) {
         if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
         this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
         this.dispatchMapper=dispatchMapper;
+        this.calls=calls;
         this.workers=workers;
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
         store.transaction(() -> {
-            store.update("calls.recover");
+            calls.recoverInterrupted();
             for(var task:store.list("tasks.running")) {
-                var uncertain=store.list("calls.uncertainTask",task.get("id"));
-                if(uncertain.isEmpty()) store.update("tasks.wait",task.get("id"));
+                if(calls.uncertainTaskCount(Store.string(task,"id"))==0) store.update("tasks.wait",task.get("id"));
                 else fail(task,new IllegalStateException("服务中断期间调用结果不确定，请核对费用"));
             }
             for(var novel:store.list("novels.checking")) {

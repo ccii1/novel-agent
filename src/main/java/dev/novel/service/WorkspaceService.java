@@ -1,6 +1,7 @@
 package dev.novel.service;
 
 import dev.novel.repository.Store;
+import dev.novel.repository.mapper.ModelCallMapper;
 import org.springframework.stereotype.Service;
 import java.util.*;
 
@@ -8,10 +9,15 @@ import java.util.*;
 public class WorkspaceService {
     private final Store store;
     private final MemoryService memory;
+    private final ModelCallMapper calls;
     public record Manuscript(String title,String body) {}
-    public WorkspaceService(Store store,MemoryService memory) {this.store=store;this.memory=memory;}
+    public WorkspaceService(Store store,MemoryService memory,ModelCallMapper calls) {this.store=store;this.memory=memory;this.calls=calls;}
     public List<Map<String,Object>> novels() { return store.list("novels.all"); }
-    public Map<String,Object> call(String id) { return store.one("calls.find",id); }
+    public Map<String,Object> call(String id) {
+        var result=calls.find(id);
+        if(result==null) throw new NoSuchElementException("调用记录不存在");
+        return result;
+    }
     public Map<String,Object> chapter(String id,int number) { return store.one("chapters.find",id,number); }
     public List<Map<String,Object>> researchReports() { return store.list("research.all"); }
     public List<Map<String,Object>> researchTasks() { return store.list("tasks.research"); }

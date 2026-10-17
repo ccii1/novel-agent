@@ -1,10 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="dev.novel.repository.mapper.ModelCallMapper">
-  <update id="markFramework">UPDATE model_calls SET agent_framework=#{framework} WHERE task_id=#{taskId}</update>
+  <select id="checkpoint" resultType="dev.novel.repository.model.ModelCallCheckpoint">
+    SELECT status,actual,reserved,response,skill_fingerprint FROM model_calls WHERE task_id=#{taskId}
+  </select>
+  <select id="find" resultType="map">SELECT * FROM model_calls WHERE id=#{id}</select>
+  <select id="overview" resultType="map">SELECT id,task_id,novel_id,chapter_no,billing_month,status,reserved,actual,input_tokens,output_tokens,model,provider,billing_mode,agent_framework,skill_version,skill_fingerprint,skill_files,created_at FROM model_calls ORDER BY created_at DESC LIMIT 100</select>
+  <select id="lockBudget" resultType="int">SELECT id FROM budget_lock WHERE id=1 FOR UPDATE</select>
+  <select id="recentCount" resultType="long">SELECT COUNT(*) FROM model_calls WHERE created_at&gt;DATEADD('SECOND',-60,CURRENT_TIMESTAMP)</select>
+  <select id="monthlyUsed" resultType="java.math.BigDecimal">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) FROM model_calls WHERE status&lt;&gt;'REJECTED' AND billing_month=#{month}</select>
+  <select id="novelMonthlyUsed" resultType="java.math.BigDecimal">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{novelId} AND billing_month=#{month}</select>
+  <select id="chapterUsed" resultType="java.math.BigDecimal">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{novelId} AND chapter_no=#{chapterNo}</select>
+  <select id="novelTotal" resultType="java.math.BigDecimal">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{novelId}</select>
+  <select id="pendingTaskCount" resultType="long">SELECT COUNT(*) FROM model_calls WHERE task_id=#{taskId} AND status IN ('UNCERTAIN','IN_FLIGHT')</select>
+  <select id="pendingNovelCount" resultType="long">SELECT COUNT(*) FROM model_calls WHERE novel_id=#{novelId} AND status IN ('UNCERTAIN','IN_FLIGHT')</select>
+  <select id="uncertainTaskCount" resultType="long">SELECT COUNT(*) FROM model_calls WHERE task_id=#{taskId} AND status='UNCERTAIN'</select>
+  <insert id="reserve">
+    INSERT INTO model_calls(id,task_id,novel_id,chapter_no,billing_month,status,reserved,model,input_price,output_price,
+      provider,billing_mode,skill_version,skill_fingerprint,skill_files,request_body,agent_framework)
+    VALUES(#{id},#{taskId},#{novelId},#{chapterNo},#{billingMonth},'IN_FLIGHT',#{reserved},#{model},#{inputPrice},#{outputPrice},
+      #{provider},#{billingMode},#{skillVersion},#{skillFingerprint},#{skillFiles},#{requestBody},#{agentFramework})
+  </insert>
+  <update id="recoverInterrupted">UPDATE model_calls SET status='UNCERTAIN',error='服务中断，请核对供应商费用' WHERE status='IN_FLIGHT'</update>
+  <update id="reconcile">UPDATE model_calls SET status='RECONCILED',actual=#{actual} WHERE id=#{id} AND status='UNCERTAIN'</update>
   <update id="complete">
     UPDATE model_calls SET status=#{status},actual=#{actual},input_tokens=#{inputTokens},
-      output_tokens=#{outputTokens},response=#{response} WHERE task_id=#{taskId}
+      output_tokens=#{outputTokens},response=#{response} WHERE id=#{callId}
   </update>
-  <update id="markUncertain">UPDATE model_calls SET status='UNCERTAIN',error=#{error} WHERE task_id=#{taskId} AND status='IN_FLIGHT'</update>
+  <update id="markUncertain">UPDATE model_calls SET status='UNCERTAIN',error=#{error} WHERE id=#{callId} AND status='IN_FLIGHT'</update>
 </mapper>

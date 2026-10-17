@@ -17,6 +17,7 @@ public class Json {
         try { return mapper.readTree(value); }
         catch (JsonProcessingException e) { throw new IllegalArgumentException("JSON 格式无效", e); }
     }
+    public JsonNode tree(Object value) { return mapper.valueToTree(value); }
     public String text(JsonNode node, String field) {
         if (!node.hasNonNull(field) || !node.get(field).isTextual() || node.get(field).asText().isBlank()) {
             throw new IllegalArgumentException("缺少文本字段：" + field);

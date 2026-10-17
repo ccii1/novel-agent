@@ -2,6 +2,9 @@ package dev.novel.service;
 
 import dev.novel.repository.Store;
 import dev.novel.agent.PlanValidator;
+import dev.novel.repository.mapper.ModelCallMapper;
+import dev.novel.repository.mapper.MemoryMapper;
+import dev.novel.repository.model.MemoryEntry;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelCatalog;
 
@@ -18,9 +21,13 @@ public class ProjectService {
     private final MemoryService memory;
     private final Json json;
     private final ModelCatalog catalog;
-    public ProjectService(Store store,WorkflowService workflow,PlanValidator plans,MemoryService memory,Json json,ModelCatalog catalog) {
+    private final ModelCallMapper calls;
+    private final MemoryMapper memories;
+    public ProjectService(Store store,WorkflowService workflow,PlanValidator plans,MemoryService memory,Json json,ModelCatalog catalog,ModelCallMapper calls,MemoryMapper memories) {
         this.store=store;this.workflow=workflow;this.plans=plans;this.memory=memory;this.json=json;
         this.catalog=catalog;
+        this.calls=calls;
+        this.memories=memories;
     }
     public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget) {
         return create(title,premise,bible,size,novelBudget,chapterBudget,null,"");
@@ -116,7 +123,7 @@ public class ProjectService {
             Map<String,Object> novel=novelId==null?null:store.lockNovel(novelId);
             var task=store.one("tasks.lock",taskId);
             if(!"ERROR".equals(task.get("status"))) throw new IllegalStateException("仅可重新执行失败任务");
-            if(!store.list("calls.pendingTask",taskId).isEmpty())
+            if(calls.pendingTaskCount(taskId)>0)
                 throw new IllegalStateException("请先核对供应商费用");
             if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) throw new IllegalStateException("任务记忆版本已失效");
             store.update("tasks.cancel",taskId);
@@ -155,18 +162,19 @@ public class ProjectService {
             if(Store.number(edit,"base_version")!=Store.number(novel,"memory_version")) throw new IllegalStateException("记忆已经变化，请重新分析影响范围");
             require(novel,"PAUSED","AWAITING_PLAN","AWAITING_STAGE_REVIEW","AWAITING_CHANGE","AWAITING_HELP","ERROR","BUDGET_PAUSED");
             if(!store.list("tasks.runningNovel",id).isEmpty()) throw new IllegalStateException("请等待执行中的任务结束");
-            if(!store.list("calls.pendingNovel",id).isEmpty()) throw new IllegalStateException("请先核对结果不确定的调用费用");
+            if(calls.pendingNovelCount(id)>0) throw new IllegalStateException("请先核对结果不确定的调用费用");
             int chapter=Store.integer(edit,"chapter_no");
             if(!acknowledgePublished && !store.list("chapters.published",id,chapter).isEmpty())
                 throw new IllegalStateException("影响范围包含已发布章节，需要明确确认");
             long version=Store.number(novel,"memory_version"), next=version+1;
-            var baseline=store.list("memories.baseline",id,chapter,version,chapter,version);
+            var baseline=memories.baseline(id,chapter,version);
             Map<String,Map<String,Object>> before=new HashMap<>();baseline.forEach(row->before.put((String)row.get("memory_key"),row));
             for(var row:memory.snapshot(id,version)) {
                 if(Store.integer(row,"chapter_no")<chapter) continue;
                 var old=before.get(row.get("memory_key"));
                 String content=old==null?json.write(Map.of("deleted",true,"name",row.get("memory_key"))):(String)old.get("content");
-                store.update("memories.create",UUID.randomUUID().toString(),id,row.get("memory_key"),row.get("kind"),old==null?chapter-1:old.get("chapter_no"),next,content);
+                memories.insert(new MemoryEntry(UUID.randomUUID().toString(),id,Store.string(row,"memory_key"),Store.string(row,"kind"),
+                        old==null?chapter-1:Store.integer(old,"chapter_no"),next,content));
             }
             store.update("tasks.cancelNovel",id);
             store.update("chapters.invalidate",id,chapter);
