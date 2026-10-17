@@ -1,5 +1,11 @@
 package dev.novel;
 
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
+import dev.novel.service.*;
+import dev.novel.engine.TaskEngine;
+import dev.novel.integration.model.ModelClient;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,7 +29,7 @@ class SkillIntegrationTest {
     @Autowired Json json;
     @Autowired ModelClient model;
     @BeforeEach void clean() {
-        for(String table:List.of("events","edit_requests","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.db.update("DELETE FROM "+table);
+        for(String table:List.of("events","edit_requests","research_messages","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.update("DELETE FROM "+table);
     }
     private String novel() { return projects.create("密信","围绕密信展开悬疑故事","保持人物知情范围",2,new BigDecimal("100"),new BigDecimal("5")); }
     @Test void everyRoleLoadsPinnedMainSkillAndRoleReferences() {
@@ -63,11 +69,11 @@ class SkillIntegrationTest {
         for(int number=1;number<=3;number++) {
             String body="叙述\n叙述\n叙述\n叙述\n";
             body=body+"“询问”\n".repeat(number);
-            store.db.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,?,1,0,'密信',?,'ACCEPTED',0)",id,number,body);
+            store.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,?,1,0,'密信',?,'ACCEPTED',0)",id,number,body);
             quality.record(id,number,0,body);
         }
         assertThat(quality.dashboard(id).get("dialogueRising")).isEqualTo(true);
-        store.db.update("UPDATE chapters SET status='INVALIDATED' WHERE novel_id=? AND number=3",id);
+        store.update("UPDATE chapters SET status='INVALIDATED' WHERE novel_id=? AND number=3",id);
         assertThat(quality.dashboard(id).get("dialogueRising")).isEqualTo(false);
         assertThat(quality.recent(id,10,20)).hasSize(2);
     }
@@ -91,8 +97,8 @@ class SkillIntegrationTest {
     }
     @Test void checkTaskRegistrationIsIdempotentAndRecoversStyleCheck() {
         String id=novel();
-        store.db.update("UPDATE novels SET status='CHECKING' WHERE id=?",id);
-        store.db.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,1,1,0,'密信','林舟推开仓库大门。','DRAFT',0)",id);
+        store.update("UPDATE novels SET status='CHECKING' WHERE id=?",id);
+        store.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,1,1,0,'密信','林舟推开仓库大门。','DRAFT',0)",id);
         var novel=store.novel(id);
         for(String role:List.of("CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING")) workflow.schedule(novel,role,1,0,Map.of());
         engine.recover();engine.recover();

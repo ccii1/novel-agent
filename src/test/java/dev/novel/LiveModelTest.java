@@ -1,5 +1,10 @@
 package dev.novel;
 
+import dev.novel.repository.Store;
+import dev.novel.service.*;
+import dev.novel.integration.model.ModelClient;
+import dev.novel.integration.model.ModelCatalog;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -47,7 +52,7 @@ class LiveModelTest {
     }
     private Map<String,Object> next(String id,String kind) { return store.one("SELECT * FROM tasks WHERE novel_id=? AND kind=? AND status='WAITING'",id,kind); }
     private void run(Map<String,Object> task) throws Exception {
-        store.db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
+        store.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
         workflow.finished(task,agents.execute(task));
     }
 }

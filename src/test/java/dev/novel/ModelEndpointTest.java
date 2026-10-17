@@ -1,5 +1,7 @@
 package dev.novel;
 
+import dev.novel.integration.model.ModelEndpoint;
+
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 

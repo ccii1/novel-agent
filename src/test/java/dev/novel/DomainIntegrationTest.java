@@ -1,5 +1,10 @@
 package dev.novel;
 
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
+import dev.novel.service.*;
+import dev.novel.engine.TaskEngine;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,7 +23,7 @@ class DomainIntegrationTest {
     @Autowired AgentService agents;
     @Autowired TaskEngine engine;
     @BeforeEach void clean() {
-        for(String table:List.of("events","edit_requests","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.db.update("DELETE FROM "+table);
+        for(String table:List.of("events","edit_requests","research_messages","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.update("DELETE FROM "+table);
     }
     private String novel() { return projects.create("密信","围绕失踪密信展开的悬疑故事","人物不得提前得知秘密",2,new BigDecimal("100"),new BigDecimal("5")); }
     private Map<String,Object> task(String novel,int chapter) {
@@ -53,7 +58,7 @@ class DomainIntegrationTest {
     }
     @Test void monthChangeDoesNotIncludePreviousMonthUsage() {
         budget.reserve(task(null,0),new BigDecimal("300"),"configured-model",BigDecimal.ONE,BigDecimal.ONE);
-        store.db.update("UPDATE model_calls SET billing_month='2000-01'");
+        store.update("UPDATE model_calls SET billing_month='2000-01'");
         budget.reserve(task(null,0),new BigDecimal("300"),"configured-model",BigDecimal.ONE,BigDecimal.ONE);
         assertThat(budget.used("billing_month=?",budget.month())).isEqualByComparingTo("300");
     }
@@ -97,7 +102,7 @@ class DomainIntegrationTest {
             {"number":2,"title":"信封","goal":"发现线索","characters":["沈月"],"foreshadowIds":[]}]}
             """);
         agents.validatePlan(plan,1,2);
-        store.db.update("UPDATE novels SET status='AWAITING_PLAN',plan=? WHERE id=?",json.write(plan),id);
+        store.update("UPDATE novels SET status='AWAITING_PLAN',plan=? WHERE id=?",json.write(plan),id);
         projects.approvePlan(id,plan);
         assertThat(store.novel(id).get("status")).isEqualTo("WRITING");
         assertThat(store.list("SELECT * FROM tasks WHERE novel_id=? AND kind='WRITE'",id)).hasSize(1);
@@ -105,8 +110,8 @@ class DomainIntegrationTest {
     }
     @Test void historicalEditRequiresPublishedAcknowledgementAndInvalidatesFollowingChapters() {
         String id=novel();
-        store.db.update("UPDATE novels SET status='AWAITING_STAGE_REVIEW',memory_version=1,chapter_no=3 WHERE id=?",id);
-        for(int chapter=1;chapter<=2;chapter++) store.db.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,summary,status,memory_version,published) VALUES(?,?,1,0,'密信','林舟将钥匙交给沈月。','交出钥匙','ACCEPTED',1,TRUE)",id,chapter);
+        store.update("UPDATE novels SET status='AWAITING_STAGE_REVIEW',memory_version=1,chapter_no=3 WHERE id=?",id);
+        for(int chapter=1;chapter<=2;chapter++) store.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,summary,status,memory_version,published) VALUES(?,?,1,0,'密信','林舟将钥匙交给沈月。','交出钥匙','ACCEPTED',1,TRUE)",id,chapter);
         var delta=json.read("""
             {"facts":[],"relations":[{"subject":"林舟","predicate":"TRUSTS","object":"沈月","detail":"交出钥匙","deleted":false,"evidence":"林舟将钥匙交给沈月"}]}
             """);
@@ -122,7 +127,7 @@ class DomainIntegrationTest {
     }
     @Test void interruptedCallPausesOnlyItsNovelAndKeepsReservation() {
         String first=novel(),second=novel();var task=store.one("SELECT * FROM tasks WHERE novel_id=?",first);
-        store.db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
+        store.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
         budget.reserve(task,new BigDecimal("1"),"configured-model",BigDecimal.ONE,BigDecimal.ONE);
         engine.recover();
         assertThat(store.novel(first).get("status")).isEqualTo("ERROR");
@@ -135,10 +140,10 @@ class DomainIntegrationTest {
         assertThat(budget.used("novel_id=?",first)).isEqualByComparingTo("0.4");
     }
     @Test void simultaneousFailedChecksCanEachBeExplicitlyRetried() {
-        String id=novel();store.db.update("UPDATE novels SET status='ERROR',resume_status='CHECKING' WHERE id=?",id);
+        String id=novel();store.update("UPDATE novels SET status='ERROR',resume_status='CHECKING' WHERE id=?",id);
         String first=store.enqueue(id,"CHECK_CHARACTER",1,0,0,"check-one",Map.of());
         String second=store.enqueue(id,"CHECK_PLOT",1,0,0,"check-two",Map.of());
-        store.db.update("UPDATE tasks SET status='ERROR' WHERE id IN (?,?)",first,second);
+        store.update("UPDATE tasks SET status='ERROR' WHERE id IN (?,?)",first,second);
         projects.retry(first);projects.retry(second);
         assertThat(store.list("SELECT * FROM tasks WHERE novel_id=? AND kind LIKE 'CHECK%' AND status='WAITING'",id)).hasSize(2);
         assertThat(store.novel(id).get("status")).isEqualTo("CHECKING");

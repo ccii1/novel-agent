@@ -1,4 +1,4 @@
-const state = {view: 'new', id: null, tab: 'overview', detail: null, idea: null};
+const state = {view: 'new', id: null, tab: 'overview', detail: null, idea: null, researchId: null};
 const labels = {PLANNING:'规划中',AWAITING_PLAN:'等待大纲审核',WRITING:'写作中',CHECKING:'并行检查中',REFLECTING:'制定修改计划',EXTRACTING:'提取创作记忆',CHECKING_MEMORY:'检查记忆变更',AWAITING_STAGE_REVIEW:'等待阶段审核',AWAITING_CHANGE:'等待重大变更审核',AWAITING_HELP:'需要人工处理',PAUSED:'已暂停',ERROR:'执行失败',BUDGET_PAUSED:'费用额度不足',WAITING:'等待执行',READY:'结果等待处理',RUNNING:'执行中',DONE:'已完成',CANCELLED:'已取消',DRAFT:'草稿',ACCEPTED:'检查通过',INVALIDATED:'等待重新生成',IN_FLIGHT:'调用中',COMPLETE:'已结算',UNCERTAIN:'费用待核对',RECONCILED:'已人工核对'};
 const content = document.querySelector('#content');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -20,6 +20,7 @@ async function sidebar() {
   document.querySelector('#budgetStatus').textContent = `${budget.month} · 已用及预留 ¥${Number(budget.usedAndReserved).toFixed(2)} / ¥${budget.limit}`;
 }
 async function render() {
+  document.querySelectorAll('nav [data-view]').forEach(button => button.classList.toggle('active',button.dataset.view === state.view));
   document.querySelector('#breadcrumb').textContent = {new:'创建作品',research:'市场资料与原创选题',budget:'费用与调用记录',novel:'作品管理'}[state.view];
   if (state.view === 'new') await renderNew();
   if (state.view === 'research') await renderResearch();
@@ -59,10 +60,30 @@ async function modelFields(container, provider, model = '') {
 }
 async function renderResearch() {
   const [researches, tasks] = await Promise.all([api('/research'),api('/research/tasks')]);
-  content.innerHTML = `<div class="intro"><h1>从资料发现故事</h1><p class="muted">读取番茄公开页面，分别考察男频和女频，提出三个原创创意。保存资料来源与采集时间，选题由你决定。</p></div><form id="researchForm" class="card"><label>公开榜单或作品详情地址，每行一个，最多五个</label><textarea name="urls" required placeholder="https://fanqienovel.com/…"></textarea><button>采集资料并生成创意</button></form>
-  ${tasks.filter(task => task.status !== 'DONE').map(task => taskCard(task)).join('')}
-  ${researches.map(research => `<section class="card"><h2>选题报告 <small>${escapeHtml(research.created_at)}</small></h2><div class="grid">${JSON.parse(research.ideas).map((idea,index) => `<div class="card"><h3>${escapeHtml(idea.title)}</h3><p>${escapeHtml(idea.audience)} · ${escapeHtml(idea.genre)}</p><p>${escapeHtml(idea.premise)}</p><p class="muted">${escapeHtml(idea.hook)}</p><details><summary>长期冲突、资料与难点</summary><pre>${escapeHtml(pretty(idea))}</pre></details><button data-idea="${escapeHtml(research.id)}" data-index="${index}">选择这个创意</button></div>`).join('')}</div><details><summary>采集资料</summary><pre>${escapeHtml(pretty(research.sources))}</pre></details></section>`).join('')}`;
+  if (state.view !== 'research') return;
+  state.researchSignature = JSON.stringify(tasks.map(task => [task.id,task.status]));
   state.researches = researches;
+  if (!researches.some(report => report.id === state.researchId)) state.researchId = researches[0]?.id || null;
+  content.innerHTML = `<div class="intro"><h1>好故事，从一个想法开始</h1><p class="muted">告诉 Agent 你想写什么。一起讨论人物、冲突与读者期待，找到值得持续创作的方向。</p></div>
+    <div class="research-layout"><div class="research-compose"><form id="researchForm" class="card"><h2>你的创作想法</h2><label for="researchBrief">想写怎样的故事？</label><textarea id="researchBrief" name="brief" maxlength="4000" placeholder="例如：想写一个小城修理工卷入旧案的故事，主角靠专业技能调查。希望悬疑感强，有生活气息，感情线克制。"></textarea><p class="field-help">可以描述题材、人设、喜欢的情节，以及不想出现的内容。</p><details class="source-input"><summary>添加参考资料（可选）</summary><label for="researchUrls">番茄公开榜单或作品详情链接</label><textarea id="researchUrls" name="urls" placeholder="每行一个链接，最多五个"></textarea></details><button>开始研究选题 <span aria-hidden="true">→</span></button></form>
+    <div class="report-history"><h3>之前的选题</h3>${researches.map(report => `<button type="button" data-report="${escapeHtml(report.id)}" class="report-link ${report.id === state.researchId ? 'active' : ''}"><strong>${escapeHtml(report.brief || JSON.parse(report.ideas)[0]?.title || '选题报告')}</strong><small>${escapeHtml(report.created_at)}</small></button>`).join('') || '<p class="muted">你的选题和交流会保存在这里。</p>'}</div></div>
+    <div class="research-results">${tasks.filter(task => task.kind === 'RESEARCH' && !['DONE','CANCELLED'].includes(task.status)).map(task => `<div class="card research-progress"><h3>正在研究你的想法 ${badge(task.status)}</h3><p class="muted">完成后会生成三个方案，你可以继续讨论和修改。</p>${task.status === 'ERROR' ? taskCard(task) : ''}</div>`).join('')}<div id="researchReport"></div></div></div>`;
+  await renderResearchReport();
+}
+async function renderResearchReport() {
+  const panel = document.querySelector('#researchReport');
+  if (!state.researchId) { panel.innerHTML = '<div class="research-empty"><div class="empty-symbol" aria-hidden="true">✧</div><h2>给灵感一点生长的空间</h2><p>写下一个人物、一段经历，或一种你想带给读者的感受。<br>Agent 会从这里提出三个故事方向。</p></div>';return; }
+  const detail = await api(`/research/${state.researchId}`);
+  if (state.view !== 'research' || detail.report.id !== state.researchId) return;
+  const report = detail.report;
+  const busy = detail.tasks.some(task => ['WAITING','RUNNING','READY','ERROR'].includes(task.status));
+  const ideas = JSON.parse(report.ideas);
+  panel.innerHTML = `<div class="report-heading"><div><h2>一起把故事想清楚</h2><p class="muted">三个故事方向，随着交流持续更新。</p></div><span class="report-count">${ideas.length} 个方案</span></div>
+    <div class="idea-list">${ideas.map((idea,index) => `<article class="idea-card"><div class="idea-number">0${index + 1}</div><div class="idea-content"><p class="idea-meta">${escapeHtml(idea.audience)} · ${escapeHtml(idea.genre)}</p><h3>${escapeHtml(idea.title)}</h3><p>${escapeHtml(idea.premise)}</p><div class="idea-hook">${escapeHtml(idea.hook)}</div><details><summary>长期冲突与创作难点</summary><p>${escapeHtml(idea.longTermConflict)}</p><ul>${(idea.risks || []).map(risk => `<li>${escapeHtml(risk)}</li>`).join('')}</ul></details><div class="idea-actions"><button type="button" data-discuss-idea="${index}" class="secondary">讨论这个方向</button><button type="button" data-idea="${escapeHtml(report.id)}" data-index="${index}">用这个方案创建作品</button></div></div></article>`).join('')}</div>
+    <section class="discussion"><h2>选题讨论</h2><div class="messages" aria-live="polite">${detail.messages.map(message => `<div class="message ${message.role === 'USER' ? 'user' : 'assistant'}"><div class="message-author">${message.role === 'USER' ? '你' : '选题 Agent'} <small>${escapeHtml(message.created_at)}</small></div><div class="message-body">${escapeHtml(message.content)}</div>${message.ideas ? `<details><summary>查看本轮三个方案</summary><pre>${escapeHtml(pretty(message.ideas))}</pre></details>` : ''}</div>`).join('') || '<p class="muted">在下方补充你的想法，开始这份报告的讨论。</p>'}</div>
+    <div id="discussionTask">${detail.tasks.filter(task => !['DONE','CANCELLED'].includes(task.status)).map(task => task.status === 'ERROR' ? taskCard(task) : `<p class="discussion-pending">Agent 正在思考你的意见…</p>`).join('')}</div>
+    <form id="researchChatForm" data-id="${escapeHtml(report.id)}"><label for="researchMessage">补充想法，继续讨论</label><textarea id="researchMessage" name="message" required maxlength="4000" placeholder="例如：我喜欢第二个方向，但希望主角更主动，减少系统设定，增加职业细节。" ${busy ? 'disabled' : ''}></textarea><div class="composer-footer"><small>回复后会更新上方方案，交流记录持续保留。</small><button ${busy ? 'disabled' : ''}>发送并调整方案 →</button></div></form></section>
+    <details class="report-sources"><summary>参考资料与最初想法</summary><p>${escapeHtml(report.brief)}</p>${JSON.parse(report.sources).length ? `<pre>${escapeHtml(pretty(report.sources))}</pre>` : '<p class="muted">本次基于个人想法进行创意讨论。</p>'}</details>`;
 }
 async function renderBudget() {
   const budget = await api('/budget');
@@ -111,6 +132,8 @@ document.addEventListener('click', async event => {
     if (button.dataset.view) { state.view = button.dataset.view; state.id = null; await render(); }
     if (button.dataset.novel) { state.view = 'novel'; state.id = button.dataset.novel; state.tab = 'overview'; await render(); }
     if (button.dataset.tab) { state.tab = button.dataset.tab; await renderNovel(); }
+    if (button.dataset.report) { state.researchId = button.dataset.report; await renderResearch(); }
+    if (button.dataset.discussIdea !== undefined) { const input = document.querySelector('#researchMessage'); if (!input.disabled) { input.value = `关于第${Number(button.dataset.discussIdea) + 1}个方案，我想进一步讨论：`;input.focus();input.scrollIntoView({behavior:'smooth',block:'center'}); } }
     if (button.dataset.operation) { await api(`/novels/${state.id}/${button.dataset.operation}`,'POST'); notice('操作已完成'); await render(); }
     if (button.dataset.retry) { await api(`/tasks/${button.dataset.retry}/retry`,'POST'); notice('已明确重新执行该任务'); await render(); }
     if (button.dataset.idea) { state.idea = JSON.parse(state.researches.find(item => item.id === button.dataset.idea).ideas)[Number(button.dataset.index)]; state.view = 'new'; await render(); }
@@ -124,7 +147,8 @@ document.addEventListener('submit', async event => {
   event.preventDefault(); const form = event.target; const data = Object.fromEntries(new FormData(form)); const button = form.querySelector('button'); button.disabled = true;
   try {
     if (form.id === 'newForm') { const created = await api('/novels','POST',{...data,stageSize:Number(data.stageSize),novelBudget:Number(data.novelBudget),chapterBudget:Number(data.chapterBudget)}); state.view = 'novel'; state.id = created.id; state.tab = 'overview';state.idea = null; }
-    if (form.id === 'researchForm') await api('/research','POST',{urls:data.urls.split(/\r?\n/).map(item => item.trim()).filter(Boolean)});
+    if (form.id === 'researchForm') { await api('/research','POST',{brief:data.brief.trim(),urls:data.urls.split(/\r?\n/).map(item => item.trim()).filter(Boolean)});state.researchId = null; }
+    if (form.id === 'researchChatForm') await api(`/research/${form.dataset.id}/messages`,'POST',{message:data.message});
     if (form.id === 'modelForm') await api(`/novels/${state.id}/model`,'POST',data);
     if (form.id === 'planForm') await api(`/novels/${state.id}/approve-plan`,'POST',JSON.parse(data.plan));
     if (form.id === 'reviseForm') await api(`/novels/${state.id}/revise`,'POST',{instructions:data.instructions,plan:data.plan.trim() ? JSON.parse(data.plan) : null});
@@ -136,4 +160,35 @@ document.addEventListener('submit', async event => {
   } catch(error) { notice(error.message,true);button.disabled = false; }
 });
 render().catch(error => notice(error.message,true));
-setInterval(async () => { try { await sidebar(); if (state.view === 'novel' && state.tab === 'tasks') await renderNovel(); } catch(error) { notice(error.message,true); } },5000);
+setInterval(async () => {
+  try {
+    await sidebar();
+    if (state.view === 'novel' && state.tab === 'tasks') await renderNovel();
+    if (state.view === 'research' && !state.researchRefreshing) {
+      const tasks = await api('/research/tasks');
+      const signature = JSON.stringify(tasks.map(task => [task.id,task.status]));
+      if (state.view !== 'research' || signature === state.researchSignature) return;
+      state.researchRefreshing = true;
+      const brief = document.querySelector('#researchBrief')?.value || '';
+      const urls = document.querySelector('#researchUrls')?.value || '';
+      const message = document.querySelector('#researchMessage')?.value || '';
+      const reportId = state.researchId;
+      const scroll = window.scrollY;
+      const sourceOpen = document.querySelector('.source-input')?.open;
+      const focused = document.activeElement;
+      const focusId = ['researchBrief','researchUrls','researchMessage'].includes(focused?.id) ? focused.id : null;
+      const selection = focusId ? [focused.selectionStart,focused.selectionEnd] : null;
+      try {
+        await renderResearch();
+        if (state.view !== 'research') return;
+        document.querySelector('#researchBrief').value = brief;
+        document.querySelector('#researchUrls').value = urls;
+        document.querySelector('.source-input').open = sourceOpen;
+        if (reportId === state.researchId && document.querySelector('#researchMessage')) document.querySelector('#researchMessage').value = message;
+        const input = focusId ? document.getElementById(focusId) : null;
+        if (input && !input.disabled) { input.focus({preventScroll:true});input.setSelectionRange(...selection); }
+        window.scrollTo(0,scroll);
+      } finally { state.researchRefreshing = false; }
+    }
+  } catch(error) { notice(error.message,true); }
+},5000);

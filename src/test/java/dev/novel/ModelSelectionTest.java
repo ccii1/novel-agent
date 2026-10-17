@@ -1,5 +1,11 @@
 package dev.novel;
 
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
+import dev.novel.service.ProjectService;
+import dev.novel.service.BudgetService;
+import dev.novel.integration.model.ModelCatalog;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,7 +24,7 @@ class ModelSelectionTest {
     @Autowired BudgetService budget;
     @Autowired Json json;
     @BeforeEach void clean() {
-        for(String table:List.of("events","model_calls","tasks","novels")) store.db.update("DELETE FROM "+table);
+        for(String table:List.of("events","model_calls","tasks","novels")) store.update("DELETE FROM "+table);
     }
     @Test void publicCatalogKeepsCredentialsPrivateAndUsesFreeProfile() {
         var selection=catalog.resolve(null,"selected-text-model","WRITE");
@@ -35,9 +41,9 @@ class ModelSelectionTest {
         budget.reserve(task,BigDecimal.ONE,"paid-model",BigDecimal.ONE,BigDecimal.ONE);
         assertThatThrownBy(()->projects.selectModel(id,"local-test","another-model")).isInstanceOf(IllegalStateException.class);
         projects.pause(id);
-        store.db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
+        store.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
         assertThatThrownBy(()->projects.selectModel(id,"local-test","another-model")).hasMessageContaining("等待");
-        store.db.update("UPDATE tasks SET status='WAITING' WHERE id=?",task.get("id"));
+        store.update("UPDATE tasks SET status='WAITING' WHERE id=?",task.get("id"));
         projects.selectModel(id,"local-test","another-model");
         assertThat(catalog.forTask(task).model()).isEqualTo("another-model");
         var call=store.one("SELECT * FROM model_calls WHERE task_id=?",task.get("id"));
@@ -52,7 +58,7 @@ class ModelSelectionTest {
         budget.reserve(store.one("SELECT * FROM tasks WHERE id=?",second),BigDecimal.ZERO,"text-model",BigDecimal.ZERO,BigDecimal.ZERO,null,null,"local-test","unmetered");
         assertThat(budget.used("billing_month=?",budget.month())).isEqualByComparingTo("300");
         assertThat(store.one("SELECT billing_mode FROM model_calls WHERE task_id=?",second).get("billing_mode")).isEqualTo("unmetered");
-        store.db.update("UPDATE model_calls SET status='UNCERTAIN' WHERE task_id=?",second);
+        store.update("UPDATE model_calls SET status='UNCERTAIN' WHERE task_id=?",second);
         String call=(String)store.one("SELECT id FROM model_calls WHERE task_id=?",second).get("id");
         assertThatThrownBy(()->budget.reconcile(call,BigDecimal.ONE)).isInstanceOf(IllegalArgumentException.class);
         budget.reconcile(call,BigDecimal.ZERO);

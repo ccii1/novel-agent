@@ -1,4 +1,8 @@
-package dev.novel;
+package dev.novel.service;
+
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
+import dev.novel.integration.model.ModelCatalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
@@ -26,7 +30,7 @@ public class ProjectService {
         var selection=catalog.resolve(provider,model,"PLAN");
         return store.transaction(() -> {
             String id=UUID.randomUUID().toString();
-            store.db.update("INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name) VALUES(?,?,?,?,'PLANNING',?,?,?,?,?)",id,title,premise,bible,size,novelBudget,chapterBudget,selection.provider(),Objects.toString(model,""));
+            store.update("INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name) VALUES(?,?,?,?,'PLANNING',?,?,?,?,?)",id,title,premise,bible,size,novelBudget,chapterBudget,selection.provider(),Objects.toString(model,""));
             workflow.schedule(store.novel(id),"PLAN",1,0,Map.of());
             return id;
         });
@@ -39,7 +43,7 @@ public class ProjectService {
             require(novel,"PAUSED","AWAITING_PLAN","AWAITING_STAGE_REVIEW","AWAITING_CHANGE","AWAITING_HELP","ERROR","BUDGET_PAUSED");
             if(!store.list("SELECT id FROM tasks WHERE novel_id=? AND status='RUNNING'",id).isEmpty())
                 throw new IllegalStateException("请等待已经开始的任务结束后切换模型");
-            store.db.update("UPDATE novels SET provider=?,model_name=? WHERE id=?",selection.provider(),Objects.toString(model,""),id);
+            store.update("UPDATE novels SET provider=?,model_name=? WHERE id=?",selection.provider(),Objects.toString(model,""),id);
             store.event(id,null,"MODEL_SELECTED",selection.provider()+" / "+selection.model()+" / "+selection.billingMode());
             return null;
         });
@@ -57,7 +61,7 @@ public class ProjectService {
             var novel=store.lockNovel(id);require(novel,"AWAITING_PLAN");
             JsonNode approved=plan==null || plan.isNull()?json.read((String)novel.get("plan")):plan;
             agents.validatePlan(approved,Store.integer(novel,"chapter_no"),Store.integer(novel,"stage_size"));
-            store.db.update("UPDATE novels SET plan=?,status='WRITING' WHERE id=?",json.write(approved),id);
+            store.update("UPDATE novels SET plan=?,status='WRITING' WHERE id=?",json.write(approved),id);
             workflow.schedule(store.novel(id),"WRITE",Store.integer(novel,"chapter_no"),0,Map.of());
             store.event(id,null,"PLAN_APPROVED","阶段大纲已批准");
             return null;
@@ -66,7 +70,7 @@ public class ProjectService {
     public void continueStage(String id) {
         store.transaction(() -> {
             var novel=store.lockNovel(id);require(novel,"AWAITING_STAGE_REVIEW");
-            store.db.update("UPDATE novels SET stage_no=stage_no+1,status='PLANNING',plan=NULL WHERE id=?",id);
+            store.update("UPDATE novels SET stage_no=stage_no+1,status='PLANNING',plan=NULL WHERE id=?",id);
             workflow.schedule(store.novel(id),"PLAN",Store.integer(novel,"chapter_no"),0,Map.of());
             store.event(id,null,"STAGE_APPROVED","已开始下一阶段规划"); return null;
         });
@@ -76,14 +80,14 @@ public class ProjectService {
             var novel=store.lockNovel(id);
             if(!Set.of("PLANNING","WRITING","CHECKING","REFLECTING","EXTRACTING","CHECKING_MEMORY").contains(novel.get("status")))
                 throw new IllegalStateException("当前阶段无需暂停");
-            store.db.update("UPDATE novels SET resume_status=status,status='PAUSED' WHERE id=?",id);
+            store.update("UPDATE novels SET resume_status=status,status='PAUSED' WHERE id=?",id);
             store.event(id,null,"PAUSED","暂停后已发出的调用仍会结算，结果保留等待恢复");return null;
         });
     }
     public void resume(String id) {
         store.transaction(() -> {
             var novel=store.lockNovel(id);require(novel,"PAUSED");
-            store.db.update("UPDATE novels SET status=resume_status,resume_status=NULL WHERE id=?",id);
+            store.update("UPDATE novels SET status=resume_status,resume_status=NULL WHERE id=?",id);
             store.event(id,null,"RESUMED","已恢复执行");return null;
         });
     }
@@ -95,11 +99,11 @@ public class ProjectService {
             if(plan!=null && !plan.isNull()) {
                 var old=json.read((String)novel.get("plan"));
                 agents.validatePlan(plan,old.get("chapters").get(0).path("number").asInt(),Store.integer(novel,"stage_size"));
-                store.db.update("UPDATE novels SET plan=? WHERE id=?",json.write(plan),id);
+                store.update("UPDATE novels SET plan=? WHERE id=?",json.write(plan),id);
             }
             int chapter=Store.integer(novel,"chapter_no");
             int revision=Store.integer(store.one("SELECT revision FROM chapters WHERE novel_id=? AND number=?",id,chapter),"revision")+1;
-            store.db.update("UPDATE novels SET status='WRITING',reflection=? WHERE id=?",json.write(Map.of("instructions",instructions,"humanApproved",true)),id);
+            store.update("UPDATE novels SET status='WRITING',reflection=? WHERE id=?",json.write(Map.of("instructions",instructions,"humanApproved",true)),id);
             workflow.schedule(store.novel(id),"REWRITE",chapter,revision,Map.of());
             store.event(id,null,"REVISION_APPROVED",instructions);return null;
         });
@@ -114,13 +118,14 @@ public class ProjectService {
             if(!store.list("SELECT id FROM model_calls WHERE task_id=? AND status IN ('UNCERTAIN','IN_FLIGHT')",taskId).isEmpty())
                 throw new IllegalStateException("请先核对供应商费用");
             if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) throw new IllegalStateException("任务记忆版本已失效");
-            store.db.update("UPDATE tasks SET status='CANCELLED' WHERE id=?",taskId);
+            store.update("UPDATE tasks SET status='CANCELLED' WHERE id=?",taskId);
             String next=store.enqueue(novelId,(String)task.get("kind"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),Store.number(task,"memory_version"),
                     task.get("task_key")+":retry:"+UUID.randomUUID(),json.read((String)task.get("payload")));
+            if(task.get("research_id")!=null) store.update("UPDATE tasks SET research_id=? WHERE id=?",task.get("research_id"),next);
             if(novel!=null) {
                 require(novel,"ERROR","BUDGET_PAUSED","PLANNING","WRITING","CHECKING","REFLECTING","EXTRACTING","CHECKING_MEMORY");
                 if(Set.of("ERROR","BUDGET_PAUSED").contains(novel.get("status")))
-                    store.db.update("UPDATE novels SET status=resume_status,resume_status=NULL,error=NULL WHERE id=?",novelId);
+                    store.update("UPDATE novels SET status=resume_status,resume_status=NULL,error=NULL WHERE id=?",novelId);
             }
             store.event(novelId,next,"RETRY_APPROVED","人工确认重新执行，可能产生新的调用费用");return next;
         });
@@ -137,7 +142,7 @@ public class ProjectService {
             var facts=memory.snapshot(id,Store.number(novel,"memory_version")).stream().filter(row->Store.integer(row,"chapter_no")>=chapter).toList();
             var impact=Map.of("chapters",affected,"memories",facts,"reason","后续章节可能依赖修改章节，将逐章重新生成并检查；公开平台正文仍由人工处理");
             String edit=UUID.randomUUID().toString();
-            store.db.update("INSERT INTO edit_requests(id,novel_id,chapter_no,base_version,instruction,impact,status) VALUES(?,?,?,?,?,?,'PENDING')",edit,id,chapter,novel.get("memory_version"),instructions,json.write(impact));
+            store.update("INSERT INTO edit_requests(id,novel_id,chapter_no,base_version,instruction,impact,status) VALUES(?,?,?,?,?,?,'PENDING')",edit,id,chapter,novel.get("memory_version"),instructions,json.write(impact));
             return Map.of("id",edit,"impact",impact);
         });
     }
@@ -160,13 +165,13 @@ public class ProjectService {
                 if(Store.integer(row,"chapter_no")<chapter) continue;
                 var old=before.get(row.get("memory_key"));
                 String content=old==null?json.write(Map.of("deleted",true,"name",row.get("memory_key"))):(String)old.get("content");
-                store.db.update("INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(?,?,?,?,?,?,?)",UUID.randomUUID().toString(),id,row.get("memory_key"),row.get("kind"),old==null?chapter-1:old.get("chapter_no"),next,content);
+                store.update("INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(?,?,?,?,?,?,?)",UUID.randomUUID().toString(),id,row.get("memory_key"),row.get("kind"),old==null?chapter-1:old.get("chapter_no"),next,content);
             }
-            store.db.update("UPDATE tasks SET status='CANCELLED' WHERE novel_id=? AND status IN ('WAITING','READY','ERROR')",id);
-            store.db.update("UPDATE chapters SET status='INVALIDATED' WHERE novel_id=? AND number>=?",id,chapter);
-            store.db.update("UPDATE novels SET status='PLANNING',stage_no=stage_no+1,chapter_no=?,memory_version=?,plan=NULL,reflection=NULL,resume_status=NULL,error=NULL WHERE id=?",chapter,next,id);
+            store.update("UPDATE tasks SET status='CANCELLED' WHERE novel_id=? AND status IN ('WAITING','READY','ERROR')",id);
+            store.update("UPDATE chapters SET status='INVALIDATED' WHERE novel_id=? AND number>=?",id,chapter);
+            store.update("UPDATE novels SET status='PLANNING',stage_no=stage_no+1,chapter_no=?,memory_version=?,plan=NULL,reflection=NULL,resume_status=NULL,error=NULL WHERE id=?",chapter,next,id);
             workflow.schedule(store.novel(id),"PLAN",chapter,0,Map.of("historicalEdit",edit.get("instruction"),"impact",json.read((String)edit.get("impact"))));
-            store.db.update("UPDATE edit_requests SET status='APPROVED' WHERE id=?",editId);
+            store.update("UPDATE edit_requests SET status='APPROVED' WHERE id=?",editId);
             store.event(id,null,"EDIT_APPROVED","从第"+chapter+"章重新规划和生成");return null;
         });
     }

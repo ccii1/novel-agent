@@ -1,4 +1,4 @@
-package dev.novel;
+package dev.novel.integration.model;
 
 import java.net.URI;
 import java.util.Set;

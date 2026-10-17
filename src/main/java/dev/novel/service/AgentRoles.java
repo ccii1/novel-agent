@@ -1,4 +1,4 @@
-package dev.novel;
+package dev.novel.service;
 
 import java.util.List;
 

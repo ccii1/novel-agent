@@ -1,4 +1,9 @@
-package dev.novel;
+package dev.novel.integration.model;
+
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
+import dev.novel.service.BudgetService;
+import dev.novel.service.SkillService;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
@@ -78,14 +83,14 @@ public class ModelClient {
             var actual = cost(input,output,selectedInputPrice,selectedOutputPrice);
             String content = root.path("choices").path(0).path("message").path("content").asText();
             boolean stopped="stop".equals(root.path("choices").path(0).path("finish_reason").asText());
-            store.db.update("UPDATE model_calls SET status=?,actual=?,input_tokens=?,output_tokens=?,response=? WHERE task_id=?",
+            store.update("UPDATE model_calls SET status=?,actual=?,input_tokens=?,output_tokens=?,response=? WHERE task_id=?",
                     stopped?"COMPLETE":"INVALID",actual,input,output,content,task.get("id"));
             if (actual.compareTo(reserve)>0) throw new IllegalStateException("实际计费超过预留金额，请核查供应商单价和 token 规则");
             if (!stopped)
                 throw new IllegalStateException("模型输出未正常结束，请调整输出额度后重新执行");
             return json.read(content);
         } catch (Exception e) {
-            store.db.update("UPDATE model_calls SET status='UNCERTAIN',error=? WHERE task_id=? AND status='IN_FLIGHT'", e.getClass().getSimpleName(), task.get("id"));
+            store.update("UPDATE model_calls SET status='UNCERTAIN',error=? WHERE task_id=? AND status='IN_FLIGHT'", e.getClass().getSimpleName(), task.get("id"));
             throw e;
         }
     }

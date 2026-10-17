@@ -1,4 +1,4 @@
-package dev.novel;
+package dev.novel.service;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -38,7 +38,7 @@ public class SkillService {
         var files = new LinkedHashSet<String>();
         files.add("SKILL.md");
         switch (role) {
-            case "RESEARCH" -> references(files, "commercial-review.md", "fanqie-platform-rules.md");
+            case "RESEARCH", "RESEARCH_CHAT" -> references(files, "commercial-review.md", "fanqie-platform-rules.md");
             case "PLAN" -> references(files, "commercial-review.md", "pattern-detection.md");
             case "WRITE", "REWRITE" -> references(files, "ai-detox-guide.md", "battle-scene-guide.md", "dialogue-monitor.md");
             case "CHECK_PACING" -> references(files, "battle-scene-guide.md", "dialogue-monitor.md", "pattern-detection.md");

@@ -1,4 +1,7 @@
-package dev.novel;
+package dev.novel.service;
+
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
 
 import org.springframework.stereotype.Service;
 import java.util.*;
@@ -19,7 +22,7 @@ public class ChapterQualityService {
     }
     public void record(String novel,int chapter,int revision,String body) {
         var value=measure(body);
-        store.db.update("MERGE INTO chapter_metrics(novel_id,chapter_no,revision,characters,total_lines,dialogue_lines,dialogue_ratio) KEY(novel_id,chapter_no,revision) VALUES(?,?,?,?,?,?,?)",
+        store.update("MERGE INTO chapter_metrics(novel_id,chapter_no,revision,characters,total_lines,dialogue_lines,dialogue_ratio) KEY(novel_id,chapter_no,revision) VALUES(?,?,?,?,?,?,?)",
                 novel,chapter,revision,value.characters(),value.totalLines(),value.dialogueLines(),value.dialogueRatio());
     }
     public List<Map<String,Object>> recent(String novel,int before,int limit) {

@@ -1,5 +1,7 @@
 package dev.novel;
 
+import dev.novel.support.Json;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,5 +50,8 @@ class HttpIntegrationTest {
         assertThat(request("/api/novels","{}").statusCode()).isEqualTo(400);
         assertThat(request("/api/novels/missing",null).statusCode()).isEqualTo(404);
         assertThat(request("/api/research","{\"urls\":[]}").statusCode()).isEqualTo(400);
+        assertThat(request("/api/research/missing",null).statusCode()).isEqualTo(404);
+        assertThat(request("/api/research/missing/messages","{\"message\":\" \"}").statusCode()).isEqualTo(400);
+        assertThat(request("/api/research","{\"brief\":\"职业悬疑，希望主角依靠修理技能调查旧案\"}").statusCode()).isEqualTo(200);
     }
 }

@@ -29,7 +29,11 @@ flowchart TD
     Review -->|批准继续| Plan
 ```
 
-选题调研接受1至5个番茄公开页面地址，保存 URL、标题、采集时间和文字摘录，再生成创意。资料由用户提供地址，网页读取使用 Jsoup。作品也可以直接从人工提供的创意开始创建。
+选题研究可以填写自己的想法，包括题材、人设、读者期待、情节要求和不希望出现的内容；参考链接可选，最多提供五个番茄公开页面。想法或链接至少填写一项。提供链接时使用 Jsoup 读取，保存 URL、标题、采集时间和文字摘录；仅提供想法时进行原创构思，报告明确说明资料范围。
+
+每份报告提供三个完整方案。报告下方支持持续讨论，例如调整主角职业、加强悬疑或比较方案；Agent 直接回应意见，并更新三个方案。用户与 Agent 的交流、每轮方案和调用记录持久化保存，可以查看历史并选择当前方案创建作品。每份报告同时执行一轮讨论，任务失败时沿用已有费用核对与人工重新执行流程。
+
+讨论输入包含最初想法、当前三个方案、已采集资料和最近12条交流；全部交流历史继续保存在数据库。网页定期更新任务进度，并保留尚未发送的输入。界面使用亮色主题，桌面采用想法输入与方案讨论的双栏布局，手机宽度下顺序展示。
 
 阶段大纲包含 `stageGoal`、`coreMilestones`，以及每章的编号、标题、目标、出场人物和关联伏笔。人工可以修改完整大纲，批准后开始正文生成。
 
@@ -71,7 +75,7 @@ flowchart TD
 
 | 任务 | 负责内容 | 输出 |
 | --- | --- | --- |
-| `RESEARCH` | 依据资料提出原创选题 | 三个创意及来源 |
+| `RESEARCH` / `RESEARCH_CHAT` | 依据个人想法和可选资料提出、讨论原创选题 | 回复、三个完整创意及来源 |
 | `PLAN` | 阶段冲突、剧情节点和章节安排 | 阶段大纲 |
 | `WRITE` / `REWRITE` | 生成或统一修改章节 | 标题、正文 |
 | `CHECK_CHARACTER` | 人物关系、动机、性格与知情范围 | 结论、正文证据和修改建议 |
@@ -275,19 +279,28 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 
 ## 代码入口
 
+后端采用 MVC 分层。`NovelApplication` 位于根包，`controller` 处理 HTTP 路由与响应，`dto` 定义请求和参数校验，`service` 承担业务流程，`repository` 封装 JDBC 访问与事务。模型接入位于 `integration/model`，持久化任务调度位于 `engine`，JSON 工具位于 `support`。Controller 通过 service 访问业务数据。
+
 | 文件 | 职责 |
 | --- | --- |
-| [WorkflowService.java](src/main/java/dev/novel/WorkflowService.java) | 完成步骤、汇总检查、安排下一步及统一提交 |
-| [TaskEngine.java](src/main/java/dev/novel/TaskEngine.java) | 调度、工作线程、失败处理和启动恢复 |
-| [AgentService.java](src/main/java/dev/novel/AgentService.java) | 各角色提示词、任务执行和输出校验 |
-| [MemoryService.java](src/main/java/dev/novel/MemoryService.java) | 版本化事实、graph 查询和上下文组装 |
-| [ProjectService.java](src/main/java/dev/novel/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
-| [ModelClient.java](src/main/java/dev/novel/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |
-| [ModelCatalog.java](src/main/java/dev/novel/ModelCatalog.java) | 服务配置、模型列表和小说模型选择 |
-| [BudgetService.java](src/main/java/dev/novel/BudgetService.java) | 并发费用预留、速率检查及费用核对 |
-| [SkillService.java](src/main/java/dev/novel/SkillService.java) | 固定技能加载、角色参考资料选择和指纹验证 |
-| [ChapterQualityService.java](src/main/java/dev/novel/ChapterQualityService.java) | 正文统计、字数和对话占比检查、质量历史 |
-| [TruthDocumentService.java](src/main/java/dev/novel/TruthDocumentService.java) | 当前状态文档、交接资料和 ZIP 导出 |
+| [NovelController.java](src/main/java/dev/novel/controller/NovelController.java) | 小说、章节与审核接口 |
+| [ResearchController.java](src/main/java/dev/novel/controller/ResearchController.java) | 选题和报告交流接口 |
+| [SystemController.java](src/main/java/dev/novel/controller/SystemController.java) | 状态、模型服务与费用接口 |
+| [ApiRequests.java](src/main/java/dev/novel/dto/ApiRequests.java) | 请求 DTO 和参数校验 |
+| [Store.java](src/main/java/dev/novel/repository/Store.java) | 数据库查询、写入及事务访问 |
+| [WorkspaceService.java](src/main/java/dev/novel/service/WorkspaceService.java) | 工作台查询、发布标记及正文导出 |
+| [ResearchService.java](src/main/java/dev/novel/service/ResearchService.java) | 个人想法、资料采集、选题讨论和交流记录 |
+| [WorkflowService.java](src/main/java/dev/novel/service/WorkflowService.java) | 完成步骤、汇总检查、安排下一步及统一提交 |
+| [TaskEngine.java](src/main/java/dev/novel/engine/TaskEngine.java) | 调度、工作线程、失败处理和启动恢复 |
+| [AgentService.java](src/main/java/dev/novel/service/AgentService.java) | 各角色提示词、任务执行和输出校验 |
+| [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、graph 查询和上下文组装 |
+| [ProjectService.java](src/main/java/dev/novel/service/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
+| [ModelClient.java](src/main/java/dev/novel/integration/model/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |
+| [ModelCatalog.java](src/main/java/dev/novel/integration/model/ModelCatalog.java) | 服务配置、模型列表和小说模型选择 |
+| [BudgetService.java](src/main/java/dev/novel/service/BudgetService.java) | 并发费用预留、速率检查及费用核对 |
+| [SkillService.java](src/main/java/dev/novel/service/SkillService.java) | 固定技能加载、角色参考资料选择和指纹验证 |
+| [ChapterQualityService.java](src/main/java/dev/novel/service/ChapterQualityService.java) | 正文统计、字数和对话占比检查、质量历史 |
+| [TruthDocumentService.java](src/main/java/dev/novel/service/TruthDocumentService.java) | 当前状态文档、交接资料和 ZIP 导出 |
 | [schema.sql](src/main/resources/schema.sql) | 作品、任务、章节、记忆及调用记录表 |
 
 ## 验证范围

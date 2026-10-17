@@ -1,4 +1,6 @@
-package dev.novel;
+package dev.novel.service;
+
+import dev.novel.repository.Store;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -55,9 +57,9 @@ public class BudgetService {
                 if (metered && Store.integer(task,"chapter_no") > 0 && used("novel_id=? AND chapter_no=?", novelId, task.get("chapter_no")).add(amount).compareTo((BigDecimal)novel.get("chapter_budget")) > 0)
                     throw new BudgetExceeded("本章费用上限不足");
             }
-            store.db.update("INSERT INTO model_calls(id,task_id,novel_id,chapter_no,billing_month,status,reserved,model,input_price,output_price,provider,billing_mode) VALUES(?,?,?,?,?,'IN_FLIGHT',?,?,?,?,?,?)",
+            store.update("INSERT INTO model_calls(id,task_id,novel_id,chapter_no,billing_month,status,reserved,model,input_price,output_price,provider,billing_mode) VALUES(?,?,?,?,?,'IN_FLIGHT',?,?,?,?,?,?)",
                     UUID.randomUUID().toString(), task.get("id"), novelId, task.get("chapter_no"), month(), amount, model, inputPrice, outputPrice,provider,billingMode);
-            if(skill!=null) store.db.update("UPDATE model_calls SET skill_version=?,skill_fingerprint=?,skill_files=?,request_body=? WHERE task_id=?",
+            if(skill!=null) store.update("UPDATE model_calls SET skill_version=?,skill_fingerprint=?,skill_files=?,request_body=? WHERE task_id=?",
                     skill.version(),skill.fingerprint(),String.join("\n",skill.files()),requestBody,task.get("id"));
             return null;
         });
@@ -69,7 +71,7 @@ public class BudgetService {
             var call=store.one("SELECT billing_mode FROM model_calls WHERE id=?",id);
             if("unmetered".equals(call.get("billing_mode")) && actual.signum()!=0)
                 throw new IllegalArgumentException("免费服务的实际费用必须为零");
-            int updated = store.db.update("UPDATE model_calls SET status='RECONCILED',actual=? WHERE id=? AND status='UNCERTAIN'", actual, id);
+            int updated = store.update("UPDATE model_calls SET status='RECONCILED',actual=? WHERE id=? AND status='UNCERTAIN'", actual, id);
             if (updated != 1) throw new IllegalStateException("仅可核对结果不确定的调用");
             store.event(null,null,"BILLING_RECONCILED",id + " 费用=" + actual);
             return null;

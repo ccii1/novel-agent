@@ -1,17 +1,19 @@
-package dev.novel;
+package dev.novel.repository;
+
+import dev.novel.support.Json;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.sql.Clob;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Supplier;
 
-@Component
+@Repository
 public class Store {
-    final JdbcTemplate db;
+    private final JdbcTemplate db;
     private final TransactionTemplate tx;
     private final Json json;
     private final RowMapper<Map<String,Object>> row = (rs, index) -> {
@@ -25,6 +27,7 @@ public class Store {
     };
     public Store(JdbcTemplate db, TransactionTemplate tx, Json json) { this.db = db; this.tx = tx; this.json = json; }
     public <T> T transaction(Supplier<T> action) { return tx.execute(status -> action.get()); }
+    public int update(String sql,Object... args) { return db.update(sql,args); }
     public List<Map<String,Object>> list(String sql, Object... args) { return db.query(sql, row, args); }
     public Map<String,Object> one(String sql, Object... args) {
         var rows = list(sql, args);

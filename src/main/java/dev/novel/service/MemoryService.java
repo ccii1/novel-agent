@@ -1,4 +1,7 @@
-package dev.novel;
+package dev.novel.service;
+
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.tinkerpop.gremlin.structure.*;
@@ -128,7 +131,7 @@ public class MemoryService {
         for(var relation:delta.path("relations")) save(novel,chapter,version,relationKey(relation),"RELATION",relation);
     }
     private void save(String novel,int chapter,long version,String key,String kind,JsonNode content) {
-        store.db.update("INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(?,?,?,?,?,?,?)",
+        store.update("INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(?,?,?,?,?,?,?)",
                 UUID.randomUUID().toString(),novel,key,kind,chapter,version,json.write(content));
     }
 }

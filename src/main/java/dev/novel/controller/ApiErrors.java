@@ -1,4 +1,4 @@
-package dev.novel;
+package dev.novel.controller;
 
 import org.springframework.http.*;
 import org.springframework.web.bind.MethodArgumentNotValidException;

@@ -1,4 +1,7 @@
-package dev.novel;
+package dev.novel.integration.model;
+
+import dev.novel.repository.Store;
+import dev.novel.support.Json;
 
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
