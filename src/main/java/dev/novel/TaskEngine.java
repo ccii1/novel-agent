@@ -37,6 +37,10 @@ public class TaskEngine {
                 if(uncertain.isEmpty()) store.db.update("UPDATE tasks SET status='WAITING' WHERE id=?",task.get("id"));
                 else fail(task,new IllegalStateException("服务中断期间调用结果不确定，请核对费用"));
             }
+            for(var novel:store.list("SELECT * FROM novels WHERE status='CHECKING'")) {
+                var chapter=store.one("SELECT revision FROM chapters WHERE novel_id=? AND number=?",novel.get("id"),novel.get("chapter_no"));
+                workflow.ensureReviewTasks(novel,Store.integer(novel,"chapter_no"),Store.integer(chapter,"revision"));
+            }
             store.event(null,null,"RECOVERY","已恢复持久化任务，结果不确定的调用等待人工核对");
             return null;
         });

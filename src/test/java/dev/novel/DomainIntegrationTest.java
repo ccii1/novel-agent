@@ -18,7 +18,7 @@ class DomainIntegrationTest {
     @Autowired AgentService agents;
     @Autowired TaskEngine engine;
     @BeforeEach void clean() {
-        for(String table:List.of("events","edit_requests","research","model_calls","memories","chapter_history","chapters","tasks","novels")) store.db.update("DELETE FROM "+table);
+        for(String table:List.of("events","edit_requests","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.db.update("DELETE FROM "+table);
     }
     private String novel() { return projects.create("密信","围绕失踪密信展开的悬疑故事","人物不得提前得知秘密",2,new BigDecimal("100"),new BigDecimal("5")); }
     private Map<String,Object> task(String novel,int chapter) {

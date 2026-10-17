@@ -19,8 +19,9 @@ spring:
 novel:
   workers: 4
   monthly-budget: 300
-  max-context-bytes: 60000
+  max-context-bytes: 120000
   model:
+    billing-mode: metered
     endpoint: ${NOVEL_MODEL_ENDPOINT:}
     api-key: ${NOVEL_MODEL_API_KEY:}
     name: ${NOVEL_MODEL_NAME:}

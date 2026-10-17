@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS novels (
  novel_budget DECIMAL(14,6) NOT NULL DEFAULT 100, chapter_budget DECIMAL(14,6) NOT NULL DEFAULT 5,
  error CLOB, resume_status VARCHAR(40), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE novels ADD COLUMN IF NOT EXISTS provider VARCHAR(80) NOT NULL DEFAULT 'default';
+ALTER TABLE novels ADD COLUMN IF NOT EXISTS model_name VARCHAR(200);
 CREATE TABLE IF NOT EXISTS tasks (
  id VARCHAR(36) PRIMARY KEY, novel_id VARCHAR(36), kind VARCHAR(40) NOT NULL,
  task_key VARCHAR(200) NOT NULL UNIQUE, status VARCHAR(30) NOT NULL,
@@ -42,6 +44,18 @@ CREATE TABLE IF NOT EXISTS model_calls (
  response CLOB, error CLOB, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS call_month_idx ON model_calls(billing_month);
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS skill_version VARCHAR(40);
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS skill_fingerprint VARCHAR(64);
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS skill_files CLOB;
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS request_body CLOB;
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS provider VARCHAR(80) NOT NULL DEFAULT 'default';
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(30) NOT NULL DEFAULT 'metered';
+CREATE TABLE IF NOT EXISTS chapter_metrics (
+ novel_id VARCHAR(36) NOT NULL, chapter_no INT NOT NULL, revision INT NOT NULL,
+ characters INT NOT NULL, total_lines INT NOT NULL, dialogue_lines INT NOT NULL,
+ dialogue_ratio DOUBLE PRECISION NOT NULL, pacing_data CLOB,
+ PRIMARY KEY(novel_id,chapter_no,revision)
+);
 CREATE TABLE IF NOT EXISTS budget_lock (id INT PRIMARY KEY);
 MERGE INTO budget_lock KEY(id) VALUES(1);
 CREATE TABLE IF NOT EXISTS research (

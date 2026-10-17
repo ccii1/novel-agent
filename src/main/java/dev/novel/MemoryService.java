@@ -49,7 +49,7 @@ public class MemoryService {
     }
     public String context(Map<String,Object> novel, int chapter) {
         String id=(String)novel.get("id"); long version=Store.number(novel,"memory_version");
-        var plan=json.read(Store.string(novel,"plan"));
+        var plan=Store.string(novel,"plan").isBlank()?json.read("{}"):json.read(Store.string(novel,"plan"));
         List<String> characters=new ArrayList<>();
         plan.path("chapters").forEach(item -> {
             if (item.path("number").asInt()==chapter) item.path("characters").forEach(c->characters.add(c.asText()));
@@ -75,7 +75,7 @@ public class MemoryService {
         }
         ranked.sort(Map.Entry.<Integer,Map<String,Object>>comparingByKey().reversed());
         ranked.stream().limit(50).forEach(entry->relevant.add(entry.getValue()));
-        var summaries=store.list("SELECT number,summary FROM chapters WHERE novel_id=? AND status='ACCEPTED' AND number<? ORDER BY number DESC LIMIT 4",id,chapter);
+        var summaries=store.list("SELECT number,summary FROM chapters WHERE novel_id=? AND status='ACCEPTED' AND number<? ORDER BY number DESC LIMIT ?",id,chapter,chapter%10==0?9:4);
         var previous=store.list("SELECT body FROM chapters WHERE novel_id=? AND number=? AND status='ACCEPTED'",id,chapter-1);
         String tail=previous.isEmpty()?"":(String)previous.get(0).get("body");
         if(tail.length()>4000) tail=tail.substring(tail.length()-4000);

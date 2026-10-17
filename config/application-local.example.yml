@@ -1,7 +1,9 @@
 # 复制为 application-local.yml，填写真实供应商配置。金额单位为人民币。
-# endpoint 必须是完整的 Chat Completions HTTPS 地址。
+# endpoint 支持 /v1 基础地址或完整的 Chat Completions 地址。
+# HTTP 仅支持本机地址，远程服务使用 HTTPS。
 # 模型需要支持 JSON object、max_tokens 和 usage token 用量。
 novel:
+  default-provider: default
   model:
     endpoint: ""
     api-key: ""
@@ -10,6 +12,11 @@ novel:
     output-per-million: 0
     max-output-tokens: 8192
     requests-per-minute: 30
+    billing-mode: metered
+# 在 novel.providers 下添加其他服务；每个服务包含 display-name、endpoint、api-key、name。
+# billing-mode: unmetered 表示免费调用，仍记录 token 用量。
+# billing-mode: metered 需要填写 input-per-million 与 output-per-million。
+# 服务地址和凭据仅填写在被 Git 忽略的 application-local.yml 中。
 # 可以在 novel.agents 下按角色配置 name 与对应 token 单价。
-# 角色：plan、write、rewrite、check-character、check-plot、check-pacing、reflect、memory、check-memory、research。
+# 角色：plan、write、rewrite、check-character、check-plot、check-pacing、check-style、reflect、memory、check-memory、research。
 # 未单独配置的字段使用 novel.model 中的值。

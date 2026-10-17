@@ -18,21 +18,26 @@ class LiveModelTest {
     @Autowired AgentService agents;
     @Autowired WorkflowService workflow;
     @Autowired ModelClient model;
+    @Autowired ModelCatalog catalog;
     @Test @Timeout(600)
     void realProviderGeneratesPlanChapterAndIndependentReviews() throws Exception {
-        assertThat(model.configured()).as("需要真实模型配置及人民币单价").isTrue();
+        assertThat(model.configured()).as("需要真实模型配置及计费方式").isTrue();
         String id=projects.create("密信与钥匙","悬疑网文：调查员发现一封尚未开封的密信，目标读者喜欢智斗和信息揭示。",
                 "人物只能使用已经获知的信息，当前阶段需要完整小冲突和追读悬念。",1,new BigDecimal("20"),new BigDecimal("10"));
         run(next(id,"PLAN"));projects.approvePlan(id,null);run(next(id,"WRITE"));
         var checks=store.list("SELECT * FROM tasks WHERE novel_id=? AND status='WAITING' AND kind LIKE 'CHECK_%'",id);
-        assertThat(checks).hasSize(3);
-        ExecutorService pool=Executors.newFixedThreadPool(3);
+        assertThat(checks).hasSize(AgentRoles.CHAPTER_CHECKS.size());
+        ExecutorService pool=Executors.newFixedThreadPool(4);
         try {
             List<Future<?>> futures=new ArrayList<>();
             for(var task:checks) futures.add(pool.submit(()-> {run(task);return null;}));
             for(var future:futures) future.get();
         } finally {pool.shutdownNow();}
-        assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND status='COMPLETE'",id)).hasSize(5);
+        assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND status='COMPLETE'",id)).hasSize(6);
+        assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND skill_fingerprint IS NULL",id)).isEmpty();
+        if(catalog.resolve(null,"","PLAN").billingMode().equals("unmetered")) {
+            assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND (actual<>0 OR reserved<>0 OR billing_mode<>'unmetered' OR input_tokens<=0 OR output_tokens<=0)",id)).isEmpty();
+        }
         assertThat(Store.number(store.novel(id),"memory_version")).isZero();
         assertThat(store.novel(id).get("status")).isIn("EXTRACTING","REFLECTING");
         if("EXTRACTING".equals(store.novel(id).get("status"))) {

@@ -22,6 +22,11 @@ class HttpIntegrationTest {
         assertThat(request("/",null).body()).contains("Novel Agent","app.js");
         var response=request("/api/status",null);assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("modelConfigured").doesNotContain("api-key","Authorization");
+        assertThat(json.read(response.body()).path("skill").path("version").asText()).isEqualTo("2.0.1");
+        assertThat(request("/api/skills",null).body()).contains("7d874e032d2de3dace74ae585cd2dbfbac2cde69");
+        var providers=request("/api/providers",null);
+        assertThat(providers.statusCode()).isEqualTo(200);
+        assertThat(providers.body()).contains("defaultProvider","billingMode").doesNotContain("api-key","apiKey","endpoint");
     }
     @Test void createsNovelThroughRealHttpAndEnforcesApprovalState() throws Exception {
         var created=request("/api/novels","""
@@ -31,6 +36,13 @@ class HttpIntegrationTest {
         var detail=request("/api/novels/"+id,null);assertThat(detail.body()).contains("PLANNING","PLAN");
         assertThat(request("/api/novels/"+id+"/approve-plan","null").statusCode()).isEqualTo(409);
         assertThat(request("/api/novels/"+id+"/graph",null).statusCode()).isEqualTo(200);
+        var truth=request("/api/novels/"+id+"/truth-files",null);
+        assertThat(truth.statusCode()).isEqualTo(200);
+        assertThat(truth.body()).contains("handoff_current.md","pending_hooks.md");
+        var archive=request("/api/novels/"+id+"/truth-files/export",null);
+        assertThat(archive.statusCode()).isEqualTo(200);
+        assertThat(archive.headers().firstValue("content-type").orElseThrow()).contains("application/zip");
+        assertThat(request("/api/novels/"+id+"/quality",null).statusCode()).isEqualTo(200);
     }
     @Test void validatesInputAndMissingRecords() throws Exception {
         assertThat(request("/api/novels","{}").statusCode()).isEqualTo(400);

@@ -12,17 +12,36 @@ public class ProjectService {
     private final AgentService agents;
     private final MemoryService memory;
     private final Json json;
-    public ProjectService(Store store,WorkflowService workflow,AgentService agents,MemoryService memory,Json json) {
+    private final ModelCatalog catalog;
+    public ProjectService(Store store,WorkflowService workflow,AgentService agents,MemoryService memory,Json json,ModelCatalog catalog) {
         this.store=store;this.workflow=workflow;this.agents=agents;this.memory=memory;this.json=json;
+        this.catalog=catalog;
     }
     public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget) {
+        return create(title,premise,bible,size,novelBudget,chapterBudget,null,"");
+    }
+    public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget,String provider,String model) {
         if(size<1 || size>20) throw new IllegalArgumentException("每阶段章节数量必须为1至20");
         if(novelBudget.signum()<=0 || chapterBudget.signum()<=0) throw new IllegalArgumentException("预算必须大于零");
+        var selection=catalog.resolve(provider,model,"PLAN");
         return store.transaction(() -> {
             String id=UUID.randomUUID().toString();
-            store.db.update("INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget) VALUES(?,?,?,?,'PLANNING',?,?,?)",id,title,premise,bible,size,novelBudget,chapterBudget);
+            store.db.update("INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name) VALUES(?,?,?,?,'PLANNING',?,?,?,?,?)",id,title,premise,bible,size,novelBudget,chapterBudget,selection.provider(),Objects.toString(model,""));
             workflow.schedule(store.novel(id),"PLAN",1,0,Map.of());
             return id;
+        });
+    }
+    public void selectModel(String id,String provider,String model) {
+        var selection=catalog.resolve(provider,model,"PLAN");
+        if(!selection.ready()) throw new IllegalArgumentException("模型服务尚未配置完成");
+        store.transaction(()-> {
+            var novel=store.lockNovel(id);
+            require(novel,"PAUSED","AWAITING_PLAN","AWAITING_STAGE_REVIEW","AWAITING_CHANGE","AWAITING_HELP","ERROR","BUDGET_PAUSED");
+            if(!store.list("SELECT id FROM tasks WHERE novel_id=? AND status='RUNNING'",id).isEmpty())
+                throw new IllegalStateException("请等待已经开始的任务结束后切换模型");
+            store.db.update("UPDATE novels SET provider=?,model_name=? WHERE id=?",selection.provider(),Objects.toString(model,""),id);
+            store.event(id,null,"MODEL_SELECTED",selection.provider()+" / "+selection.model()+" / "+selection.billingMode());
+            return null;
         });
     }
     public Map<String,Object> detail(String id) {

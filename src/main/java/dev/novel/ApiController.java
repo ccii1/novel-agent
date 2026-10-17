@@ -19,24 +19,46 @@ public class ApiController {
     private final BudgetService budget;
     private final TaskEngine engine;
     private final ModelClient model;
-    public ApiController(Store store,Json json,ProjectService projects,MemoryService memory,BudgetService budget,TaskEngine engine,ModelClient model) {
+    private final SkillService skills;
+    private final ChapterQualityService quality;
+    private final TruthDocumentService truth;
+    private final ModelCatalog catalog;
+    public ApiController(Store store,Json json,ProjectService projects,MemoryService memory,BudgetService budget,TaskEngine engine,ModelClient model,
+            SkillService skills,ChapterQualityService quality,TruthDocumentService truth,ModelCatalog catalog) {
         this.store=store;this.json=json;this.projects=projects;this.memory=memory;this.budget=budget;this.engine=engine;this.model=model;
+        this.skills=skills;this.quality=quality;this.truth=truth;
+        this.catalog=catalog;
     }
     public record CreateNovel(@NotBlank @Size(max=200) String title,@NotBlank @Size(max=12000) String premise,
             @NotNull @Size(max=12000) String bible,@Min(1) @Max(20) int stageSize,
             @NotNull @DecimalMin("0.01") @DecimalMax("300") BigDecimal novelBudget,
-            @NotNull @DecimalMin("0.01") @DecimalMax("100") BigDecimal chapterBudget) {}
+            @NotNull @DecimalMin("0.01") @DecimalMax("100") BigDecimal chapterBudget,
+            @Size(max=80) String provider,@Size(max=200) String model) {}
+    public record ModelChoice(@NotBlank @Size(max=80) String provider,@Size(max=200) String model) {}
+    @GetMapping("/providers") public Object providers() { return catalog.publicProfiles(); }
+    @GetMapping("/providers/{id}/models") public Object models(@PathVariable String id) throws Exception { return catalog.models(id); }
+    @PostMapping("/novels/{id}/model") public Object selectModel(@PathVariable String id,@Valid @RequestBody ModelChoice request) {
+        projects.selectModel(id,request.provider(),request.model());return Map.of("ok",true);
+    }
     public record ResearchRequest(@NotEmpty @Size(max=5) List<@NotBlank @Size(max=1500) String> urls) {}
     public record Revision(@NotBlank @Size(max=12000) String instructions,JsonNode plan) {}
     public record Edit(@Min(1) int chapter,@NotBlank @Size(max=12000) String instructions) {}
     public record EditApproval(boolean acknowledgePublished) {}
     public record Reconcile(@NotNull @DecimalMin("0") @DecimalMax("10000") BigDecimal actual) {}
     public record Published(boolean published) {}
-    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai"); }
+    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai","skill",skills.status()); }
+    @GetMapping("/skills") public Object skills() { return skills.status(); }
+    @GetMapping("/calls/{id}") public Object call(@PathVariable String id) { return store.one("SELECT * FROM model_calls WHERE id=?",id); }
+    @GetMapping("/novels/{id}/quality") public Object quality(@PathVariable String id) { return quality.dashboard(id); }
+    @GetMapping("/novels/{id}/truth-files") public Object truth(@PathVariable String id) { return truth.files(id); }
+    @GetMapping("/novels/{id}/truth-files/export") public ResponseEntity<byte[]> exportTruth(@PathVariable String id) {
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename("truth-files-"+id+".zip").build().toString()).body(truth.archive(id));
+    }
     @GetMapping("/budget") public Object budget() { return budget.overview(); }
     @GetMapping("/novels") public Object novels() { return store.list("SELECT * FROM novels ORDER BY created_at DESC"); }
     @PostMapping("/novels") public Object create(@Valid @RequestBody CreateNovel request) {
-        return Map.of("id",projects.create(request.title(),request.premise(),request.bible(),request.stageSize(),request.novelBudget(),request.chapterBudget()));
+        return Map.of("id",projects.create(request.title(),request.premise(),request.bible(),request.stageSize(),request.novelBudget(),request.chapterBudget(),request.provider(),request.model()));
     }
     @GetMapping("/novels/{id}") public Object detail(@PathVariable String id) { return projects.detail(id); }
     @PostMapping("/novels/{id}/approve-plan") public Object approve(@PathVariable String id,@RequestBody(required=false) JsonNode plan) { projects.approvePlan(id,plan);return Map.of("ok",true); }

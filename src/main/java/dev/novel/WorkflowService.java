@@ -9,7 +9,8 @@ public class WorkflowService {
     private final Store store;
     private final Json json;
     private final MemoryService memory;
-    public WorkflowService(Store store,Json json,MemoryService memory) { this.store=store;this.json=json;this.memory=memory; }
+    private final ChapterQualityService quality;
+    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality) { this.store=store;this.json=json;this.memory=memory;this.quality=quality; }
     public String schedule(Map<String,Object> novel,String kind,int chapter,int revision,Object payload) {
         String id=(String)novel.get("id");long version=Store.number(novel,"memory_version");
         String key=id+":"+novel.get("stage_no")+":"+chapter+":"+revision+":"+version+":"+kind;
@@ -47,11 +48,14 @@ public class WorkflowService {
                     store.db.update("MERGE INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version,published) KEY(novel_id,number) VALUES(?,?,?,?,?,?,'DRAFT',?,FALSE)",
                             novelId,chapter,novel.get("stage_no"),revision,json.text(result,"title"),json.text(result,"body"),novel.get("memory_version"));
                     store.db.update("UPDATE novels SET status='CHECKING' WHERE id=?",novelId);
-                    for(String check:List.of("CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING")) schedule(novel,check,chapter,revision,Map.of());
+                    quality.record(novelId,chapter,revision,json.text(result,"body"));
+                    ensureReviewTasks(novel,chapter,revision);
                 }
-                case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING" -> {
+                case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE" -> {
+                    if(kind.equals("CHECK_PACING")) store.db.update("UPDATE chapter_metrics SET pacing_data=? WHERE novel_id=? AND chapter_no=? AND revision=?",
+                            json.write(result.path("narrative")),novelId,chapter,revision);
                     var checks=reviews(novelId,chapter,revision,Store.number(task,"memory_version"));
-                    if(checks.size()==3) {
+                    if(checks.size()==AgentRoles.CHAPTER_CHECKS.size()) {
                         boolean approved=checks.stream().allMatch(row->json.read((String)row.get("result")).path("approved").asBoolean());
                         if(approved) { state(novelId,"EXTRACTING");schedule(novel,"MEMORY",chapter,revision,Map.of()); }
                         else { state(novelId,"REFLECTING");schedule(novel,"REFLECT",chapter,revision,Map.of()); }
@@ -88,8 +92,11 @@ public class WorkflowService {
             return null;
         });
     }
+    public void ensureReviewTasks(Map<String,Object> novel,int chapter,int revision) {
+        for(String check:AgentRoles.CHAPTER_CHECKS) schedule(novel,check,chapter,revision,Map.of());
+    }
     private void state(String id,String state) { store.db.update("UPDATE novels SET status=? WHERE id=?",state,id); }
     private List<Map<String,Object>> reviews(String id,int chapter,int revision,long version) {
-        return store.list("SELECT kind,result FROM tasks WHERE novel_id=? AND chapter_no=? AND revision=? AND memory_version=? AND kind IN ('CHECK_CHARACTER','CHECK_PLOT','CHECK_PACING') AND status='DONE'",id,chapter,revision,version);
+        return store.list("SELECT kind,result FROM tasks WHERE novel_id=? AND chapter_no=? AND revision=? AND memory_version=? AND kind IN ('CHECK_CHARACTER','CHECK_PLOT','CHECK_PACING','CHECK_STYLE') AND status='DONE'",id,chapter,revision,version);
     }
 }

@@ -9,6 +9,6 @@ if (-not (Test-Path -LiteralPath "$env:JAVA_HOME\bin\java.exe")) {
 if ($LASTEXITCODE -ne 0) { throw '项目构建失败' }
 New-Item -ItemType Directory -Path "$PSScriptRoot\.work\runtime" -Force | Out-Null
 $runtimeJar = "$PSScriptRoot\.work\runtime\novel-agent-$([guid]::NewGuid().ToString('N')).jar"
-Copy-Item -LiteralPath "$PSScriptRoot\target\novel-agent-1.0.0.jar" -Destination $runtimeJar
+Copy-Item -LiteralPath "$PSScriptRoot\target\novel-agent.jar" -Destination $runtimeJar
 & "$env:JAVA_HOME\bin\java.exe" -jar $runtimeJar --spring.profiles.active=local "--server.port=$Port"
 exit $LASTEXITCODE
