@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="dev.novel.repository.mapper.ObservationMapper">
+  <insert id="start">
+    INSERT INTO agent_executions(id,task_id,status,result_source,queue_ms)
+    VALUES(#{id},#{task.id},'RUNNING',#{source},
+      GREATEST(0,DATEDIFF('MILLISECOND',#{task.queued_at,jdbcType=TIMESTAMP},CURRENT_TIMESTAMP)))
+  </insert>
+  <update id="finish">
+    UPDATE agent_executions SET status=#{status},finished_at=CURRENT_TIMESTAMP,
+      duration_ms=GREATEST(0,DATEDIFF('MILLISECOND',started_at,CURRENT_TIMESTAMP)),error=#{error},result=#{result},
+      approved=#{metrics.approved,jdbcType=BOOLEAN},issue_count=#{metrics.issueCount,jdbcType=INTEGER},
+      major_change=#{metrics.majorChange,jdbcType=BOOLEAN},body_characters=#{metrics.bodyCharacters,jdbcType=INTEGER},
+      fact_count=#{metrics.factCount,jdbcType=INTEGER},relation_count=#{metrics.relationCount,jdbcType=INTEGER}
+    WHERE id=#{id} AND status='RUNNING'
+  </update>
+  <update id="interruptRunning">
+    UPDATE agent_executions SET status='INTERRUPTED',error='服务中断，执行结束时间未知' WHERE status='RUNNING'
+  </update>
+  <sql id="filter">
+    <where>
+      <if test="taskId != null">t.id=#{taskId}</if>
+      <if test="novelId != null">t.novel_id=#{novelId}</if>
+      <if test="chapter != null">AND t.chapter_no=#{chapter}</if>
+      <if test="kind != null">AND t.kind=#{kind}</if>
+      <if test="status != null">AND t.status=#{status}</if>
+    </where>
+  </sql>
+  <sql id="executionTotals">
+    SELECT task_id,COUNT(*) AS execution_count,
+      SUM(CASE WHEN status='INTERRUPTED' THEN 1 ELSE 0 END) AS interrupted_count,
+      SUM(duration_ms) AS execution_ms,COUNT(duration_ms) AS timed_executions,SUM(queue_ms) AS queue_ms,
+      MAX(CASE WHEN approved=TRUE THEN 1 ELSE 0 END) AS passed_reviews,
+      MAX(CASE WHEN approved=FALSE THEN 1 ELSE 0 END) AS rejected_reviews,
+      MAX(COALESCE(issue_count,0)) AS issue_count
+    FROM agent_executions GROUP BY task_id
+  </sql>
+  <select id="summary" resultType="map">
+    SELECT t.kind,COUNT(*) AS task_count,
+      SUM(CASE WHEN t.status='DONE' THEN 1 ELSE 0 END) AS completed_tasks,
+      SUM(CASE WHEN t.status='ERROR' THEN 1 ELSE 0 END) AS failed_tasks,
+      SUM(CASE WHEN t.status='RUNNING' THEN 1 ELSE 0 END) AS running_tasks,
+      COUNT(c.id) AS model_calls,COALESCE(SUM(c.input_tokens),0) AS input_tokens,
+      COALESCE(SUM(c.output_tokens),0) AS output_tokens,SUM(c.cached_input_tokens) AS cached_input_tokens,
+      COUNT(c.cached_input_tokens) AS cache_reported_calls,
+      COALESCE(SUM(c.actual),0) AS settled_cost,
+      COALESCE(SUM(CASE WHEN c.actual IS NULL AND c.status&lt;&gt;'REJECTED' THEN c.reserved ELSE 0 END),0) AS pending_reservation,
+      COALESCE(SUM(e.execution_count),0) AS execution_count,COALESCE(SUM(e.interrupted_count),0) AS interrupted_count,
+      SUM(e.execution_ms) AS execution_ms,COALESCE(SUM(e.timed_executions),0) AS timed_executions,
+      SUM(e.queue_ms) AS queue_ms,COALESCE(SUM(e.passed_reviews),0) AS passed_reviews,
+      COALESCE(SUM(e.rejected_reviews),0) AS rejected_reviews,COALESCE(SUM(e.issue_count),0) AS issue_count,
+      SUM(c.latency_ms) AS model_ms,COUNT(c.latency_ms) AS timed_calls,
+      AVG(f.rating) AS human_rating,COUNT(f.rating) AS rated_tasks
+    FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
+    LEFT JOIN (<include refid="executionTotals"/>) e ON e.task_id=t.id
+    LEFT JOIN agent_feedback f ON f.task_id=t.id AND f.id=(SELECT MAX(f2.id) FROM agent_feedback f2 WHERE f2.task_id=t.id)
+    <include refid="filter"/> GROUP BY t.kind ORDER BY t.kind
+  </select>
+  <select id="count" resultType="long">SELECT COUNT(*) FROM tasks t <include refid="filter"/></select>
+  <select id="tasks" resultType="map">
+    SELECT t.id,t.novel_id,n.title AS novel_title,t.kind,t.status,t.chapter_no,t.revision,t.memory_version,
+      t.created_at,t.updated_at,t.error,c.id AS call_id,c.status AS call_status,c.model,c.provider,c.billing_mode,
+      c.actual,c.reserved,c.input_tokens,c.output_tokens,c.cached_input_tokens,c.latency_ms,
+      e.execution_count,e.execution_ms,e.interrupted_count,
+      (SELECT rating FROM agent_feedback f WHERE f.task_id=t.id ORDER BY f.id DESC LIMIT 1) AS human_rating
+    FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id LEFT JOIN model_calls c ON c.task_id=t.id
+    LEFT JOIN (<include refid="executionTotals"/>) e ON e.task_id=t.id
+    <include refid="filter"/> ORDER BY t.created_at DESC,t.id LIMIT #{limit} OFFSET #{offset}
+  </select>
+  <select id="task" resultType="map">
+    SELECT t.*,n.title AS novel_title FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id WHERE t.id=#{id}
+  </select>
+  <select id="call" resultType="map">
+    SELECT id,task_id,status,model,provider,billing_mode,agent_framework,input_tokens,output_tokens,
+      cached_input_tokens,usage_json,reserved,actual,created_at,finished_at,latency_ms,error,
+      skill_version,skill_fingerprint,execution_id,response FROM model_calls WHERE task_id=#{id}
+  </select>
+  <select id="executions" resultType="map">SELECT * FROM agent_executions WHERE task_id=#{id} ORDER BY started_at,id</select>
+  <select id="events" resultType="map">SELECT * FROM events WHERE task_id=#{id} ORDER BY id DESC LIMIT 500</select>
+  <select id="feedback" resultType="map">SELECT * FROM agent_feedback WHERE task_id=#{id} ORDER BY id DESC</select>
+  <insert id="addFeedback">INSERT INTO agent_feedback(task_id,rating,note) VALUES(#{id},#{rating},#{note})</insert>
+</mapper>

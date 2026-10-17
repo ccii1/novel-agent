@@ -377,6 +377,36 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 数据库默认位于 `data/novel`。`data/`、`target/`、`.work/`、日志、`.env` 和 `config/application-local.yml` 已加入 Git 忽略规则。
 
+## Agent 观测看板
+
+网页左侧的 **Agent 看板** 提供全部作品和选题任务的统计；作品内也有同名页面。支持作品、章节、Agent、任务状态筛选及分页，每5秒更新；编辑筛选或打开任务详情时暂停自动刷新。
+
+- **开销**：每个 Agent 的调用次数、输入与输出 token、缓存输入 token、已结算费用、未结算预留金额。费用以唯一模型调用汇总，恢复执行不会重复累计费用。缓存用量只记录供应商报告值，未报告时保留空值；费用继续按配置单价估算，尚未应用缓存折扣。
+- **时间**：每次执行的开始、结束、排队及执行耗时，模型 HTTP 等待时间单独记录。并行任务的耗时分别累计，累计执行时间不等于作品生成的实际等待时间。
+- **效果**：正文字符数、检查是否通过、问题数量、重大变更标记、提取事实及关系数量，以及完整输出。检查统计按任务去重，包含正文与记忆检查。自动检查通过率不能代表读者满意度；任务有有效输出后，可以提交1至5分的人工评价及依据，保留每次评价，统计采用最新评分。
+- **追踪**：任务详情关联各次执行、模型调用、AgentScope 事件、输出及人工评价；调用和角色事件携带执行编号。角色为固定组件，`kind` 区分 ResearchAgent 的两类任务。
+
+任务认领与执行记录创建使用同一事务，任务结果与执行结束记录也在同一事务内保存。模型响应后的原始 usage 和 token 保存在调用记录。服务启动时将未结束执行标记为 `INTERRUPTED`，结束时间和最终耗时保留未知；已有模型费用恢复流程继续处理结果不确定的调用。限流等待和线程拒绝分别记录，后续执行产生新的执行编号。
+
+全部记录保存在本地 H2 文件 `data/novel.mv.db`，包含已有的 `tasks`、`model_calls`、`events` 和新增的 `agent_executions`、`agent_feedback`。关闭网页、重启服务后仍可查询；`data/` 已加入 Git 忽略规则。新增字段和表通过幂等 SQL 创建，历史任务继续显示已有结果与费用，缺失的耗时显示“未记录”。迁移不会根据旧事件猜测执行耗时。
+
+```mermaid
+flowchart LR
+    Claim[任务认领] --> Execution[创建执行编号]
+    Execution --> Agent[角色 Agent]
+    Agent --> Call[唯一模型调用]
+    Call --> Usage[HTTP 耗时与原始 usage]
+    Agent --> Result[输出与自动检查指标]
+    Result --> Commit[事务保存任务与执行结果]
+    Execution --> Database[(本地 H2 文件)]
+    Usage --> Database
+    Commit --> Database
+    Feedback[人工评分与依据] --> Database
+    Database --> Board[按作品与章节查看 Agent 看板]
+```
+
+接口：`GET /api/observability`，参数为 `novelId`、`chapter`、`kind`、`status`、`page`（从0开始，每页30个任务）；`GET /api/observability/tasks/{id}` 提供任务详情；`POST /api/observability/tasks/{id}/feedback` 接收 `rating` 和 `note`。详情不包含模型请求正文，事件页面显示最近500条；全部事件继续保留在数据库。
+
 ## 代码入口
 
 后端采用 MVC 分层。`NovelApplication` 位于根包，`controller` 处理 HTTP 路由与响应，`dto` 定义请求和参数校验，`service` 承担业务流程，`repository` 封装 MyBatis 访问与事务，`repository/mapper` 保存 Mapper 接口。模型接入位于 `integration/model`，持久化任务调度位于 `engine`，框架配置位于 `config`，JSON 工具位于 `support`。Controller 通过 service 访问业务数据。
@@ -417,7 +447,7 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 ## 验证范围
 
-1.5.0 按用户要求继续暂停测试。使用 Java 17 编译主代码与测试源文件并打包，构建时跳过测试执行。具体 Mapper、输出 DTO、记忆查询优化及最终组合的运行验证尚未完成。
+1.6.0 针对观测功能使用真实 H2 文件和 HTTP 接口验证，覆盖重启保留、执行恢复、费用与检查统计去重、人工评价历史及接口参数检查。费用统计检查使用记账测试资料，不替代真实模型验证。Playwright 使用本机 Edge，在1440×1000和390×844窗口检查全局与作品看板、筛选、任务详情、真实失败任务、横向尺寸及浏览器错误；按用户规则未使用截图。没有调用真实模型，也没有评价文学质量；最终组合的模型、Redis 联调和长期连载验证尚未完成。
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'

@@ -6,6 +6,7 @@ import dev.novel.repository.mapper.ModelCallMapper;
 import dev.novel.service.AgentService;
 import dev.novel.service.WorkflowService;
 import dev.novel.service.BudgetService;
+import dev.novel.service.ObservationService;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,23 +29,26 @@ public class TaskEngine {
     private final ModelCallMapper calls;
     private final AgentService agents;
     private final WorkflowService workflow;
+    private final ObservationService observations;
     private final AsyncTaskExecutor workers;
     private final int limit;
     private final AtomicInteger active=new AtomicInteger();
     private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,
+    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,ObservationService observations,
             @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers,@Value("${novel.workers}") int limit) {
         if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
         this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
         this.dispatchMapper=dispatchMapper;
         this.calls=calls;
         this.workers=workers;
+        this.observations=observations;
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
         store.transaction(() -> {
+            observations.recover();
             calls.recoverInterrupted();
             for(var task:store.list("tasks.running")) {
                 if(calls.uncertainTaskCount(Store.string(task,"id"))==0) store.update("tasks.wait",task.get("id"));
@@ -66,16 +70,31 @@ public class TaskEngine {
             var task=claim(); if(task==null) return;
             active.incrementAndGet();
             try { workers.execute(()-> {
-                try { workflow.finished(task,agents.execute(task)); }
+                try {
+                    var result=agents.execute(task);
+                    store.transaction(() -> {
+                        workflow.finished(task,result);
+                        observations.finish(task,Store.string(store.one("tasks.find",task.get("id")),"status"),result,null);
+                        return null;
+                    });
+                }
                 catch(BudgetService.RateLimited e) {
-                    store.update("tasks.defer",task.get("id"));
-                    store.event((String)task.get("novel_id"),(String)task.get("id"),"RATE_WAIT",e.getMessage());
+                    store.transaction(() -> {
+                        store.update("tasks.defer",task.get("id"));
+                        observations.finish(task,"RATE_WAIT",null,e.getMessage());
+                        store.event((String)task.get("novel_id"),(String)task.get("id"),"RATE_WAIT",e.getMessage());
+                        return null;
+                    });
                 }
                 catch(Exception e) { log.warn("任务 {} 执行失败：{}",task.get("id"),e.getMessage()); fail(task,e); }
                 finally { active.decrementAndGet(); }
             }); } catch(TaskRejectedException rejected) {
                 active.decrementAndGet();
-                store.update("tasks.wait",task.get("id"));
+                store.transaction(() -> {
+                    store.update("tasks.wait",task.get("id"));
+                    observations.finish(task,"REJECTED",null,"工作线程未接受任务");
+                    return null;
+                });
                 throw rejected;
             }
         }
@@ -86,7 +105,8 @@ public class TaskEngine {
             if(task==null) return null;
             int count=dispatchMapper.claim((String)task.get("id"));
             if(count!=1) return null;
-            store.event((String)task.get("novel_id"),(String)task.get("id"),"RUNNING",(String)task.get("kind"));
+            observations.start(task);
+            store.event((String)task.get("novel_id"),(String)task.get("id"),"RUNNING",(String)task.get("kind"),(String)task.get("execution_id"));
             return task;
         });
     }
@@ -96,6 +116,7 @@ public class TaskEngine {
             if(novelId!=null) store.lockNovel(novelId);
             if(!"RUNNING".equals(store.one("tasks.find",task.get("id")).get("status"))) return null;
             String message=Objects.toString(error.getMessage(),error.getClass().getSimpleName());
+            observations.finish(task,"ERROR",null,message);
             store.update("tasks.fail",message,task.get("id"));
             if(novelId!=null) store.update("novels.fail",
                     error instanceof BudgetService.BudgetExceeded?"BUDGET_PAUSED":"ERROR",message,novelId);

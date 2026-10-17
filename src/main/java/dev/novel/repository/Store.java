@@ -25,7 +25,10 @@ public class Store {
     public Map<String,Object> novel(String id) { return one("novels.find", id); }
     public Map<String,Object> lockNovel(String id) { return one("novels.lock", id); }
     public void event(String novel, String task, String type, String message) {
-        update("events.create", novel, task, type, message);
+        event(novel,task,type,message,null);
+    }
+    public void event(String novel,String task,String type,String message,String execution) {
+        update("events.create",novel,task,type,message,execution);
     }
     public String enqueue(String novel, String kind, int chapter, int revision, long version, String key, Object payload) {
         var existing = list("tasks.byKey", key);

@@ -34,9 +34,9 @@ public class AgentService {
         if(task.get("result")!=null) { model.validateCheckpoint(task);return json.read((String)task.get("result")); }
         String identity=agent.getClass().getSimpleName();
         store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENT_STARTED",json.write(Map.of("agent",identity,"kind",kind,
-                "revision",task.get("revision"),"memoryVersion",task.get("memory_version"),"contextFiles",agent.contextFiles())));
+                "revision",task.get("revision"),"memoryVersion",task.get("memory_version"),"contextFiles",agent.contextFiles())),(String)task.get("execution_id"));
         var result=agent.execute(Collections.unmodifiableMap(new LinkedHashMap<>(task)));
-        store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENT_FINISHED",identity);
+        store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENT_FINISHED",identity,(String)task.get("execution_id"));
         return result;
     }
     public List<Map<String,Object>> catalogue() {

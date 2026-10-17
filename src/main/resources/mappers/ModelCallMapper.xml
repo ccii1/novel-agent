@@ -17,9 +17,9 @@
   <select id="uncertainTaskCount" resultType="long">SELECT COUNT(*) FROM model_calls WHERE task_id=#{taskId} AND status='UNCERTAIN'</select>
   <insert id="reserve">
     INSERT INTO model_calls(id,task_id,novel_id,chapter_no,billing_month,status,reserved,model,input_price,output_price,
-      provider,billing_mode,skill_version,skill_fingerprint,skill_files,request_body,agent_framework)
+      provider,billing_mode,skill_version,skill_fingerprint,skill_files,request_body,agent_framework,execution_id)
     VALUES(#{id},#{taskId},#{novelId},#{chapterNo},#{billingMonth},'IN_FLIGHT',#{reserved},#{model},#{inputPrice},#{outputPrice},
-      #{provider},#{billingMode},#{skillVersion},#{skillFingerprint},#{skillFiles},#{requestBody},#{agentFramework})
+      #{provider},#{billingMode},#{skillVersion},#{skillFingerprint},#{skillFiles},#{requestBody},#{agentFramework},#{executionId})
   </insert>
   <update id="recoverInterrupted">UPDATE model_calls SET status='UNCERTAIN',error='服务中断，请核对供应商费用' WHERE status='IN_FLIGHT'</update>
   <update id="reconcile">UPDATE model_calls SET status='RECONCILED',actual=#{actual} WHERE id=#{id} AND status='UNCERTAIN'</update>
@@ -28,4 +28,12 @@
       output_tokens=#{outputTokens},response=#{response} WHERE id=#{callId}
   </update>
   <update id="markUncertain">UPDATE model_calls SET status='UNCERTAIN',error=#{error} WHERE id=#{callId} AND status='IN_FLIGHT'</update>
+  <update id="observation">
+    UPDATE model_calls SET finished_at=CURRENT_TIMESTAMP,latency_ms=#{latencyMs},usage_json=#{usage},
+      cached_input_tokens=#{cachedTokens,jdbcType=BIGINT} WHERE id=#{callId}
+  </update>
+  <update id="transportFailure">
+    UPDATE model_calls SET finished_at=CURRENT_TIMESTAMP,latency_ms=#{latencyMs}
+    WHERE id=#{callId} AND finished_at IS NULL
+  </update>
 </mapper>

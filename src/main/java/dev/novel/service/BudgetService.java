@@ -73,7 +73,7 @@ public class BudgetService {
         int inserted=calls.reserve(new ModelCallReservation(callId,Store.string(task,"id"),novelId,
                 Store.integer(task,"chapter_no"),billingMonth,amount,model,inputPrice,outputPrice,provider,billingMode,
                 skill==null?null:skill.version(),skill==null?null:skill.fingerprint(),
-                skill==null?null:String.join("\n",skill.files()),requestBody,framework));
+                skill==null?null:String.join("\n",skill.files()),requestBody,framework,(String)task.get("execution_id")));
         if(inserted!=1) throw new IllegalStateException("费用预留记录未成功创建");
     }
     @Transactional

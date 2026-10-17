@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="dev.novel.repository.mapper.TaskDispatchMapper">
   <select id="nextCandidate" resultType="map">
-    SELECT t.* FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id
+    SELECT t.*,GREATEST(t.created_at,t.updated_at,t.available_at) AS queued_at FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id
     WHERE t.status IN ('WAITING','READY') AND t.available_at&lt;=CURRENT_TIMESTAMP
       AND (t.novel_id IS NULL OR n.status IN ('PLANNING','WRITING','CHECKING','REFLECTING','EXTRACTING','CHECKING_MEMORY'))
     ORDER BY (SELECT COUNT(*) FROM tasks r WHERE r.status='RUNNING'

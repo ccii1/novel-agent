@@ -29,4 +29,7 @@ public interface ModelCallMapper {
             @Param("inputTokens") long inputTokens,@Param("outputTokens") long outputTokens,
             @Param("response") String response,@Param("callId") String callId);
     int markUncertain(@Param("error") String error,@Param("callId") String callId);
+    int observation(@Param("callId") String callId,@Param("latencyMs") long latencyMs,
+            @Param("usage") String usage,@Param("cachedTokens") Long cachedTokens);
+    int transportFailure(@Param("callId") String callId,@Param("latencyMs") long latencyMs);
 }

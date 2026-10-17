@@ -54,4 +54,13 @@ class HttpIntegrationTest {
         assertThat(request("/api/research/missing/messages","{\"message\":\" \"}").statusCode()).isEqualTo(400);
         assertThat(request("/api/research","{\"brief\":\"职业悬疑，希望主角依靠修理技能调查旧案\"}").statusCode()).isEqualTo(200);
     }
+    @Test void exposesPersistentObservationDashboardAndValidatesFeedback() throws Exception {
+        var response=request("/api/observability",null);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("summary","tasks","total","storage");
+        assertThat(request("/api/observability?page=-1",null).statusCode()).isEqualTo(400);
+        assertThat(request("/api/observability/tasks/missing",null).statusCode()).isEqualTo(404);
+        assertThat(request("/api/observability/tasks/missing/feedback","{\"rating\":6,\"note\":\"评分无效\"}").statusCode()).isEqualTo(400);
+        assertThat(request("/",null).body()).contains("Agent 看板","observationDialog");
+    }
 }

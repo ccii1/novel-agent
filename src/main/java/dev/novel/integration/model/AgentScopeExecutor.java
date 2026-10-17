@@ -55,9 +55,9 @@ public class AgentScopeExecutor {
             @Override public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext context, ReasoningInput input,
                     Function<ReasoningInput,Flux<AgentEvent>> next) {
                 return Flux.defer(() -> {
-                    store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENTSCOPE_REASONING_STARTED",Store.string(task,"kind"));
+                    store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENTSCOPE_REASONING_STARTED",Store.string(task,"kind"),(String)task.get("execution_id"));
                     return next.apply(input).doOnComplete(() -> store.event((String)task.get("novel_id"),
-                            (String)task.get("id"),"AGENTSCOPE_REASONING_FINISHED",Store.string(task,"kind")));
+                            (String)task.get("id"),"AGENTSCOPE_REASONING_FINISHED",Store.string(task,"kind"),(String)task.get("execution_id")));
                 });
             }
         };

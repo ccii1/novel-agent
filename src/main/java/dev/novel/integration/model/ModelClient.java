@@ -15,6 +15,7 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class ModelClient {
@@ -64,6 +65,7 @@ public class ModelClient {
         var selectedOutputPrice=selected.outputPrice();
         String callId=UUID.randomUUID().toString();
         var reserve = new AtomicReference<BigDecimal>();
+        var started=new AtomicLong();
         try {
             String content = executor.execute(task,selected,system,prompt,maxOutput,body -> {
                 int bytes=json.write(json.read(body).path("messages")).getBytes(StandardCharsets.UTF_8).length;
@@ -72,9 +74,27 @@ public class ModelClient {
                 reserve.set(cost(bytes+1024L,maxOutput,selectedInputPrice,selectedOutputPrice));
                 budget.reserve(task,reserve.get(),selected.model(),selectedInputPrice,selectedOutputPrice,skill,body,
                         selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
-            },response -> settle(callId,selected,reserve.get(),response));
+                started.set(System.nanoTime());
+            },response -> {
+                long latency=elapsed(started.get());
+                if(!response.isSuccessful()) {
+                    calls.observation(callId,latency,null,null);
+                    throw new IllegalStateException("模型 API 返回 HTTP "+response.getStatusCode()+"，请在供应商后台核对是否计费");
+                }
+                var root=json.read(response.getBody());
+                var usage=root.path("usage");
+                var cached=usage.path("prompt_tokens_details").path("cached_tokens");
+                if(cached.isMissingNode()) cached=usage.path("prompt_cache_hit_tokens");
+                Long cachedTokens=cached.isIntegralNumber() && cached.canConvertToLong() && cached.asLong()>=0?cached.asLong():null;
+                calls.observation(callId,latency,usage.isMissingNode()?null:json.write(usage),cachedTokens);
+                settle(callId,selected,reserve.get(),response);
+            });
             return json.read(content);
         } catch (Exception e) {
+            if(started.get()!=0) {
+                // HTTP 未返回时仍保留本地等待时间；已有 usage 不覆盖。
+                calls.transportFailure(callId,elapsed(started.get()));
+            }
             calls.markUncertain(e.getClass().getSimpleName(),callId);
             for(Throwable cause=e;cause!=null;cause=cause.getCause()) {
                 if(cause instanceof BudgetService.RateLimited limited) throw limited;
@@ -83,6 +103,7 @@ public class ModelClient {
             throw e;
         }
     }
+    private long elapsed(long started) { return Math.max(0,(System.nanoTime()-started)/1_000_000); }
     private void settle(String callId,ModelCatalog.Selection selected,BigDecimal reserve,HttpResponse response) {
         if(!response.isSuccessful())
             throw new IllegalStateException("模型 API 返回 HTTP " + response.getStatusCode() + "，请在供应商后台核对是否计费");

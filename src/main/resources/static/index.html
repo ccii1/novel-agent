@@ -15,6 +15,7 @@
       <button data-view="new">＋ 创建小说</button>
       <button data-view="research">选题研究</button>
       <button data-view="budget">费用与调用</button>
+      <button data-view="observability">Agent 看板</button>
     </nav>
     <div class="section-label">我的作品</div>
     <div id="novelList"></div>
@@ -26,5 +27,6 @@
     <section id="content"><p>正在加载工作台…</p></section>
   </main>
   <dialog id="reader"><div class="reader-head"><h2 id="readerTitle"></h2><button id="closeReader" class="secondary">关闭</button></div><article id="readerBody"></article></dialog>
+  <dialog id="observationDialog" aria-labelledby="observationTitle"><div class="reader-head"><h2 id="observationTitle">任务详情</h2><button id="closeObservation" class="secondary">关闭</button></div><div id="observationDetail"></div></dialog>
 </body>
 </html>
