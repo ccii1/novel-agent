@@ -22,16 +22,16 @@ public class ChapterQualityService {
     }
     public void record(String novel,int chapter,int revision,String body) {
         var value=measure(body);
-        store.update("MERGE INTO chapter_metrics(novel_id,chapter_no,revision,characters,total_lines,dialogue_lines,dialogue_ratio) KEY(novel_id,chapter_no,revision) VALUES(?,?,?,?,?,?,?)",
+        store.update("quality.record",
                 novel,chapter,revision,value.characters(),value.totalLines(),value.dialogueLines(),value.dialogueRatio());
     }
     public List<Map<String,Object>> recent(String novel,int before,int limit) {
-        return store.list("SELECT m.* FROM chapter_metrics m JOIN chapters c ON c.novel_id=m.novel_id AND c.number=m.chapter_no AND c.revision=m.revision WHERE c.novel_id=? AND c.number<? AND c.status='ACCEPTED' ORDER BY c.number DESC LIMIT ?",novel,before,limit);
+        return store.list("quality.recent",novel,before,limit);
     }
     public Map<String,Object> dashboard(String novel) {
         store.novel(novel);
         var rows=recent(novel,Integer.MAX_VALUE,20);
-        var totals=store.one("SELECT COUNT(*) AS chapters,COALESCE(SUM(CHAR_LENGTH(body)),0) AS stored_characters FROM chapters WHERE novel_id=? AND status='ACCEPTED'",novel);
+        var totals=store.one("chapters.totals",novel);
         return Map.of("totals",totals,"recent",rows,"dialogueRising",rising(rows),"measurement","含引号的非空行数 / 全部非空行数");
     }
     public boolean rising(List<Map<String,Object>> latestFirst) {

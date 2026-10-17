@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="dev.novel.repository.mapper.ModelCallMapper">
+  <update id="markFramework">UPDATE model_calls SET agent_framework=#{framework} WHERE task_id=#{taskId}</update>
+  <update id="complete">
+    UPDATE model_calls SET status=#{status},actual=#{actual},input_tokens=#{inputTokens},
+      output_tokens=#{outputTokens},response=#{response} WHERE task_id=#{taskId}
+  </update>
+  <update id="markUncertain">UPDATE model_calls SET status='UNCERTAIN',error=#{error} WHERE task_id=#{taskId} AND status='IN_FLIGHT'</update>
+</mapper>

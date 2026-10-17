@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="novels">
+  <select id="find" resultType="map">SELECT * FROM novels WHERE id=#{args[0]}</select>
+  <select id="lock" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} FOR UPDATE</select>
+  <select id="all" resultType="map">SELECT * FROM novels ORDER BY created_at DESC</select>
+  <select id="checking" resultType="map">SELECT * FROM novels WHERE status='CHECKING'</select>
+  <insert id="create">INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'PLANNING',#{args[4]},#{args[5]},#{args[6]},#{args[7]},#{args[8]})</insert>
+  <update id="model">UPDATE novels SET provider=#{args[0]},model_name=#{args[1]} WHERE id=#{args[2]}</update>
+  <update id="approvePlan">UPDATE novels SET plan=#{args[0]},status='WRITING' WHERE id=#{args[1]}</update>
+  <update id="nextStage">UPDATE novels SET stage_no=stage_no+1,status='PLANNING',plan=NULL WHERE id=#{args[0]}</update>
+  <update id="pause">UPDATE novels SET resume_status=status,status='PAUSED' WHERE id=#{args[0]}</update>
+  <update id="resume">UPDATE novels SET status=resume_status,resume_status=NULL WHERE id=#{args[0]}</update>
+  <update id="plan">UPDATE novels SET plan=#{args[0]} WHERE id=#{args[1]}</update>
+  <update id="rewrite">UPDATE novels SET status='WRITING',reflection=#{args[0]} WHERE id=#{args[1]}</update>
+  <update id="retry">UPDATE novels SET status=resume_status,resume_status=NULL,error=NULL WHERE id=#{args[0]}</update>
+  <update id="edit">UPDATE novels SET status='PLANNING',stage_no=stage_no+1,chapter_no=#{args[0]},memory_version=#{args[1]},plan=NULL,reflection=NULL,resume_status=NULL,error=NULL WHERE id=#{args[2]}</update>
+  <update id="awaitPlan">UPDATE novels SET plan=#{args[0]},status='AWAITING_PLAN',error=NULL WHERE id=#{args[1]}</update>
+  <update id="state">UPDATE novels SET status=#{args[0]} WHERE id=#{args[1]}</update>
+  <update id="reflection">UPDATE novels SET reflection=#{args[0]} WHERE id=#{args[1]}</update>
+  <update id="help">UPDATE novels SET status='AWAITING_HELP',reflection=#{args[0]} WHERE id=#{args[1]}</update>
+  <update id="advance">UPDATE novels SET memory_version=#{args[0]},chapter_no=#{args[1]},reflection=NULL,status=#{args[2]} WHERE id=#{args[3]}</update>
+  <update id="fail">UPDATE novels SET resume_status=CASE WHEN status IN ('ERROR','BUDGET_PAUSED','PAUSED') THEN resume_status ELSE status END,status=#{args[0]},error=#{args[1]} WHERE id=#{args[2]}</update>
+</mapper>

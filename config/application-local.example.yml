@@ -3,6 +3,10 @@
 # HTTP 仅支持本机地址，远程服务使用 HTTPS。
 # 模型需要支持 JSON object、max_tokens 和 usage token 用量。
 novel:
+  redis:
+    enabled: true
+    address: redis://127.0.0.1:6379
+    key-prefix: novel-agent
   default-provider: default
   model:
     endpoint: ""

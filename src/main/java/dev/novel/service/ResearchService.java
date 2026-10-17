@@ -27,23 +27,23 @@ public class ResearchService {
         return store.transaction(()->store.enqueue(null,"RESEARCH",0,0,0,"research:"+UUID.randomUUID(),Map.of("urls",links,"brief",instruction)));
     }
     public Map<String,Object> detail(String id) {
-        return Map.of("report",store.one("SELECT * FROM research WHERE id=?",id),
-                "messages",store.list("SELECT * FROM research_messages WHERE research_id=? ORDER BY id",id),
-                "tasks",store.list("SELECT * FROM tasks WHERE research_id=? ORDER BY created_at DESC",id));
+        return Map.of("report",store.one("research.find",id),
+                "messages",store.list("research.messages",id),
+                "tasks",store.list("tasks.byResearch",id));
     }
     public String chat(String id,String message) {
         if(message==null || message.isBlank() || message.length()>4000) throw new IllegalArgumentException("讨论内容需要为1至4000字符");
         return store.transaction(()-> {
-            var report=store.one("SELECT * FROM research WHERE id=? FOR UPDATE",id);
-            if(!store.list("SELECT id FROM tasks WHERE research_id=? AND status IN ('WAITING','RUNNING','READY','ERROR')",id).isEmpty())
+            var report=store.one("research.lock",id);
+            if(!store.list("tasks.activeResearch",id).isEmpty())
                 throw new IllegalStateException("请等待当前回复完成；失败任务需要处理后继续讨论");
-            var history=new ArrayList<>(store.list("SELECT role,content FROM research_messages WHERE research_id=? ORDER BY id DESC LIMIT 12",id));
+            var history=new ArrayList<>(store.list("research.recent",id));
             Collections.reverse(history);
             String task=store.enqueue(null,"RESEARCH_CHAT",0,0,0,"research-chat:"+UUID.randomUUID(),
                     Map.of("researchId",id,"message",message,"history",history,"previousIdeas",json.read((String)report.get("ideas")),
                             "evidence",json.read((String)report.get("sources")),"brief",Store.string(report,"brief")));
-            store.update("UPDATE tasks SET research_id=? WHERE id=?",id,task);
-            store.update("INSERT INTO research_messages(research_id,role,content,task_id) VALUES(?,'USER',?,?)",id,message,task);
+            store.update("tasks.linkResearch",id,task);
+            store.update("research.userMessage",id,message,task);
             return task;
         });
     }
@@ -65,7 +65,7 @@ public class ResearchService {
                 collected.add(Map.of("url",url,"title",doc.title(),"retrievedAt",Instant.now().toString(),"text",text.substring(0,Math.min(text.length(),10000))));
             }
             ObjectNode updated=payload.deepCopy();updated.set("evidence",json.read(json.write(collected)));
-            store.update("UPDATE tasks SET payload=? WHERE id=?",json.write(updated),task.get("id"));
+            store.update("tasks.payload",json.write(updated),task.get("id"));
             sources=updated.get("evidence");
         }
         String instruction="输出：{reply:string,ideas:[{title:string,audience:string,genre:string,premise:string,hook:string,longTermConflict:string,risks:[string],sources:[string]}]}。"+
@@ -93,16 +93,16 @@ public class ResearchService {
         String taskId=(String)task.get("id"),id;
         if("RESEARCH".equals(task.get("kind"))) {
             id=UUID.randomUUID().toString();
-            store.update("INSERT INTO research(id,task_id,sources,ideas,brief) VALUES(?,?,?,?,?)",id,taskId,json.write(result.get("sources")),json.write(result.get("ideas")),result.path("brief").asText());
+            store.update("research.create",id,taskId,json.write(result.get("sources")),json.write(result.get("ideas")),result.path("brief").asText());
             String brief=result.path("brief").asText();
-            store.update("INSERT INTO research_messages(research_id,role,content,task_id) VALUES(?,'USER',?,?)",id,brief.isBlank()?"根据提交的参考链接研究原创选题。":brief,taskId);
-            store.update("UPDATE tasks SET research_id=? WHERE id=?",id,taskId);
+            store.update("research.userMessage",id,brief.isBlank()?"根据提交的参考链接研究原创选题。":brief,taskId);
+            store.update("tasks.linkResearch",id,taskId);
         } else {
             id=Store.string(task,"research_id");
-            store.one("SELECT id FROM research WHERE id=? FOR UPDATE",id);
-            store.update("UPDATE research SET ideas=? WHERE id=?",json.write(result.get("ideas")),id);
+            store.one("research.lock",id);
+            store.update("research.ideas",json.write(result.get("ideas")),id);
         }
-        store.update("INSERT INTO research_messages(research_id,role,content,ideas,task_id) VALUES(?,'ASSISTANT',?,?,?)",id,json.text(result,"reply"),json.write(result.get("ideas")),taskId);
+        store.update("research.reply",id,json.text(result,"reply"),json.write(result.get("ideas")),taskId);
     }
     private void validateUrl(String url) {
         URI uri=URI.create(url);

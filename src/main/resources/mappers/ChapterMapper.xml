@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="chapters">
+  <select id="find" resultType="map">SELECT * FROM chapters WHERE novel_id=#{args[0]} AND number=#{args[1]}</select>
+  <select id="byNovel" resultType="map">SELECT number,stage_no,revision,title,status,memory_version,published,summary FROM chapters WHERE novel_id=#{args[0]} ORDER BY number</select>
+  <select id="accepted" resultType="map">SELECT number,title,body,summary FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED' ORDER BY number</select>
+  <select id="allSummaries" resultType="map">SELECT number,title,summary FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED' ORDER BY number</select>
+  <select id="recent" resultType="map">SELECT number,summary FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED' ORDER BY number DESC LIMIT 8</select>
+  <select id="summaries" resultType="map">SELECT number,summary FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED' AND number&lt;#{args[1]} ORDER BY number DESC LIMIT #{args[2]}</select>
+  <select id="previous" resultType="map">SELECT body FROM chapters WHERE novel_id=#{args[0]} AND number=#{args[1]} AND status='ACCEPTED'</select>
+  <select id="affected" resultType="map">SELECT number,title,published FROM chapters WHERE novel_id=#{args[0]} AND number&gt;=#{args[1]} ORDER BY number</select>
+  <select id="published" resultType="map">SELECT number FROM chapters WHERE novel_id=#{args[0]} AND number&gt;=#{args[1]} AND published=TRUE</select>
+  <select id="totals" resultType="map">SELECT COUNT(*) AS chapters,COALESCE(SUM(CHAR_LENGTH(body)),0) AS stored_characters FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED'</select>
+  <insert id="history">INSERT INTO chapter_history(id,novel_id,number,revision,title,body) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]})</insert>
+  <update id="draft">MERGE INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version,published) KEY(novel_id,number) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},'DRAFT',#{args[6]},FALSE)</update>
+  <update id="accept">UPDATE chapters SET status='ACCEPTED',summary=#{args[0]},memory_version=#{args[1]} WHERE novel_id=#{args[2]} AND number=#{args[3]}</update>
+  <update id="publish">UPDATE chapters SET published=#{args[0]} WHERE novel_id=#{args[1]} AND number=#{args[2]} AND status='ACCEPTED'</update>
+  <update id="invalidate">UPDATE chapters SET status='INVALIDATED' WHERE novel_id=#{args[0]} AND number&gt;=#{args[1]}</update>
+</mapper>

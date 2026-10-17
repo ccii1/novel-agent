@@ -4,6 +4,8 @@ import dev.novel.dto.ApiRequests.Reconcile;
 import dev.novel.engine.TaskEngine;
 import dev.novel.integration.model.ModelCatalog;
 import dev.novel.integration.model.ModelClient;
+import dev.novel.integration.model.AgentScopeExecutor;
+import dev.novel.integration.model.ModelRateLimiter;
 import dev.novel.service.BudgetService;
 import dev.novel.service.SkillService;
 import dev.novel.service.WorkspaceService;
@@ -20,10 +22,12 @@ public class SystemController {
     private final SkillService skills;
     private final BudgetService budget;
     private final WorkspaceService workspace;
-    public SystemController(TaskEngine engine,ModelClient model,ModelCatalog catalog,SkillService skills,BudgetService budget,WorkspaceService workspace) {
+    private final ModelRateLimiter limiter;
+    public SystemController(TaskEngine engine,ModelClient model,ModelCatalog catalog,SkillService skills,BudgetService budget,WorkspaceService workspace,ModelRateLimiter limiter) {
         this.engine=engine;this.model=model;this.catalog=catalog;this.skills=skills;this.budget=budget;this.workspace=workspace;
+        this.limiter=limiter;
     }
-    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai","skill",skills.status()); }
+    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai","skill",skills.status(),"agentFramework",AgentScopeExecutor.FRAMEWORK,"persistence","mybatis","rateLimiter",limiter.mode()); }
     @GetMapping("/skills") public Object skills() { return skills.status(); }
     @GetMapping("/providers") public Object providers() { return catalog.publicProfiles(); }
     @GetMapping("/providers/{id}/models") public Object models(@PathVariable String id) throws Exception { return catalog.models(id); }

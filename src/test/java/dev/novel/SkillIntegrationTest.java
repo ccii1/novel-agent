@@ -25,7 +25,7 @@ class SkillIntegrationTest {
     @Autowired WorkflowService workflow;
     @Autowired TaskEngine engine;
     @Autowired BudgetService budget;
-    @Autowired Store store;
+    @Autowired TestDatabase store;
     @Autowired Json json;
     @Autowired ModelClient model;
     @BeforeEach void clean() {

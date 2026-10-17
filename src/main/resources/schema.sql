@@ -51,6 +51,7 @@ ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS skill_files CLOB;
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS request_body CLOB;
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS provider VARCHAR(80) NOT NULL DEFAULT 'default';
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(30) NOT NULL DEFAULT 'metered';
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS agent_framework VARCHAR(60) NOT NULL DEFAULT 'direct-http';
 CREATE TABLE IF NOT EXISTS chapter_metrics (
  novel_id VARCHAR(36) NOT NULL, chapter_no INT NOT NULL, revision INT NOT NULL,
  characters INT NOT NULL, total_lines INT NOT NULL, dialogue_lines INT NOT NULL,

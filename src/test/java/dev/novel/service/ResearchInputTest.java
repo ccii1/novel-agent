@@ -1,6 +1,7 @@
 package dev.novel.service;
 
 import dev.novel.repository.Store;
+import dev.novel.TestDatabase;
 import dev.novel.support.Json;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +12,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:research-input;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
 class ResearchInputTest {
     @Autowired ResearchService research;
-    @Autowired Store store;
+    @Autowired TestDatabase store;
     @Autowired Json json;
     @Test void ownIdeaCreatesPersistentTaskWithoutSourceLinks() {
         String id=research.create(null,"小城修理工调查旧案，围绕职业技能推动悬疑。");

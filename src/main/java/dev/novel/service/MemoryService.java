@@ -16,7 +16,7 @@ public class MemoryService {
     private final Json json;
     public MemoryService(Store store, Json json) { this.store=store; this.json=json; }
     public List<Map<String,Object>> snapshot(String novel, long version) {
-        return store.list("SELECT m.* FROM memories m WHERE novel_id=? AND version<=? AND version=(SELECT MAX(n.version) FROM memories n WHERE n.novel_id=m.novel_id AND n.memory_key=m.memory_key AND n.version<=?) ORDER BY m.chapter_no DESC,m.memory_key", novel,version,version);
+        return store.list("memories.snapshot", novel,version,version);
     }
     public Map<String,Object> graph(String novel, long version, List<String> characters, int depth) {
         if (depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
@@ -78,8 +78,8 @@ public class MemoryService {
         }
         ranked.sort(Map.Entry.<Integer,Map<String,Object>>comparingByKey().reversed());
         ranked.stream().limit(50).forEach(entry->relevant.add(entry.getValue()));
-        var summaries=store.list("SELECT number,summary FROM chapters WHERE novel_id=? AND status='ACCEPTED' AND number<? ORDER BY number DESC LIMIT ?",id,chapter,chapter%10==0?9:4);
-        var previous=store.list("SELECT body FROM chapters WHERE novel_id=? AND number=? AND status='ACCEPTED'",id,chapter-1);
+        var summaries=store.list("chapters.summaries",id,chapter,chapter%10==0?9:4);
+        var previous=store.list("chapters.previous",id,chapter-1);
         String tail=previous.isEmpty()?"":(String)previous.get(0).get("body");
         if(tail.length()>4000) tail=tail.substring(tail.length()-4000);
         Map<String,Object> context=new LinkedHashMap<>();
@@ -131,7 +131,7 @@ public class MemoryService {
         for(var relation:delta.path("relations")) save(novel,chapter,version,relationKey(relation),"RELATION",relation);
     }
     private void save(String novel,int chapter,long version,String key,String kind,JsonNode content) {
-        store.update("INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(?,?,?,?,?,?,?)",
+        store.update("memories.create",
                 UUID.randomUUID().toString(),novel,key,kind,chapter,version,json.write(content));
     }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="calls">
+  <select id="find" resultType="map">SELECT * FROM model_calls WHERE id=#{args[0]}</select>
+  <select id="byTask" resultType="map">SELECT * FROM model_calls WHERE task_id=#{args[0]}</select>
+  <select id="uncertainTask" resultType="map">SELECT id FROM model_calls WHERE task_id=#{args[0]} AND status='UNCERTAIN'</select>
+  <select id="pendingTask" resultType="map">SELECT id FROM model_calls WHERE task_id=#{args[0]} AND status IN ('UNCERTAIN','IN_FLIGHT')</select>
+  <select id="pendingNovel" resultType="map">SELECT id FROM model_calls WHERE novel_id=#{args[0]} AND status IN ('UNCERTAIN','IN_FLIGHT')</select>
+  <select id="recent" resultType="map">SELECT COUNT(*) AS amount FROM model_calls WHERE created_at&gt;DATEADD('SECOND',-60,CURRENT_TIMESTAMP)</select>
+  <select id="overview" resultType="map">SELECT id,task_id,novel_id,chapter_no,billing_month,status,reserved,actual,input_tokens,output_tokens,model,provider,billing_mode,agent_framework,skill_version,skill_fingerprint,skill_files,created_at FROM model_calls ORDER BY created_at DESC LIMIT 100</select>
+  <select id="monthlyUsed" resultType="map">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) AS amount FROM model_calls WHERE status&lt;&gt;'REJECTED' AND billing_month=#{args[0]}</select>
+  <select id="novelUsed" resultType="map">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) AS amount FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{args[0]} AND billing_month=#{args[1]}</select>
+  <select id="chapterUsed" resultType="map">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) AS amount FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{args[0]} AND chapter_no=#{args[1]}</select>
+  <select id="lockBudget" resultType="map">SELECT id FROM budget_lock WHERE id=1 FOR UPDATE</select>
+  <select id="novelTotal" resultType="map">SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) AS amount FROM model_calls WHERE status&lt;&gt;'REJECTED' AND novel_id=#{args[0]}</select>
+  <insert id="create">INSERT INTO model_calls(id,task_id,novel_id,chapter_no,billing_month,status,reserved,model,input_price,output_price,provider,billing_mode) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},'IN_FLIGHT',#{args[5]},#{args[6]},#{args[7]},#{args[8]},#{args[9]},#{args[10]})</insert>
+  <update id="skill">UPDATE model_calls SET skill_version=#{args[0]},skill_fingerprint=#{args[1]},skill_files=#{args[2]},request_body=#{args[3]} WHERE task_id=#{args[4]}</update>
+  <update id="recover">UPDATE model_calls SET status='UNCERTAIN',error='服务中断，请核对供应商费用' WHERE status='IN_FLIGHT'</update>
+  <update id="reconcile">UPDATE model_calls SET status='RECONCILED',actual=#{args[0]} WHERE id=#{args[1]} AND status='UNCERTAIN'</update>
+</mapper>

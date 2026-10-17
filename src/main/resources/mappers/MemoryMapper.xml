@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="memories">
+  <select id="snapshot" resultType="map">SELECT m.* FROM memories m WHERE novel_id=#{args[0]} AND version&lt;=#{args[1]} AND version=(SELECT MAX(n.version) FROM memories n WHERE n.novel_id=m.novel_id AND n.memory_key=m.memory_key AND n.version&lt;=#{args[2]}) ORDER BY m.chapter_no DESC,m.memory_key</select>
+  <select id="baseline" resultType="map">SELECT m.* FROM memories m WHERE novel_id=#{args[0]} AND chapter_no&lt;#{args[1]} AND version&lt;=#{args[2]} AND version=(SELECT MAX(n.version) FROM memories n WHERE n.novel_id=m.novel_id AND n.memory_key=m.memory_key AND n.chapter_no&lt;#{args[3]} AND n.version&lt;=#{args[4]})</select>
+  <insert id="create">INSERT INTO memories(id,novel_id,memory_key,kind,chapter_no,version,content) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},#{args[6]})</insert>
+</mapper>

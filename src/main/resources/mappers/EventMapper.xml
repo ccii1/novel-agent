@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="events">
+  <insert id="create">INSERT INTO events(novel_id,task_id,type,message) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]})</insert>
+  <select id="byNovel" resultType="map">SELECT * FROM events WHERE novel_id=#{args[0]} ORDER BY id DESC LIMIT 100</select>
+</mapper>

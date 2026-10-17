@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:domain;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
 class DomainIntegrationTest {
-    @Autowired Store store;
+    @Autowired TestDatabase store;
     @Autowired Json json;
     @Autowired BudgetService budget;
     @Autowired MemoryService memory;

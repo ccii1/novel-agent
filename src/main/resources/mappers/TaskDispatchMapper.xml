@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="dev.novel.repository.mapper.TaskDispatchMapper">
+  <select id="nextCandidate" resultType="map">
+    SELECT t.* FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id
+    WHERE t.status IN ('WAITING','READY') AND t.available_at&lt;=CURRENT_TIMESTAMP
+      AND (t.novel_id IS NULL OR n.status IN ('PLANNING','WRITING','CHECKING','REFLECTING','EXTRACTING','CHECKING_MEMORY'))
+    ORDER BY (SELECT COUNT(*) FROM tasks r WHERE r.status='RUNNING'
+      AND (r.novel_id=t.novel_id OR (r.novel_id IS NULL AND t.novel_id IS NULL))),t.updated_at,t.created_at LIMIT 1
+  </select>
+  <update id="claim">
+    UPDATE tasks SET status='RUNNING',updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{id} AND status IN ('WAITING','READY')
+  </update>
+</mapper>

@@ -33,7 +33,7 @@ public class AgentService {
         var novel=store.novel((String)task.get("novel_id"));
         int chapter=Store.integer(task,"chapter_no");
         if(kind.equals("PLAN")) {
-            var recent=store.list("SELECT number,summary FROM chapters WHERE novel_id=? AND status='ACCEPTED' ORDER BY number DESC LIMIT 8",novel.get("id"));
+            var recent=store.list("chapters.recent",novel.get("id"));
             String prompt="制定持续连载小说的当前阶段大纲，无需安排整部作品完结。每章2000至2500字。"+
                     "输出结构：{stageGoal:string,coreMilestones:[string],chapters:[{number:int,title:string,goal:string,characters:[string],foreshadowIds:[string],sceneType:string,climax:boolean}]}。"+
                     "chapters 数量必须为"+novel.get("stage_size")+"，编号从"+chapter+"连续开始。设计冲突、失败代价、信息揭示、高潮与缓和。"+
@@ -80,7 +80,7 @@ public class AgentService {
             return result;
         }
         if(kind.equals("REFLECT")) {
-            var reviews=store.list("SELECT kind,result FROM tasks WHERE novel_id=? AND chapter_no=? AND revision=? AND memory_version=? AND kind IN ('CHECK_CHARACTER','CHECK_PLOT','CHECK_PACING','CHECK_STYLE') AND status='DONE'",novel.get("id"),chapter,task.get("revision"),task.get("memory_version"));
+            var reviews=store.list("tasks.reviews",novel.get("id"),chapter,task.get("revision"),task.get("memory_version"));
             var result=model.call(task,SYSTEM+"你负责 Reflect，汇总独立检查结果并形成统一修改计划。",
                     "输出：{majorChange:boolean,instructions:string,conflicts:[string]}。逐项处理有证据的问题，说明检查意见冲突的判断依据。"+
                     "重大变更需要人工批准；保持通过检查的内容。上下文="+context+"；正文="+json.write(draft)+"；检查报告="+json.write(reviews));
@@ -102,7 +102,7 @@ public class AgentService {
         throw new IllegalArgumentException("未知 Agent 类型："+kind);
     }
     private Map<String,Object> chapter(Map<String,Object> novel,int chapter) {
-        return store.one("SELECT title,body,revision FROM chapters WHERE novel_id=? AND number=?",novel.get("id"),chapter);
+        return store.one("chapters.find",novel.get("id"),chapter);
     }
     public void validatePlan(JsonNode plan,int first,int size) {
         json.text(plan,"stageGoal");

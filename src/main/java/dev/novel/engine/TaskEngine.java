@@ -1,6 +1,7 @@
 package dev.novel.engine;
 
 import dev.novel.repository.Store;
+import dev.novel.repository.mapper.TaskDispatchMapper;
 import dev.novel.service.AgentService;
 import dev.novel.service.WorkflowService;
 import dev.novel.service.BudgetService;
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class TaskEngine {
     private final Store store;
+    private final TaskDispatchMapper dispatchMapper;
     private final AgentService agents;
     private final WorkflowService workflow;
     private final ExecutorService workers;
@@ -28,22 +30,23 @@ public class TaskEngine {
     private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,AgentService agents,WorkflowService workflow,@Value("${novel.workers}") int limit) {
+    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,AgentService agents,WorkflowService workflow,@Value("${novel.workers}") int limit) {
         if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
         this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
+        this.dispatchMapper=dispatchMapper;
         workers=Executors.newFixedThreadPool(limit);
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
         store.transaction(() -> {
-            store.update("UPDATE model_calls SET status='UNCERTAIN',error='服务中断，请核对供应商费用' WHERE status='IN_FLIGHT'");
-            for(var task:store.list("SELECT * FROM tasks WHERE status='RUNNING'")) {
-                var uncertain=store.list("SELECT id FROM model_calls WHERE task_id=? AND status='UNCERTAIN'",task.get("id"));
-                if(uncertain.isEmpty()) store.update("UPDATE tasks SET status='WAITING' WHERE id=?",task.get("id"));
+            store.update("calls.recover");
+            for(var task:store.list("tasks.running")) {
+                var uncertain=store.list("calls.uncertainTask",task.get("id"));
+                if(uncertain.isEmpty()) store.update("tasks.wait",task.get("id"));
                 else fail(task,new IllegalStateException("服务中断期间调用结果不确定，请核对费用"));
             }
-            for(var novel:store.list("SELECT * FROM novels WHERE status='CHECKING'")) {
-                var chapter=store.one("SELECT revision FROM chapters WHERE novel_id=? AND number=?",novel.get("id"),novel.get("chapter_no"));
+            for(var novel:store.list("novels.checking")) {
+                var chapter=store.one("chapters.find",novel.get("id"),novel.get("chapter_no"));
                 workflow.ensureReviewTasks(novel,Store.integer(novel,"chapter_no"),Store.integer(chapter,"revision"));
             }
             store.event(null,null,"RECOVERY","已恢复持久化任务，结果不确定的调用等待人工核对");
@@ -60,7 +63,7 @@ public class TaskEngine {
             workers.submit(()-> {
                 try { workflow.finished(task,agents.execute(task)); }
                 catch(BudgetService.RateLimited e) {
-                    store.update("UPDATE tasks SET status='WAITING',available_at=DATEADD('SECOND',5,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='RUNNING'",task.get("id"));
+                    store.update("tasks.defer",task.get("id"));
                     store.event((String)task.get("novel_id"),(String)task.get("id"),"RATE_WAIT",e.getMessage());
                 }
                 catch(Exception e) { log.warn("任务 {} 执行失败：{}",task.get("id"),e.getMessage()); fail(task,e); }
@@ -70,10 +73,9 @@ public class TaskEngine {
     }
     private Map<String,Object> claim() {
         return store.transaction(() -> {
-            var candidates=store.list("SELECT t.* FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id WHERE t.status IN ('WAITING','READY') AND t.available_at<=CURRENT_TIMESTAMP AND (t.novel_id IS NULL OR n.status IN ('PLANNING','WRITING','CHECKING','REFLECTING','EXTRACTING','CHECKING_MEMORY')) ORDER BY (SELECT COUNT(*) FROM tasks r WHERE r.status='RUNNING' AND (r.novel_id=t.novel_id OR (r.novel_id IS NULL AND t.novel_id IS NULL))),t.updated_at,t.created_at LIMIT 1");
-            if(candidates.isEmpty()) return null;
-            var task=candidates.get(0);
-            int count=store.update("UPDATE tasks SET status='RUNNING',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('WAITING','READY')",task.get("id"));
+            var task=dispatchMapper.nextCandidate();
+            if(task==null) return null;
+            int count=dispatchMapper.claim((String)task.get("id"));
             if(count!=1) return null;
             store.event((String)task.get("novel_id"),(String)task.get("id"),"RUNNING",(String)task.get("kind"));
             return task;
@@ -83,10 +85,10 @@ public class TaskEngine {
         store.transaction(() -> {
             String novelId=(String)task.get("novel_id");
             if(novelId!=null) store.lockNovel(novelId);
-            if(!"RUNNING".equals(store.one("SELECT status FROM tasks WHERE id=?",task.get("id")).get("status"))) return null;
+            if(!"RUNNING".equals(store.one("tasks.find",task.get("id")).get("status"))) return null;
             String message=Objects.toString(error.getMessage(),error.getClass().getSimpleName());
-            store.update("UPDATE tasks SET status='ERROR',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",message,task.get("id"));
-            if(novelId!=null) store.update("UPDATE novels SET resume_status=CASE WHEN status IN ('ERROR','BUDGET_PAUSED','PAUSED') THEN resume_status ELSE status END,status=?,error=? WHERE id=?",
+            store.update("tasks.fail",message,task.get("id"));
+            if(novelId!=null) store.update("novels.fail",
                     error instanceof BudgetService.BudgetExceeded?"BUDGET_PAUSED":"ERROR",message,novelId);
             store.event(novelId,(String)task.get("id"),"ERROR",message);
             return null;

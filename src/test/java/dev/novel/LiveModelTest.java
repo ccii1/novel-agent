@@ -4,6 +4,7 @@ import dev.novel.repository.Store;
 import dev.novel.service.*;
 import dev.novel.integration.model.ModelClient;
 import dev.novel.integration.model.ModelCatalog;
+import dev.novel.integration.model.AgentScopeExecutor;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -18,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_LIVE_TEST",matches="true")
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:live;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
 class LiveModelTest {
-    @Autowired Store store;
+    @Autowired TestDatabase store;
     @Autowired ProjectService projects;
     @Autowired AgentService agents;
     @Autowired WorkflowService workflow;
@@ -40,6 +41,9 @@ class LiveModelTest {
         } finally {pool.shutdownNow();}
         assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND status='COMPLETE'",id)).hasSize(6);
         assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND skill_fingerprint IS NULL",id)).isEmpty();
+        assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND agent_framework<>?",id,AgentScopeExecutor.FRAMEWORK)).isEmpty();
+        assertThat(store.list("SELECT * FROM events WHERE novel_id=? AND type='AGENTSCOPE_REASONING_STARTED'",id)).hasSize(6);
+        assertThat(store.list("SELECT * FROM events WHERE novel_id=? AND type='AGENTSCOPE_REASONING_FINISHED'",id)).hasSize(6);
         if(catalog.resolve(null,"","PLAN").billingMode().equals("unmetered")) {
             assertThat(store.list("SELECT * FROM model_calls WHERE novel_id=? AND (actual<>0 OR reserved<>0 OR billing_mode<>'unmetered' OR input_tokens<=0 OR output_tokens<=0)",id)).isEmpty();
         }

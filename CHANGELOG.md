@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 1.3.0 — 2026-10-17
+
+- 接入 AgentScope Java 2.0.4，全部创作及选题角色使用 ReActAgent、UserMessage、OpenAIChatModel 与 GenerateOptions。
+- 每个任务创建独立 Agent，使用 MiddlewareBase 保存推理事件；请求发送前检查上下文、记录预算与实际请求正文，响应返回后保存 token、费用和结果。
+- 单个任务限制一次模型请求，框架尝试次数设置为1；章节修改、人工审核和持久化恢复继续由业务流程管理。
+- 数据库访问采用 MyBatis Spring Boot Starter 3.0.5；SQL 按业务维护于 Mapper XML，任务认领与模型调用写入提供 Mapper 接口，Store 使用 SqlSessionTemplate 和 Spring 事务。
+- 接入 Redisson 3.52.0，启用 Redis 时使用 RRateLimiter 共享模型调用额度；数据库保存预算与调用记录，连接异常明确报告失败。
+- 增加本机 Redis 启动脚本，数据保存于项目忽略目录；启动入口默认启用 Redisson。状态接口提供框架、数据访问与限流方式。
+- README 增加框架流程 Mermaid、学习入口、IDEA 与 Redis 配置；继续使用 Java 17。
+- 增加真实 Redis 并发额度检查代码及框架调用记录检查代码。Java 17 编译打包通过，构建时跳过测试；按用户要求暂停测试，真实模型、Redis 联调及最终组合运行结果尚未验证。
+
 ## 1.2.0 — 2026-10-17
 
 - 选题研究支持个人想法，参考链接可选；想法与链接至少提供一项。

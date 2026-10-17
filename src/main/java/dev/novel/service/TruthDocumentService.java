@@ -56,7 +56,7 @@ public class TruthDocumentService {
             documents.put("pending_hooks.md",complete.stream().filter(row->"FORESHADOW".equals(row.get("kind")))
                     .filter(row->json.read((String)row.get("content")).path("active").asBoolean(false))
                     .filter(row->!json.read((String)row.get("content")).path("deleted").asBoolean(false)).toList());
-            documents.put("chapter_summaries.md",store.list("SELECT number,title,summary FROM chapters WHERE novel_id=? AND status='ACCEPTED' ORDER BY number",id));
+            documents.put("chapter_summaries.md",store.list("chapters.allSummaries",id));
             documents.put("character_matrix.md",memory.graph(id,Store.number(novel,"memory_version"),List.of(),2));
             documents.put("character_knowledge.md",documents.get("character_matrix.md"));
             documents.put("progress_tracker.md",quality.dashboard(id));

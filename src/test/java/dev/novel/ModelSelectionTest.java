@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.*;
         "novel.providers.local-test.api-key=test-configuration-only","novel.providers.local-test.name=text-model",
         "novel.providers.local-test.billing-mode=unmetered"})
 class ModelSelectionTest {
-    @Autowired Store store;
+    @Autowired TestDatabase store;
     @Autowired ProjectService projects;
     @Autowired ModelCatalog catalog;
     @Autowired BudgetService budget;

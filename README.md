@@ -1,6 +1,39 @@
 # Novel Agent
 
-面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、H2 和 Apache TinkerGraph。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。
+面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、Redisson、H2 和 Apache TinkerGraph。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。
+
+## 框架与执行层
+
+AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core` 与 `agentscope-extensions-model-openai`。该版本支持 Java 17。MyBatis Spring Boot Starter 使用 `3.0.5`，Redisson 使用 `3.52.0`。
+
+```mermaid
+flowchart TD
+    API["Controller：创作与审核请求"] --> Business["Service：阶段、章节与记忆流程"]
+    Business --> Repository["MyBatis Mapper 与 Spring 事务"]
+    Repository --> DB["H2：任务、正文、版本与费用"]
+    DB --> Scheduler["TaskEngine：认领任务与并行调度"]
+    Scheduler --> Role["AgentService：角色输入与输出检查"]
+    Role --> Context["ModelClient：固定技能、上下文与已保存响应"]
+    Context --> Agent["AgentScope ReActAgent：每个任务独立实例"]
+    Agent --> Middleware["MiddlewareBase：推理开始与完成事件"]
+    Middleware --> Model["OpenAIChatModel：Msg、JSON object 与生成参数"]
+    Model --> Transport["AccountedTransport：单次请求限制与费用记录"]
+    Transport --> Redis["Redisson RRateLimiter：共享模型调用额度"]
+    Redis --> Budget["数据库预算检查与请求持久化"]
+    Budget --> Provider["真实模型服务"]
+    Provider --> Result["保存 token、费用与响应"]
+    Result --> Business
+```
+
+`AgentScopeExecutor` 创建 `ReActAgent`，通过 `UserMessage` 提交任务，用 `GenerateOptions` 指定 JSON object、输出上限及单次尝试。`MiddlewareBase.onReasoning` 保存任务级推理事件。每个任务都有独立的 Agent 上下文，业务模块提供相应版本的小说记忆；四个检查任务分别执行，可以并发调用不同角色。
+
+`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文、取得限流许可并保存费用预留，在响应返回后保存 token、费用与原始结果。单个任务最多发送一次模型请求，框架重试次数设为1，内容修改由章节流程控制。服务中断、人工审核、已保存结果恢复和正文记忆事务由持久化业务流程管理。
+
+MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处理任务认领与模型调用状态，`resources/mappers` 按小说、任务、章节、记忆、选题、费用、质量、修改申请和事件组织 SQL；`Store` 使用 `SqlSessionTemplate` 调用命名语句并提供事务入口。Mapper 参数通过 `#{...}` 绑定，业务服务通过命名操作访问数据。CLOB 转换和 Map 字段名称在 MyBatis 配置中统一处理，事务内部查询采用 `STATEMENT` 本地缓存范围。
+
+启用 Redis 后，`ModelRateLimiter` 使用 Redisson `RRateLimiter` 共享每分钟调用额度，超限任务延后调度。连接中断会明确报告失败；费用与请求状态继续由数据库记录。数据库的60秒调用数量检查同时保留，Redis 清空后仍受已有调用记录约束。Redis 许可在数据库预留前取得，预留失败时许可仍计入当前一分钟，限流结果保持保守。此项目当前采用单个应用进程与 H2 文件数据库，多实例部署还需要共享数据库和执行所有权管理。
+
+框架学习入口：`AgentScopeExecutor` → `ModelClient` → `TaskEngine` → `TaskDispatchMapper` / `ModelCallMapper` → 对应 Mapper XML → `ModelRateLimiter` / `RedisConfiguration`。
 
 ## 固定加载写作技能
 
@@ -271,7 +304,11 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 .\start.ps1
 ```
 
-脚本构建项目，将 JAR 复制到独立的运行目录，以 `local` profile 启动。访问 [本地创作工作台](http://127.0.0.1:8096)。服务默认仅监听本机地址。
+脚本默认启用 Redisson，并使用 `start-redis.ps1` 检查或启动本机 Redis。当前 Redis 程序目录为 `D:\Program Files\Redis-x64-5.0.14.1`，只监听 `127.0.0.1:6379`，项目数据保存在 `data/redis`。已经运行的 Redis 会继续使用。脚本随后构建项目，将 JAR 复制到独立的运行目录，以 `local` profile 启动。访问 [本地创作工作台](http://127.0.0.1:8096)。服务默认仅监听本机地址。
+
+IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置环境变量 `NOVEL_REDIS_ENABLED=true`。可以单独执行 `.\start-redis.ps1` 启动 Redis。外部 Redis 通过 `NOVEL_REDIS_ADDRESS`、`NOVEL_REDIS_PASSWORD` 配置，使用独立 key 范围时设置 `NOVEL_REDIS_PREFIX`。这些选项也可以保存在本机配置的 `novel.redis` 下。配置启用 Redis 后，连接失败会阻止启动或模型调用。
+
+直接启动 Java 应用时，`novel.redis.enabled` 默认 `false`，使用数据库调用数量限制；启用后叠加 Redisson 共享限流。`/api/status` 返回 `agentFramework`、`persistence` 与 `rateLimiter`，方便确认当前配置。
 
 网页操作顺序：选题研究或直接创建作品 → 阶段大纲审核 → 查看章节和执行记录 → 处理修改或费用待办 → 阶段阅读审核 → 继续下一阶段。正文可以导出为文本文件，发布及平台正文修改由人工完成。
 
@@ -279,7 +316,7 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 
 ## 代码入口
 
-后端采用 MVC 分层。`NovelApplication` 位于根包，`controller` 处理 HTTP 路由与响应，`dto` 定义请求和参数校验，`service` 承担业务流程，`repository` 封装 JDBC 访问与事务。模型接入位于 `integration/model`，持久化任务调度位于 `engine`，JSON 工具位于 `support`。Controller 通过 service 访问业务数据。
+后端采用 MVC 分层。`NovelApplication` 位于根包，`controller` 处理 HTTP 路由与响应，`dto` 定义请求和参数校验，`service` 承担业务流程，`repository` 封装 MyBatis 访问与事务，`repository/mapper` 保存 Mapper 接口。模型接入位于 `integration/model`，持久化任务调度位于 `engine`，框架配置位于 `config`，JSON 工具位于 `support`。Controller 通过 service 访问业务数据。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -296,6 +333,12 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 | [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、graph 查询和上下文组装 |
 | [ProjectService.java](src/main/java/dev/novel/service/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
 | [ModelClient.java](src/main/java/dev/novel/integration/model/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |
+| [AgentScopeExecutor.java](src/main/java/dev/novel/integration/model/AgentScopeExecutor.java) | ReActAgent、OpenAIChatModel、MiddlewareBase 与请求费用扩展 |
+| [ModelRateLimiter.java](src/main/java/dev/novel/integration/model/ModelRateLimiter.java) | Redisson 模型调用限流 |
+| [TaskDispatchMapper.java](src/main/java/dev/novel/repository/mapper/TaskDispatchMapper.java) | MyBatis 任务候选查询与条件认领 |
+| [ModelCallMapper.java](src/main/java/dev/novel/repository/mapper/ModelCallMapper.java) | MyBatis 模型响应、费用与调用状态写入 |
+| [MyBatisConfiguration.java](src/main/java/dev/novel/config/MyBatisConfiguration.java) | 字段映射、CLOB 类型与本地缓存配置 |
+| [RedisConfiguration.java](src/main/java/dev/novel/config/RedisConfiguration.java) | Redisson 连接配置与生命周期 |
 | [ModelCatalog.java](src/main/java/dev/novel/integration/model/ModelCatalog.java) | 服务配置、模型列表和小说模型选择 |
 | [BudgetService.java](src/main/java/dev/novel/service/BudgetService.java) | 并发费用预留、速率检查及费用核对 |
 | [SkillService.java](src/main/java/dev/novel/service/SkillService.java) | 固定技能加载、角色参考资料选择和指纹验证 |
@@ -305,12 +348,16 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 
 ## 验证范围
 
+1.3.0 按用户要求暂停测试。AgentScope 真实模型流程、Redisson 并发限流与最终代码组合的运行检查尚未完成。
+
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'
 .\mvnw.cmd -B -ntp package
 ```
 
 自动验证使用真实 H2 数据库、TinkerGraph 和本地 HTTP 接口，覆盖并发费用预留、速率限制、关系历史查询、证据校验、事务完整性、人工审核、历史修改、恢复及失败隔离，同时验证固定技能、正文统计、质量历史、交接资料和 ZIP 导出。具体版本的验证结果记录在 [CHANGELOG.md](CHANGELOG.md)。
+
+`RedisIntegrationTest` 使用真实 Redis 和两个独立 Redisson 客户端，检查并发共享额度与重新连接后的额度保留。默认不执行，设置 `NOVEL_REDIS_TEST=true` 后可以运行。真实模型检查增加框架版本和 Middleware 事件记录核对。
 
 `LiveModelTest` 默认不执行。配置真实模型并设置 `NOVEL_LIVE_TEST=true` 后，可以运行真实模型验证；计费服务按配置单价计算费用，免费服务记录零费用。
 
