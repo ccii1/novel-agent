@@ -8,6 +8,9 @@ import dev.novel.service.BudgetService;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -15,7 +18,6 @@ import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
@@ -24,17 +26,18 @@ public class TaskEngine {
     private final TaskDispatchMapper dispatchMapper;
     private final AgentService agents;
     private final WorkflowService workflow;
-    private final ExecutorService workers;
+    private final AsyncTaskExecutor workers;
     private final int limit;
     private final AtomicInteger active=new AtomicInteger();
     private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,AgentService agents,WorkflowService workflow,@Value("${novel.workers}") int limit) {
+    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,AgentService agents,WorkflowService workflow,
+            @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers,@Value("${novel.workers}") int limit) {
         if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
         this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
         this.dispatchMapper=dispatchMapper;
-        workers=Executors.newFixedThreadPool(limit);
+        this.workers=workers;
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
@@ -60,7 +63,7 @@ public class TaskEngine {
         while(active.get()<limit) {
             var task=claim(); if(task==null) return;
             active.incrementAndGet();
-            workers.submit(()-> {
+            try { workers.execute(()-> {
                 try { workflow.finished(task,agents.execute(task)); }
                 catch(BudgetService.RateLimited e) {
                     store.update("tasks.defer",task.get("id"));
@@ -68,7 +71,11 @@ public class TaskEngine {
                 }
                 catch(Exception e) { log.warn("任务 {} 执行失败：{}",task.get("id"),e.getMessage()); fail(task,e); }
                 finally { active.decrementAndGet(); }
-            });
+            }); } catch(TaskRejectedException rejected) {
+                active.decrementAndGet();
+                store.update("tasks.wait",task.get("id"));
+                throw rejected;
+            }
         }
     }
     private Map<String,Object> claim() {
@@ -95,8 +102,5 @@ public class TaskEngine {
         });
     }
     public Map<String,Object> status() { return Map.of("workers",limit,"active",active.get(),"ready",ready); }
-    @PreDestroy public void close() throws InterruptedException {
-        ready=false;workers.shutdown();
-        if(!workers.awaitTermination(15,TimeUnit.SECONDS)) workers.shutdownNow();
-    }
+    @PreDestroy public void close() { ready=false; }
 }

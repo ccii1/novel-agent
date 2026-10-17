@@ -4,6 +4,7 @@ import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.service.*;
 import dev.novel.engine.TaskEngine;
+import dev.novel.agent.PlanValidator;
 
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ class DomainIntegrationTest {
     @Autowired MemoryService memory;
     @Autowired ProjectService projects;
     @Autowired AgentService agents;
+    @Autowired PlanValidator plans;
     @Autowired TaskEngine engine;
     @BeforeEach void clean() {
         for(String table:List.of("events","edit_requests","research_messages","research","model_calls","chapter_metrics","memories","chapter_history","chapters","tasks","novels")) store.update("DELETE FROM "+table);
@@ -101,12 +103,12 @@ class DomainIntegrationTest {
             {"number":1,"title":"钥匙","goal":"引出失踪事件","characters":["林舟"],"foreshadowIds":[]},
             {"number":2,"title":"信封","goal":"发现线索","characters":["沈月"],"foreshadowIds":[]}]}
             """);
-        agents.validatePlan(plan,1,2);
+        plans.validate(plan,1,2);
         store.update("UPDATE novels SET status='AWAITING_PLAN',plan=? WHERE id=?",json.write(plan),id);
         projects.approvePlan(id,plan);
         assertThat(store.novel(id).get("status")).isEqualTo("WRITING");
         assertThat(store.list("SELECT * FROM tasks WHERE novel_id=? AND kind='WRITE'",id)).hasSize(1);
-        assertThatThrownBy(()->agents.validatePlan(plan,2,2)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->plans.validate(plan,2,2)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void historicalEditRequiresPublishedAcknowledgementAndInvalidatesFollowingChapters() {
         String id=novel();

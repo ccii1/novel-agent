@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="dev.novel.repository.mapper.AgentMetricsMapper">
+  <select id="summary" resultType="map">
+    SELECT t.kind,COUNT(*) AS task_count,
+      SUM(CASE WHEN t.status='DONE' THEN 1 ELSE 0 END) AS completed_tasks,
+      SUM(CASE WHEN t.status='ERROR' THEN 1 ELSE 0 END) AS failed_tasks,
+      SUM(CASE WHEN t.status='RUNNING' THEN 1 ELSE 0 END) AS running_tasks,
+      SUM(CASE WHEN t.status IN ('WAITING','READY') THEN 1 ELSE 0 END) AS waiting_tasks,
+      SUM(CASE WHEN t.status='CANCELLED' THEN 1 ELSE 0 END) AS cancelled_tasks,
+      COUNT(c.id) AS model_calls,
+      COALESCE(SUM(c.input_tokens),0) AS input_tokens,
+      COALESCE(SUM(c.output_tokens),0) AS output_tokens,
+      COALESCE(SUM(c.actual),0) AS settled_cost,
+      COALESCE(SUM(CASE WHEN c.actual IS NULL AND c.status&lt;&gt;'REJECTED' THEN c.reserved ELSE 0 END),0) AS pending_reservation,
+      SUM(CASE WHEN c.status='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain_calls
+    FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
+    <where><if test="novelId != null">t.novel_id=#{novelId}</if></where>
+    GROUP BY t.kind ORDER BY t.kind
+  </select>
+</mapper>

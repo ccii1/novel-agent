@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 1.4.0 — 2026-10-17
+
+- 独立11个 Agent 组件，通过 NovelAgent 注册12种任务类型；规划、写作、修改、五类检查、反思、记忆提取和选题分别维护职责。
+- AgentService 负责角色注册、结果恢复、分发及分析查询，启动时检查缺失与重复注册。
+- 每个角色声明上下文文件清单，规划单独组装分层记忆；正文角色按职责读取关系、知情范围、文风或质量资料。执行前校验记忆版本及正文修订。
+- 人物关系文件保存一般关系，知情范围文件单独提供 KNOWS 记录，减少相同 graph 在上下文中的重复。
+- PlanValidator 与 ReviewValidator 维护大纲和证据检查，人工审批直接使用大纲校验组件。
+- 增加 /api/agents 角色目录和 /api/agents/metrics 分析接口，按任务类型统计状态、调用、token 与费用，支持作品过滤。
+- AGENT_STARTED / AGENT_FINISHED 记录角色组件、任务和上下文范围，关联已有模型与工作流记录。
+- 工作线程改用 Spring ThreadPoolTaskExecutor，配置有界线程与队列，关闭时等待执行任务；提交失败时恢复待执行状态。
+- 按用户要求继续暂停测试，仅进行跳过测试的 Java 17 编译打包；运行验证尚未执行。
+
 ## 1.3.0 — 2026-10-17
 
 - 接入 AgentScope Java 2.0.4，全部创作及选题角色使用 ReActAgent、UserMessage、OpenAIChatModel 与 GenerateOptions。

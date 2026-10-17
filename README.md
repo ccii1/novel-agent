@@ -12,8 +12,9 @@ flowchart TD
     Business --> Repository["MyBatis Mapper 与 Spring 事务"]
     Repository --> DB["H2：任务、正文、版本与费用"]
     DB --> Scheduler["TaskEngine：认领任务与并行调度"]
-    Scheduler --> Role["AgentService：角色输入与输出检查"]
-    Role --> Context["ModelClient：固定技能、上下文与已保存响应"]
+    Scheduler --> Role["AgentService：独立角色注册与分发"]
+    Role --> Specialists["NovelAgent：独立提示词、上下文清单与输出检查"]
+    Specialists --> Context["ModelClient：固定技能、上下文与已保存响应"]
     Context --> Agent["AgentScope ReActAgent：每个任务独立实例"]
     Agent --> Middleware["MiddlewareBase：推理开始与完成事件"]
     Middleware --> Model["OpenAIChatModel：Msg、JSON object 与生成参数"]
@@ -120,6 +121,56 @@ flowchart TD
 | `CHECK_MEMORY` | 核对记忆变更与正文、历史设定 | 检查结论及问题证据 |
 
 每个角色由独立任务、提示词及结构化输入输出定义，任务在同一 Java 应用中执行。检查角色提交报告，正文由写作角色统一修改，记忆由流程模块统一提交。
+
+## 独立 Agent 与信息范围
+
+系统采用工作流式多 Agent 协作，`agent` 包提供11个独立 Spring 组件，处理12种任务。`ResearchAgent` 同时处理选题与选题讨论，其他组件分别负责规划、写作、修改、人物检查、剧情检查、节奏检查、文风检查、反思、记忆提取和记忆检查。`AgentService` 负责类型注册、响应恢复、分发和分析查询，启动时检查遗漏或重复的任务类型。
+
+```mermaid
+flowchart TD
+    Registry["AgentService：任务类型注册表"] --> Planner["PlannerAgent：阶段计划"]
+    Planner --> Approval["人工批准"]
+    Approval --> Writer["WriterAgent：章节正文"]
+    Writer --> Character["CharacterCheckAgent"]
+    Writer --> Plot["PlotCheckAgent"]
+    Writer --> Pacing["PacingCheckAgent"]
+    Writer --> Style["StyleCheckAgent"]
+    Character --> Reports["四份独立报告：绑定正文修订和记忆版本"]
+    Plot --> Reports
+    Pacing --> Reports
+    Style --> Reports
+    Reports --> Decision{"全部通过？"}
+    Decision -->|否| Reflect["ReflectionAgent：分析问题与意见冲突"]
+    Reflect --> Gate["业务流程检查修改次数、预算与人工审批条件"]
+    Gate --> Rewrite["RewriterAgent：统一修改正文"]
+    Rewrite --> Character
+    Rewrite --> Plot
+    Rewrite --> Pacing
+    Rewrite --> Style
+    Decision -->|是| Extract["MemoryExtractionAgent：记忆增量"]
+    Extract --> MemoryCheck["MemoryCheckAgent：正文证据检查"]
+    MemoryCheck --> Commit["WorkflowService：检查通过后事务提交正文与记忆"]
+```
+
+角色组件保持无会话状态，每次任务创建独立的 AgentScope `ReActAgent`。`AgentContextService` 根据角色声明的 Truth Files 清单提供输入，并校验当前记忆版本、正文修订。正式事实继续使用数据库中的统一版本，角色通过任务结果协作，检查角色之间不传递尚未完成的报告。
+
+| Agent | 额外输入范围 |
+| --- | --- |
+| PlannerAgent | 创作设定、历史计划、规划记忆、最近八章摘要、修改要求 |
+| WriterAgent / RewriterAgent | 基础故事资料、人物关系、知情范围、文风与对话要求；修改角色增加原正文和修改计划 |
+| CharacterCheckAgent | 基础故事资料、人物关系和知情范围、当前正文 |
+| PlotCheckAgent | 基础故事资料、当前正文 |
+| PacingCheckAgent | 基础故事资料、近期质量、对话及循环模式记录、当前正文统计 |
+| StyleCheckAgent | 基础故事资料、文风及对话记录、当前正文统计 |
+| ReflectionAgent | 基础故事资料、当前正文、四份独立检查报告 |
+| MemoryExtractionAgent / MemoryCheckAgent | 基础故事资料、人物关系、知情范围与正文；记忆检查增加待提交增量 |
+| ResearchAgent | 用户想法、已采集资料、当前方案与最近交流 |
+
+基础故事资料包含设定、大纲、当前状态、待处理伏笔、交接记录和审核规则。规划输入单独组装，提供规划需要的分层记忆。只有节奏与文风等需要质量记录的角色读取相应统计。
+
+`GET /api/agents` 提供任务类型、组件名称、职责和上下文清单。`GET /api/agents/metrics` 按角色任务类型统计完成、失败、等待、取消、调用次数、输入输出 token、已结算费用、待结算预留和不确定调用，支持 `?novelId=作品ID`。统计覆盖数据库保留的全部历史记录；历史取消任务保留在统计中。`AGENT_STARTED` 事件记录组件名称、任务类型、正文修订、记忆版本和上下文清单，用于关联任务、模型调用及检查结果。
+
+线程池由 Spring `ThreadPoolTaskExecutor` 管理，默认4个工作线程，线程及队列都有明确上限，关闭时按模型调用超时等待任务完成。持久化调度、四份报告汇总、人工审核和正式记忆提交由业务流程负责。
 
 检查报告需要引用当前正文中至少4个字符的原文。程序校验证据是否存在、结论与问题列表是否一致；模型负责评价语义和阅读节奏。正文目标长度为2000至2500个非空白字符；写作结果首先接受1800至3800个字符的格式检查，再由 `CHECK_STYLE` 将目标字数问题交给修改流程处理。
 
@@ -329,7 +380,10 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 | [ResearchService.java](src/main/java/dev/novel/service/ResearchService.java) | 个人想法、资料采集、选题讨论和交流记录 |
 | [WorkflowService.java](src/main/java/dev/novel/service/WorkflowService.java) | 完成步骤、汇总检查、安排下一步及统一提交 |
 | [TaskEngine.java](src/main/java/dev/novel/engine/TaskEngine.java) | 调度、工作线程、失败处理和启动恢复 |
-| [AgentService.java](src/main/java/dev/novel/service/AgentService.java) | 各角色提示词、任务执行和输出校验 |
+| [AgentService.java](src/main/java/dev/novel/service/AgentService.java) | 独立 Agent 注册、分发、结果恢复和分析查询 |
+| [NovelAgent.java](src/main/java/dev/novel/agent/NovelAgent.java) | 角色任务类型、职责与上下文清单 |
+| [AgentContextService.java](src/main/java/dev/novel/agent/AgentContextService.java) | 按角色提供资料、检查记忆与正文版本 |
+| [TaskExecutionConfiguration.java](src/main/java/dev/novel/config/TaskExecutionConfiguration.java) | Spring 任务线程池与关闭流程 |
 | [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、graph 查询和上下文组装 |
 | [ProjectService.java](src/main/java/dev/novel/service/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
 | [ModelClient.java](src/main/java/dev/novel/integration/model/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |
@@ -348,7 +402,7 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 ## 验证范围
 
-1.3.0 按用户要求暂停测试。AgentScope 真实模型流程、Redisson 并发限流与最终代码组合的运行检查尚未完成。
+1.4.0 按用户要求继续暂停测试。独立角色、分析接口、AgentScope 真实模型流程及 Redisson 联调的最终组合运行检查尚未完成。
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'

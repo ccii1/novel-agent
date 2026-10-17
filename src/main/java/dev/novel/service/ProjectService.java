@@ -1,6 +1,7 @@
 package dev.novel.service;
 
 import dev.novel.repository.Store;
+import dev.novel.agent.PlanValidator;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelCatalog;
 
@@ -13,12 +14,12 @@ import java.util.*;
 public class ProjectService {
     private final Store store;
     private final WorkflowService workflow;
-    private final AgentService agents;
+    private final PlanValidator plans;
     private final MemoryService memory;
     private final Json json;
     private final ModelCatalog catalog;
-    public ProjectService(Store store,WorkflowService workflow,AgentService agents,MemoryService memory,Json json,ModelCatalog catalog) {
-        this.store=store;this.workflow=workflow;this.agents=agents;this.memory=memory;this.json=json;
+    public ProjectService(Store store,WorkflowService workflow,PlanValidator plans,MemoryService memory,Json json,ModelCatalog catalog) {
+        this.store=store;this.workflow=workflow;this.plans=plans;this.memory=memory;this.json=json;
         this.catalog=catalog;
     }
     public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget) {
@@ -60,7 +61,7 @@ public class ProjectService {
         store.transaction(() -> {
             var novel=store.lockNovel(id);require(novel,"AWAITING_PLAN");
             JsonNode approved=plan==null || plan.isNull()?json.read((String)novel.get("plan")):plan;
-            agents.validatePlan(approved,Store.integer(novel,"chapter_no"),Store.integer(novel,"stage_size"));
+            plans.validate(approved,Store.integer(novel,"chapter_no"),Store.integer(novel,"stage_size"));
             store.update("novels.approvePlan",json.write(approved),id);
             workflow.schedule(store.novel(id),"WRITE",Store.integer(novel,"chapter_no"),0,Map.of());
             store.event(id,null,"PLAN_APPROVED","阶段大纲已批准");
@@ -98,7 +99,7 @@ public class ProjectService {
             if("AWAITING_CHANGE".equals(novel.get("status")) && (plan==null || plan.isNull())) throw new IllegalArgumentException("重大变更需要提供完整批准的大纲");
             if(plan!=null && !plan.isNull()) {
                 var old=json.read((String)novel.get("plan"));
-                agents.validatePlan(plan,old.get("chapters").get(0).path("number").asInt(),Store.integer(novel,"stage_size"));
+                plans.validate(plan,old.get("chapters").get(0).path("number").asInt(),Store.integer(novel,"stage_size"));
                 store.update("novels.plan",json.write(plan),id);
             }
             int chapter=Store.integer(novel,"chapter_no");
