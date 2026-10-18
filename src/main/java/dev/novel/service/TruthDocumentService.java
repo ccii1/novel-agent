@@ -46,7 +46,8 @@ public class TruthDocumentService {
         files.put("dialogue-monitor.md",Map.of("recentMetrics",recent,"rising",quality.rising(recent),"ratioDefinition","含引号的非空行数 / 全部非空行数"));
         files.put("pattern-detection.md",Map.of("reviewDue",chapter%5==0,"recentMetrics",recent,"fullReviewDue",chapter%10==0));
         files.put("book_rules.md",Map.of("approval","重大剧情变更等待人工批准"));
-        files.put("style_guide.md",Map.of("requirements",novel.get("bible"),"targetCharacters","2000至2500","dialogueLimit",0.4));
+        files.put("style_guide.md",Map.of("requirements",novel.get("bible"),"targetCharacters","2000至2500",
+                "lengthPolicy","参考篇幅；先保存完整草稿，字数单独记录整理建议，依据具体内容问题修改。","dialogueLimit",0.4));
         Map<String,Object> selected=new LinkedHashMap<>();
         for(String name:requestedFiles) {
             if(!files.containsKey(name)) throw new IllegalArgumentException("未知 Agent 上下文文件："+name);

@@ -34,7 +34,7 @@ public class PlannerAgent implements NovelAgent {
         input.put("recentSummaries",store.list("chapters.recent",novel.get("id")));
         input.put("instructions",json.read(Store.string(task,"payload")));
         var result=model.call(task,AgentInstructions.SYSTEM+"你负责阶段规划。",
-                "制定持续连载小说的当前阶段大纲，无需安排整部作品完结。每章2000至2500字。"+
+                "制定持续连载小说的当前阶段大纲，无需安排整部作品完结。每章参考篇幅2000至2500字，按情节完整性允许浮动。"+
                 "输出：{stageGoal:string,coreMilestones:[string],chapters:[{number:int,title:string,goal:string,characters:[string],foreshadowIds:[string],sceneType:string,climax:boolean}]}。"+
                 "chapters 数量必须为"+novel.get("stage_size")+"，编号从"+chapter+"连续开始。设计冲突、失败代价、信息揭示、高潮与缓和。"+
                 "重大剧情变更等待人工审核。规划资料="+json.write(input));

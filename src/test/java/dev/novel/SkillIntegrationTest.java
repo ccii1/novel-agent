@@ -61,7 +61,8 @@ class SkillIntegrationTest {
         var report=json.read("{\"approved\":true,\"majorChange\":false,\"issues\":[]}");
         quality.enforceStyle(report,body);
         assertThat(report.get("approved").asBoolean()).isFalse();
-        assertThat(report.get("issues")).hasSize(2);
+        assertThat(report.get("issues")).hasSize(1);
+        assertThat(report.path("lengthAdvice").path("status").asText()).isEqualTo("SHORT");
         report.get("issues").forEach(issue->assertThat(body).contains(issue.get("quote").asText()));
     }
     @Test void dialogueTrendUsesAcceptedCurrentRevisions() {

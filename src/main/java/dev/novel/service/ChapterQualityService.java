@@ -42,8 +42,11 @@ public class ChapterQualityService {
         var metrics=measure(body);
         var issues=(com.fasterxml.jackson.databind.node.ArrayNode)review.get("issues");
         String quote=body.substring(0,Math.min(body.length(),40));
-        if(metrics.characters()<2000 || metrics.characters()>2500)
-            issues.add(json.read(json.write(Map.of("severity","major","quote",quote,"reason","本章非空白字符数为"+metrics.characters()+"，目标为2000至2500","suggestion","保持剧情目标，调整正文长度"))));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)review).set("lengthAdvice",json.tree(Map.of(
+                "characters",metrics.characters(),"targetMin",2000,"targetMax",2500,
+                "status",metrics.characters()<2000?"SHORT":metrics.characters()>2500?"LONG":"WITHIN_TARGET",
+                "suggestion",metrics.characters()<2000?"结合本章目标检查内容是否充分，按需要补充动作、因果与情绪。":
+                        metrics.characters()>2500?"检查重复信息与节奏，保留完整情节后按需要精简。":"参考篇幅合适，继续检查内容质量。")));
         if(metrics.dialogueRatio()>0.4)
             issues.add(json.read(json.write(Map.of("severity","major","quote",quote,"reason","含引号的非空行占比超过40%："+metrics.dialogueLines()+"/"+metrics.totalLines(),"suggestion","压缩无效对话，补充推进情节的动作和叙述"))));
         if(!issues.isEmpty()) ((com.fasterxml.jackson.databind.node.ObjectNode)review).put("approved",false);
