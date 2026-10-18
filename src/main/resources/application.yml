@@ -2,6 +2,9 @@ server:
   address: 127.0.0.1
   port: ${PORT:8096}
 logging:
+  pattern:
+    console: "%d{HH:mm:ss} %-5level %msg%n%wEx"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%logger{36}] %msg%n%wEx"
   charset:
     file: UTF-8
   file:

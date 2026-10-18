@@ -2,6 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="tasks">
   <select id="find" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]}</select>
+  <select id="logContext" resultType="map">
+    SELECT t.kind,t.chapter_no,n.title FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id WHERE t.id=#{args[0]}
+  </select>
   <select id="lock" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]} FOR UPDATE</select>
   <select id="byKey" resultType="map">SELECT id FROM tasks WHERE task_key=#{args[0]}</select>
   <select id="running" resultType="map">SELECT * FROM tasks WHERE status='RUNNING'</select>

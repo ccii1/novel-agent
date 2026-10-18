@@ -18,8 +18,6 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -35,7 +33,6 @@ public class TaskEngine {
     private final AsyncTaskExecutor workers;
     private final int limit;
     private final AtomicInteger active=new AtomicInteger();
-    private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
     public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,ObservationService observations,TaskProgressService progress,
@@ -89,7 +86,7 @@ public class TaskEngine {
                         return null;
                     });
                 }
-                catch(Exception e) { log.warn("任务 {} 执行失败：{}",task.get("id"),e.getMessage()); fail(task,e); }
+                catch(Exception e) { fail(task,e); }
                 finally { active.decrementAndGet(); }
             }); } catch(TaskRejectedException rejected) {
                 active.decrementAndGet();
@@ -135,8 +132,7 @@ public class TaskEngine {
             var snapshot=progress.progress(Store.string(running,"id"));
             var task=(Map<?,?>)snapshot.get("task");
             if(!"RUNNING".equals(task.get("status"))) continue;
-            log.info("event=TASK_RUNNING taskId={} executionId={} kind={} stage={} elapsedMs={} modelElapsedMs={}",
-                    task.get("id"),task.get("execution_id"),task.get("kind"),snapshot.get("stage"),task.get("elapsed_ms"),task.get("model_elapsed_ms"));
+            store.logProgress(Store.string(running,"id"),snapshot.get("stage").toString(),task.get("elapsed_ms"),task.get("model_elapsed_ms"));
         }
     }
     @PreDestroy public void close() { ready=false; }

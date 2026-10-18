@@ -1,6 +1,7 @@
 package dev.novel.repository;
 
 import dev.novel.support.Json;
+import dev.novel.support.TaskLogFormatter;
 
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.stereotype.Repository;
@@ -15,12 +16,13 @@ import java.util.function.Supplier;
 @Repository
 public class Store {
     private static final Logger log=LoggerFactory.getLogger(Store.class);
-    private static final Set<String> LOG_METADATA=Set.of("AGENT_STARTED","AGENT_FINISHED","MODEL_REQUEST_SENT",
-            "MODEL_RESPONSE_RECEIVED","MODEL_USAGE_RECORDED","RESEARCH_INPUT_READY","RESEARCH_OUTPUT_VALIDATED");
     private final SqlSessionTemplate db;
     private final TransactionTemplate tx;
     private final Json json;
-    public Store(SqlSessionTemplate db, TransactionTemplate tx, Json json) { this.db = db; this.tx = tx; this.json = json; }
+    private final TaskLogFormatter logs;
+    public Store(SqlSessionTemplate db, TransactionTemplate tx, Json json,TaskLogFormatter logs) {
+        this.db = db; this.tx = tx; this.json = json; this.logs=logs;
+    }
     public <T> T transaction(Supplier<T> action) { return tx.execute(status -> action.get()); }
     public int update(String statement,Object... args) { return db.update(statement,Map.of("args",args)); }
     public List<Map<String,Object>> list(String statement, Object... args) { return db.selectList(statement,Map.of("args",args)); }
@@ -36,13 +38,28 @@ public class Store {
     }
     public void event(String novel,String task,String type,String message,String execution) {
         update("events.create",novel,task,type,message,execution);
-        Runnable output=()->log.info("event={} taskId={} executionId={} novelId={} metadata={}",
-                type,task,execution,novel,LOG_METADATA.contains(type)?message:"");
+        Runnable output;
+        if(logs.detail(type)) {
+            output=()->log.debug("event={} taskId={} executionId={} novelId={}",type,task,execution,novel);
+        } else {
+            var context=task==null?null:one("tasks.logContext",task);
+            String label=logs.label(context,task,novel);
+            String text=logs.event(type,message,context==null?"":string(context,"kind"));
+            output=()-> {
+                if(type.equals("ERROR")) log.error("{} {}",label,text);
+                else if(type.equals("RATE_WAIT")) log.warn("{} {}",label,text);
+                else log.info("{} {}",label,text);
+            };
+        }
         if(TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { output.run(); }
             });
         } else output.run();
+    }
+    public void logProgress(String task,String stage,Object elapsed,Object modelElapsed) {
+        var context=one("tasks.logContext",task);
+        log.info("{} {}",logs.label(context,task,null),logs.progress(stage,elapsed,modelElapsed));
     }
     public String enqueue(String novel, String kind, int chapter, int revision, long version, String key, Object payload) {
         var existing = list("tasks.byKey", key);

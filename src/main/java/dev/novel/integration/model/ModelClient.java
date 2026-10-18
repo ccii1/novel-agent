@@ -78,7 +78,8 @@ public class ModelClient {
                         selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
                 started.set(System.nanoTime());
                 storeEvent(task,"MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),
-                        "contextBytes",bytes,"maxOutputTokens",maxOutput,"reserved",reserve.get(),"callId",callId));
+                        "contextBytes",bytes,"maxOutputTokens",maxOutput,"reserved",reserve.get(),"callId",callId,
+                        "billingMode",selected.billingMode()));
             },response -> {
                 long latency=elapsed(started.get());
                 storeEvent(task,"MODEL_RESPONSE_RECEIVED",Map.of("callId",callId,"httpStatus",response.getStatusCode(),"latencyMs",latency));
@@ -92,10 +93,11 @@ public class ModelClient {
                 if(cached.isMissingNode()) cached=usage.path("prompt_cache_hit_tokens");
                 Long cachedTokens=cached.isIntegralNumber() && cached.canConvertToLong() && cached.asLong()>=0?cached.asLong():null;
                 calls.observation(callId,latency,usage.isMissingNode()?null:json.write(usage),cachedTokens);
-                settle(callId,selected,reserve.get(),response);
+                var estimatedCost=settle(callId,selected,reserve.get(),response);
                 Map<String,Object> usageMetadata=new LinkedHashMap<>();
                 usageMetadata.put("callId",callId);usageMetadata.put("inputTokens",usage.path("prompt_tokens").asLong());
                 usageMetadata.put("outputTokens",usage.path("completion_tokens").asLong());usageMetadata.put("cachedInputTokens",cachedTokens);
+                usageMetadata.put("estimatedCost",estimatedCost);usageMetadata.put("billingMode",selected.billingMode());
                 storeEvent(task,"MODEL_USAGE_RECORDED",usageMetadata);
             });
             return json.read(content);
@@ -116,7 +118,7 @@ public class ModelClient {
     private void storeEvent(Map<String,Object> task,String type,Object metadata) {
         events.event((String)task.get("novel_id"),Store.string(task,"id"),type,json.write(metadata),(String)task.get("execution_id"));
     }
-    private void settle(String callId,ModelCatalog.Selection selected,BigDecimal reserve,HttpResponse response) {
+    private BigDecimal settle(String callId,ModelCatalog.Selection selected,BigDecimal reserve,HttpResponse response) {
         if(!response.isSuccessful())
             throw new IllegalStateException("模型 API 返回 HTTP " + response.getStatusCode() + "，请在供应商后台核对是否计费");
         var root=json.read(response.getBody());
@@ -132,6 +134,7 @@ public class ModelClient {
             throw new IllegalStateException("本次模型调用的结算记录不存在");
         if(actual.compareTo(reserve)>0) throw new IllegalStateException("实际计费超过预留金额，请核查供应商单价和 token 规则");
         if(!stopped) throw new IllegalStateException("模型输出未正常结束，请调整输出额度后重新执行");
+        return actual;
     }
     private BigDecimal cost(long input, long output,BigDecimal inputPrice,BigDecimal outputPrice) {
         return inputPrice.multiply(BigDecimal.valueOf(input)).add(outputPrice.multiply(BigDecimal.valueOf(output)))
