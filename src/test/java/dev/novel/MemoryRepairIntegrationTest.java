@@ -8,6 +8,10 @@ import dev.novel.service.ProjectService;
 import dev.novel.service.WorkflowService;
 import dev.novel.support.Json;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import dev.novel.agent.ReviewValidator;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -29,6 +33,7 @@ class MemoryRepairIntegrationTest {
     @Autowired MemoryService memory;
     @Autowired TaskDispatchMapper dispatch;
     @Autowired Json json;
+    @Autowired ReviewValidator reviews;
     @LocalServerPort int port;
     private static final String BODY="陆禾判断这些出口条件是在防人跑。哨声在背后拉长。";
     private JsonNode delta() {
@@ -109,5 +114,20 @@ class MemoryRepairIntegrationTest {
         assertThatThrownBy(()->workflow.finished(task,json.read("{\"approved\":true,\"majorChange\":false,\"issues\":[]}"))).hasMessageContaining("版本已经变化");
         assertThat(Store.number(store.novel(id),"memory_version")).isZero();
         assertThat(memory.snapshot(id,0)).isEmpty();
+    }
+    @Test
+    @EnabledIfEnvironmentVariable(named="NOVEL_MEMORY_OBJECT_REPLAY_FILE",matches=".+")
+    void recordedObjectReferenceContinuesIntoMemoryRepair() throws Exception {
+        var saved=json.read(Files.readString(Path.of(System.getenv("NOVEL_MEMORY_OBJECT_REPLAY_FILE"))));
+        String id=novel();var task=check(id,0);
+        db.update("UPDATE chapters SET body=? WHERE novel_id=?",saved.path("body").asText(),id);
+        store.update("tasks.payload",json.write(Map.of("delta",saved.path("delta"),"repairAttempt",0)),task.get("id"));
+        var result=reviews.validate(saved.path("output"),saved.path("body").asText(),saved.path("delta"));
+        workflow.finished(store.one("tasks.find",task.get("id")),result);
+        assertThat(store.novel(id).get("status")).isEqualTo("EXTRACTING");
+        var next=db.one("SELECT * FROM tasks WHERE novel_id=? AND kind='MEMORY_REPAIR'",id);
+        assertThat(json.read((String)next.get("payload")).path("review").path("issues").get(0).path("quoteValue"))
+                .isEqualTo(saved.path("delta").path("facts").get(0));
+        assertThat(store.one("chapters.find",id,1).get("body")).isEqualTo(saved.path("body").asText());
     }
 }

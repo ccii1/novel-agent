@@ -4,6 +4,8 @@ import dev.novel.agent.ReviewValidator;
 import dev.novel.support.Json;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,6 +65,50 @@ class ReviewEvidenceIntegrationTest {
         assertThatThrownBy(()->validator.validate(review,"林舟交出钥匙。\n\n沈月收起密信。"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("来源字段不存在");
     }
+    @Test
+    @EnabledIfEnvironmentVariable(named="NOVEL_MEMORY_OBJECT_REPLAY_FILE",matches=".+")
+    void recordedReviewCanReferenceAnEntireMemoryObjectWithoutChangingItsVerdict() throws Exception {
+        var saved=json.read(Files.readString(Path.of(System.getenv("NOVEL_MEMORY_OBJECT_REPLAY_FILE"))));
+        var original=saved.path("output");
+        var before=original.deepCopy();
+        var result=validator.validate(original,saved.path("body").asText(),saved.path("delta"));
+        assertThat(result.path("approved").asBoolean()).isFalse();
+        for(int index=0;index<result.path("issues").size();index++) {
+            var issue=result.path("issues").get(index);
+            assertThat(issue.path("quoteValue")).isEqualTo(saved.path("delta").at(issue.path("quotePath").asText()));
+            assertThat(issue.path("reason")).isEqualTo(original.path("issues").get(index).path("reason"));
+        }
+        assertThat(original).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"/facts/0","/relations/0","/facts","/relations","/facts/0/active","/facts/0/dueChapter","/facts/0/detail","/facts/0/name"})
+    void existingStructuredAndShortMemoryValuesRemainAuditable(String path) {
+        var memory=json.read("""
+                {"summary":"陆禾记录伤情。","facts":[{"key":"wound","name":"伤","detail":"","active":false,"dueChapter":6}],
+                "relations":[{"subject":"陆禾","predicate":"KNOWS","object":"伤情"}]}
+                """);
+        var review=json.read("""
+                {"approved":false,"majorChange":false,"issues":[{"quoteSource":"MEMORY","reason":"需要核对状态","suggestion":"根据正文修正"}]}
+                """);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)review.path("issues").get(0)).put("quotePath",path);
+        var result=validator.validate(review,"陆禾发现旧伤重新流血。",memory);
+        var issue=result.path("issues").get(0);
+        assertThat(issue.path("quotePath").asText()).isEqualTo(path);
+        assertThat(issue.path("quoteValue")).isEqualTo(memory.at(path));
+        assertThat(issue.path("quote").asText()).hasSizeGreaterThanOrEqualTo(4);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"/facts/9","/facts/0/missing","/credentials","/title","/summary/missing"})
+    void missingOrUnauthorizedMemoryPathsCannotSupplyEvidence(String path) {
+        var memory=json.read("{\"summary\":\"陆禾记录伤情。\",\"facts\":[{\"name\":\"伤\"}],\"relations\":[],\"credentials\":\"不可引用\"}");
+        var review=json.read("{\"approved\":false,\"majorChange\":false,\"issues\":[{\"quoteSource\":\"MEMORY\",\"reason\":\"核对\",\"suggestion\":\"修正\"}]}");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)review.path("issues").get(0)).put("quotePath",path);
+        assertThatThrownBy(()->validator.validate(review,"陆禾发现旧伤重新流血。",memory))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("来源字段不存在");
+    }
+
     @Test
     @EnabledIfEnvironmentVariable(named="NOVEL_REVIEW_REPLAY_FILE",matches=".+")
     void savedMemoryReviewCanQuoteTheOriginalMemorySummary() throws Exception {

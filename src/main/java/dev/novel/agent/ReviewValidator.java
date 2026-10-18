@@ -1,6 +1,7 @@
 package dev.novel.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonPointer;
 import dev.novel.dto.AgentOutputs;
 import dev.novel.support.EvidenceMatcher;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -40,7 +41,20 @@ public class ReviewValidator {
             if(!java.util.Set.of("","BODY","MEMORY").contains(requested)) throw new IllegalArgumentException("未知引用来源");
             String path=node.path("quotePath").asText("");
             if(!path.isBlank()) {
-                String selected=requested.equals("BODY")?bodyFields.get(path):requested.equals("MEMORY")?memorySources.get(path):null;
+                if(requested.equals("MEMORY") && memory!=null) {
+                    var pointer=JsonPointer.compile(path);
+                    String root=pointer.getMatchingProperty();
+                    if(root!=null && java.util.Set.of("summary","facts","relations").contains(root)) {
+                        var selected=memory.at(pointer);
+                        if(!selected.isMissingNode()) {
+                            String text=selected.isTextual()?selected.textValue():null;
+                            node.put("quote",text!=null && evidence.source(text).find(text)!=null?text:path+" = "+selected);
+                            node.set("quoteValue",selected.deepCopy());
+                            continue;
+                        }
+                    }
+                }
+                String selected=requested.equals("BODY")?bodyFields.get(path):null;
                 if(selected==null) throw new IllegalArgumentException("第"+(index+1)+"条问题引用的来源字段不存在："+requested+" "+path);
                 node.put("quote",evidence.source(selected).require(selected,"第"+(index+1)+"条问题"));
                 continue;
