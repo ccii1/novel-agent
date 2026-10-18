@@ -385,6 +385,16 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 未指定 MySQL profile 时，数据库位于 `data/novel`。`data/`、`target/`、`.work/`、日志、`.env`、`config/application-local.yml` 和 `config/mysql-local.properties` 已加入 Git 忽略规则。
 
+### 本机 Neo4j
+
+本机安装 Neo4j Community 5.26.32（5.26 LTS），使用已有 Java 17。安装目录为 `D:\Program Files\Neo4j\neo4j-community-5.26.32`，配置为该目录中的 `conf\neo4j.conf`。数据与日志分别保存到 `D:\ProgramData\Neo4j\data`、`D:\ProgramData\Neo4j\logs`，仅监听本机。初始 heap 为256MB，最大512MB，page cache 为256MB。
+
+Browser 地址为 [Neo4j Browser](http://127.0.0.1:7474/browser/)，Bolt 为 `bolt://127.0.0.1:7687`，默认数据库与账号均为 `neo4j`。密码和连接信息保存在 Git 忽略的 `config/neo4j-local.json`，不包含在仓库与全局环境记录中。
+
+当前使用隐藏的后台进程运行，未注册 Windows 服务或配置开机启动。进程结束后，可在项目目录执行 `.\start-neo4j.ps1`，该脚本检查安装目录、Java 和监听端口，并将标准输出与错误保存到 Neo4j 日志目录。启动成功需要等待日志中的 `Started.`，首次启动可能需要数十秒。
+
+安装包已通过官方下载的 SHA-256 校验；Neo4j 配置检查、HTTP 版本检查以及通过 Bolt 登录执行 `RETURN 1 AS ready` 均通过。小说项目当前仍使用 TinkerGraph，业务数据尚未接入 Neo4j。本次安装没有启动、重启或停止小说服务，也没有运行项目构建、测试或数据迁移。
+
 ### MySQL 与已有数据迁移
 
 MySQL 账户与连接地址保存在忽略文件 `config/mysql-local.properties`，样例为 `config/mysql-local.example.properties`。业务数据库使用独立的 `novel_agent`，字符集为 utf8mb4，文本比较区分大小写。`mysql` profile 使用 Connector/J、HikariCP 和 Flyway，MyBatis 根据 JDBC 数据库类型选择对应 SQL；H2 SQL 初始化继续适用于已有运行方式。数据库类型也通过 `/api/status` 和观测看板返回。[MyBatis databaseIdProvider 说明](https://mybatis.org/mybatis-3/configuration.html#databaseIdProvider)描述了同名 SQL 按数据库选择的机制。

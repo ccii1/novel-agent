@@ -5,5 +5,6 @@
 *.log
 /config/application-local.yml
 /config/mysql-local.properties
+/config/neo4j-local.json
 .env
 .env.*
