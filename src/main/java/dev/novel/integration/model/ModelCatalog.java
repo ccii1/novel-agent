@@ -62,11 +62,11 @@ public class ModelCatalog {
     private String property(String prefix,String key,String defaultValue) { return environment.getProperty(prefix+key,defaultValue); }
     public Selection forTask(Map<String,Object> task) {
         String provider=defaultProvider(),model="";
-        if(task.get("novel_id")!=null) {
+        if(task.get("provider")!=null) {
+            provider=Store.string(task,"provider");model=Store.string(task,"model_name");
+        } else if(task.get("novel_id")!=null) {
             var novel=store.novel((String)task.get("novel_id"));
             provider=Store.string(novel,"provider");model=Store.string(novel,"model_name");
-        } else if(task.get("provider")!=null) {
-            provider=Store.string(task,"provider");model=Store.string(task,"model_name");
         }
         return resolve(provider,model,Store.string(task,"kind"));
     }

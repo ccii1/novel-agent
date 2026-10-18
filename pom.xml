@@ -1,7 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>3.5.7</version><relativePath/></parent>
-  <groupId>dev.novel</groupId><artifactId>novel-agent</artifactId><version>1.8.0</version>
+  <groupId>dev.novel</groupId><artifactId>novel-agent</artifactId><version>1.8.1</version>
   <properties><java.version>17</java.version><agentscope.version>2.0.4</agentscope.version><npm.executable>npm</npm.executable><frontend.skip>false</frontend.skip></properties>
   <dependencies>
     <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-core</artifactId><version>${agentscope.version}</version></dependency>
@@ -33,7 +33,7 @@
         <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.6.3</version>
         <configuration><executable>${npm.executable}</executable><workingDirectory>${project.basedir}/frontend</workingDirectory><skip>${frontend.skip}</skip></configuration>
         <executions>
-          <execution><id>frontend-dependencies</id><phase>generate-resources</phase><goals><goal>exec</goal></goals><configuration><arguments><argument>ci</argument><argument>--no-audit</argument><argument>--no-fund</argument></arguments></configuration></execution>
+          <execution><id>frontend-dependencies</id><phase>generate-resources</phase><goals><goal>exec</goal></goals><configuration><arguments><argument>install</argument><argument>--no-audit</argument><argument>--no-fund</argument></arguments></configuration></execution>
           <execution><id>frontend-build</id><phase>generate-resources</phase><goals><goal>exec</goal></goals><configuration><arguments><argument>run</argument><argument>build</argument></arguments></configuration></execution>
         </executions>
       </plugin>

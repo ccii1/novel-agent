@@ -117,6 +117,9 @@ public class ProjectService {
         });
     }
     public String retry(String taskId) {
+        return retry(taskId,null,null);
+    }
+    public String retry(String taskId,String provider,String model) {
         return store.transaction(() -> {
             var original=store.one("tasks.find",taskId);
             String novelId=(String)original.get("novel_id");
@@ -126,11 +129,19 @@ public class ProjectService {
             if(calls.pendingTaskCount(taskId)>0)
                 throw new IllegalStateException("请先核对供应商费用");
             if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) throw new IllegalStateException("任务记忆版本已失效");
+            boolean override=provider!=null && !provider.isBlank() || model!=null && !model.isBlank();
+            ModelCatalog.Selection choice=null;
+            if(override) {
+                choice=catalog.resolve(provider==null || provider.isBlank()?catalog.forTask(task).provider():provider,
+                        Objects.toString(model,""),Store.string(task,"kind"));
+                if(!choice.ready()) throw new IllegalArgumentException("所选模型服务尚未配置完成");
+            }
             store.update("tasks.cancel",taskId);
             String next=store.enqueue(novelId,(String)task.get("kind"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),Store.number(task,"memory_version"),
                     task.get("task_key")+":retry:"+UUID.randomUUID(),json.read((String)task.get("payload")));
             if(task.get("research_id")!=null) store.update("tasks.linkResearch",task.get("research_id"),next);
-            if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);
+            if(choice!=null) store.update("tasks.modelChoice",choice.provider(),choice.model(),next);
+            else if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);
             if(novel!=null) {
                 require(novel,"ERROR","BUDGET_PAUSED","PLANNING","WRITING","CHECKING","REFLECTING","EXTRACTING","CHECKING_MEMORY");
                 if(Set.of("ERROR","BUDGET_PAUSED").contains(novel.get("status")))

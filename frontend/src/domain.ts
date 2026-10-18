@@ -7,6 +7,7 @@ export interface Novel {
 export interface Task {
   id: string; novel_id: string | null; kind: string; status: string; chapter_no: number; revision: number;
   memory_version: number; created_at: string; error: string | null; payload: string; result: string | null;
+  provider?: string | null; model_name?: string | null;
 }
 export interface Chapter {number: number; title: string; status: string; revision: number; published: boolean; body?: string; summary?: string}
 export interface Event {id: number; type: string; message: string; created_at: string}
@@ -26,4 +27,4 @@ export interface Agent {kind: string; agent: string; purpose: string}
 export interface Observation {summary: Row[]; tasks: (Task & Row)[]; total: number; page: number; pageSize: number; storage: string; historicalTiming: string}
 export interface TaskDetail {task: Task; executions: Row[]; call: Row | null; events: Event[]; feedback: {id: number; rating: number; note: string; created_at: string}[]}
 export interface Budget {month: string; limit: number; usedAndReserved: number; remaining: number; calls: Row[]}
-export interface SystemStatus {engine: {active: number; workers: number; ready: boolean}; database?: string; rateLimiter: string; modelConfigured: boolean; researchModelSelection: boolean}
+export interface SystemStatus {engine: {active: number; workers: number; ready: boolean}; database?: string; rateLimiter: string; modelConfigured: boolean; researchModelSelection: boolean; retryModelSelection?: boolean}

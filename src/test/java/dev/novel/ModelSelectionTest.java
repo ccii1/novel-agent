@@ -78,6 +78,40 @@ class ModelSelectionTest {
         assertThat(next.get("provider")).isEqualTo("other-test");
         assertThat(next.get("model_name")).isEqualTo("chosen-research-model");
     }
+    @Test void novelRetryUsesTaskChoiceAndRetainsOriginalModelAndCall() {
+        String novel=projects.create("密信","追查密信","保持人物记忆",1,BigDecimal.TEN,BigDecimal.ONE);
+        var original=store.one("SELECT * FROM tasks WHERE novel_id=?",novel);
+        String taskId=Store.string(original,"id");
+        budget.reserve(original,BigDecimal.ZERO,"text-model",BigDecimal.ZERO,BigDecimal.ZERO,null,null,"local-test","unmetered");
+        store.update("UPDATE model_calls SET status='UNCERTAIN' WHERE task_id=?",taskId);
+        store.update("UPDATE tasks SET status='ERROR',error='连接失败' WHERE id=?",taskId);
+        assertThatThrownBy(()->projects.retry(taskId,"other-test","replacement-model")).hasMessageContaining("核对");
+        assertThat(store.one("SELECT status FROM tasks WHERE id=?",taskId).get("status")).isEqualTo("ERROR");
+        String callId=Store.string(store.one("SELECT id FROM model_calls WHERE task_id=?",taskId),"id");
+        budget.reconcile(callId,BigDecimal.ZERO);
+        String nextId=projects.retry(taskId,"other-test","replacement-model");
+        var next=store.one("SELECT * FROM tasks WHERE id=?",nextId);
+        assertThat(next.get("provider")).isEqualTo("other-test");
+        assertThat(next.get("model_name")).isEqualTo("replacement-model");
+        assertThat(catalog.forTask(next).model()).isEqualTo("replacement-model");
+        assertThat(catalog.forTask(next).provider()).isEqualTo("other-test");
+        assertThat(next.get("payload")).isEqualTo(original.get("payload"));
+        assertThat(store.one("SELECT provider FROM novels WHERE id=?",novel).get("provider")).isEqualTo("local-test");
+        assertThat(store.one("SELECT status FROM tasks WHERE id=?",taskId).get("status")).isEqualTo("CANCELLED");
+        var call=store.one("SELECT * FROM model_calls WHERE id=?",callId);
+        assertThat(call.get("model")).isEqualTo("text-model");
+        assertThat(call.get("status")).isEqualTo("RECONCILED");
+        assertThat((BigDecimal)call.get("actual")).isZero();
+        assertThat(store.list("SELECT * FROM model_calls WHERE task_id=?",nextId)).isEmpty();
+    }
+    @Test void invalidRetryChoiceKeepsFailedTaskAvailable() {
+        String task=research.create(List.of(),"职业悬疑","local-test","text-model");
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",task);
+        assertThatThrownBy(()->projects.retry(task,"missing","replacement-model")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->projects.retry(task,"default","replacement-model")).hasMessageContaining("配置");
+        assertThat(store.one("SELECT status FROM tasks WHERE id=?",task).get("status")).isEqualTo("ERROR");
+        assertThat(store.list("SELECT * FROM tasks")).hasSize(1);
+    }
     @Test void discussionInheritsReportChoiceAndSupportsPerMessageSwitch() {
         String original=research.create(List.of(),"职业悬疑","other-test","chosen-research-model");
         store.update("UPDATE tasks SET status='DONE' WHERE id=?",original);

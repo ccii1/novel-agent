@@ -33,7 +33,7 @@ public class SystemController {
         this.agents=agents;
         this.storage=storage;
     }
-    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai","skill",skills.status(),"agentFramework",AgentScopeExecutor.FRAMEWORK,"persistence","mybatis","rateLimiter",limiter.mode(),"researchModelSelection",true,"database",storage.kind()); }
+    @GetMapping("/status") public Object status() { return Map.of("engine",engine.status(),"modelConfigured",model.configured(),"timezone","Asia/Shanghai","skill",skills.status(),"agentFramework",AgentScopeExecutor.FRAMEWORK,"persistence","mybatis","rateLimiter",limiter.mode(),"researchModelSelection",true,"retryModelSelection",true,"database",storage.kind()); }
     @GetMapping("/skills") public Object skills() { return skills.status(); }
     @GetMapping("/agents") public Object agents() { return agents.catalogue(); }
     @GetMapping("/agents/metrics") public Object agentMetrics(@RequestParam(required=false) String novelId) { return agents.metrics(novelId); }

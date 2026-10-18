@@ -29,6 +29,7 @@ class HttpIntegrationTest {
         assertThat(request(module,null).statusCode()).isEqualTo(200);
         var response=request("/api/status",null);assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("modelConfigured").doesNotContain("api-key","Authorization");
+        assertThat(json.read(response.body()).path("retryModelSelection").asBoolean()).isTrue();
         assertThat(json.read(response.body()).path("skill").path("version").asText()).isEqualTo("2.0.1");
         assertThat(request("/api/skills",null).body()).contains("7d874e032d2de3dace74ae585cd2dbfbac2cde69");
         var providers=request("/api/providers",null);

@@ -19,11 +19,11 @@ export function useApi<T>(key: QueryKey, path: string, interval: number | false 
   return useQuery<T>({queryKey: key, queryFn: ({signal}) => api<T>(path, signal), refetchInterval: interval, enabled, staleTime});
 }
 
-export function useAction<T = unknown>() {
+export function useAction<T = unknown>(onSaved?: (result: T) => void) {
   const client = useQueryClient();
   return useMutation<T, Error, {path: string; body?: unknown}>({
     mutationFn: ({path, body}) => api<T>(path, undefined, body ?? {}),
-    onSuccess: async () => {await client.invalidateQueries();},
+    onSuccess: async result => {onSaved?.(result); await client.invalidateQueries();},
   });
 }
 

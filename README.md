@@ -38,7 +38,11 @@ flowchart LR
     HMR --> Browser
 ```
 
-执行 `npm.cmd run build` 可单独检查 TypeScript 并构建前端。项目根目录的 `mvnw.cmd package` 自动执行 `npm ci` 和前端构建，将产物打入 Java JAR；打包后通过8096访问相同的 React 页面。前端依赖与产物分别保存在已忽略的 `frontend/node_modules`、`frontend/dist`，Node 仅在开发与构建时使用。已有前端构建产物时，可通过 `mvnw.cmd "-Dfrontend.skip=true" package` 跳过 npm 步骤。
+执行 `npm.cmd run build` 可单独检查 TypeScript 并构建前端。项目根目录的 `mvnw.cmd package` 自动执行 `npm install` 和前端构建，将产物打入 Java JAR；安装使用已有 lock 文件与依赖目录。打包后通过8096访问相同的 React 页面。前端依赖与产物分别保存在已忽略的 `frontend/node_modules`、`frontend/dist`，Node 仅在开发与构建时使用。已有前端构建产物时，可通过 `mvnw.cmd "-Dfrontend.skip=true" package` 跳过 npm 步骤。
+
+失败任务卡片提供“选择模型并重新执行”入口。打开执行详情，在“选择本次重新执行的模型”中选择服务和模型，再点击“使用所选模型重新执行”。这次选择保存到新任务，原任务与调用费用继续保留，作品后续任务沿用作品设置。选题任务也使用相同入口。没有指定新选择的旧接口请求继续沿用原有选择。
+
+上次调用处于费用待核对状态时，详情窗口同时提供费用核对：免费服务点击确认0元，计费服务填写供应商确认的金额；核对完成后才能重新执行。后端通过 `/api/status` 的 `retryModelSelection` 声明支持该功能，升级后需要在 IDEA 重新启动后端。
 
 ## 框架与执行层
 

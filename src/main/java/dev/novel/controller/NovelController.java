@@ -41,7 +41,9 @@ public class NovelController {
     @PostMapping("/novels/{id}/pause") public Object pause(@PathVariable String id) { projects.pause(id);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/resume") public Object resume(@PathVariable String id) { projects.resume(id);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/revise") public Object revise(@PathVariable String id,@Valid @RequestBody Revision request) { projects.revise(id,request.instructions(),request.plan());return Map.of("ok",true); }
-    @PostMapping("/tasks/{id}/retry") public Object retry(@PathVariable String id) { return Map.of("id",projects.retry(id)); }
+    @PostMapping("/tasks/{id}/retry") public Object retry(@PathVariable String id,@Valid @RequestBody(required=false) RetryTask request) {
+        return Map.of("id",projects.retry(id,request==null?null:request.provider(),request==null?null:request.model()));
+    }
     @GetMapping("/novels/{id}/chapters/{number}") public Object chapter(@PathVariable String id,@PathVariable int number) { return workspace.chapter(id,number); }
     @PostMapping("/novels/{id}/chapters/{number}/published") public Object published(@PathVariable String id,@PathVariable int number,@RequestBody Published request) {
         workspace.published(id,number,request.published());return Map.of("ok",true);
