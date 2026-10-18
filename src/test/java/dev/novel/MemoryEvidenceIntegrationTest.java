@@ -57,6 +57,44 @@ class MemoryEvidenceIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings={"\n\n","\r\n\r\n","\t ","\u3000","\u00a0"})
+    void whitespaceDifferencesRestoreBodyEvidenceInDatabaseAndGraph(String whitespace) {
+        String fact="三扇门，三种锁法，坏掉的部件也不同。"+whitespace+"可条件一模一样。";
+        String relation="沈月"+whitespace+"收起密信";
+        String body=fact+"林舟交出钥匙。"+relation+"。";
+        var original=delta("“三扇门，三种锁法，坏掉的部件也不同。可条件一模一样。”","沈月收起密信");
+        var before=original.deepCopy();
+        var result=memory.validateDelta(original,body);
+        assertThat(result.path("facts").get(0).path("evidence").asText()).isEqualTo(fact);
+        assertThat(result.path("relations").get(0).path("evidence").asText()).isEqualTo(relation);
+        assertThat(original).isEqualTo(before);
+        String novel=projects.create("段落证据验证","出城条件","保持证据原文",1,BigDecimal.TEN,BigDecimal.ONE);
+        memory.commit(novel,1,1,result);
+        assertThat(memory.snapshot(novel,1).stream().map(row->json.read((String)row.get("content")).path("evidence").asText()))
+                .containsExactlyInAnyOrder(fact,relation);
+        var edges=(List<?>)memory.graph(novel,1,List.of(),2).get("edges");
+        assertThat(((Map<?,?>)edges.get(0)).get("evidence")).isEqualTo(relation);
+    }
+
+    @Test void modelWhitespaceCanDifferWhileBodyQuotesRemainPresent() {
+        var result=memory.validateDelta(delta("“林舟\n交出钥匙”","沈月\t收起密信"),"“林舟交出钥匙”。沈月收起密信。");
+        assertThat(result.path("facts").get(0).path("evidence").asText()).isEqualTo("“林舟交出钥匙”");
+        assertThat(result.path("relations").get(0).path("evidence").asText()).isEqualTo("沈月收起密信");
+    }
+
+    @Test void whitespaceCannotHideOmittedTextOrChangedPunctuation() {
+        for(String evidence:List.of("林舟交出钥匙。沈月收起密信","林舟交出钥匙；沈月收起密信")) {
+            assertThatThrownBy(()->memory.validateDelta(delta(evidence,"沈月收起密信"),"林舟交出钥匙。\n守卫转身离开。\n沈月收起密信。"))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("连续匹配");
+        }
+    }
+
+    @Test void whitespaceDoesNotCountTowardMinimumEvidenceLength() {
+        assertThatThrownBy(()->memory.validateDelta(delta("林\n\n舟","沈月收起密信"),"林\n\n舟交出钥匙。沈月收起密信。"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("不足4个字符");
+    }
+
+    @ParameterizedTest
     @ValueSource(strings={"林舟交出钥匙；沈月收起密信","林舟递出了钥匙","“林舟交出钥匙！”","“林舟交出钥匙"})
     void mismatchedEvidenceReportsRelationAndLeavesEntireDeltaUnchanged(String quote) {
         var result=delta("“林舟交出钥匙”",quote);
@@ -74,6 +112,25 @@ class MemoryEvidenceIntegrationTest {
         assertThatThrownBy(()->memory.validateDelta(result,"林舟交出钥匙。😀😀。沈月收起密信。"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("第1条事实","character:lin","不足4个字符");
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named="NOVEL_MEMORY_WHITESPACE_REPLAY_FILE",matches=".+")
+    void recordedParagraphEvidenceMatchesWhileChangedPunctuationRemainsRejected() throws Exception {
+        var captured=json.read(Files.readString(Path.of(System.getenv("NOVEL_MEMORY_WHITESPACE_REPLAY_FILE"))));
+        JsonNode original=captured.path("output");
+        String body=captured.path("body").asText();
+        var before=original.deepCopy();
+        var factsOnly=original.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)factsOnly).putArray("relations");
+        var result=memory.validateDelta(factsOnly,body);
+        var fact=result.path("facts").get(3);
+        assertThat(fact.path("key").asText()).isEqualTo("WORLD_EXIT_COLLAPSE_RULE");
+        assertThat(fact.path("evidence").asText()).isEqualTo("三扇门，三种锁法，坏掉的部件也不同。\n\n可条件一模一样。");
+        for(var item:result.path("facts")) assertThat(body).contains(item.path("evidence").asText());
+        assertThatThrownBy(()->memory.validateDelta(original,body))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("第1条关系","SIBLING_OF","他和妹妹贴着墙根走。");
+        assertThat(original).isEqualTo(before);
     }
 
     @Test

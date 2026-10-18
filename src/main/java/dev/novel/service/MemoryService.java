@@ -130,38 +130,65 @@ public class MemoryService {
         if(output.facts().size()+output.relations().size()>40) throw new IllegalArgumentException("单章记忆变更最多40条");
         Set<String> keys=new HashSet<>();
         JsonNode normalized=delta.deepCopy();
+        var bodyText=indexEvidence(body);
         for(int index=0;index<output.facts().size();index++) {
             var fact=output.facts().get(index);
             if(!keys.add(fact.key())) throw new IllegalArgumentException("记忆 key 重复");
             ((ObjectNode)normalized.get("facts").get(index)).put("evidence",
-                    evidence(fact.evidence(),body,"第"+(index+1)+"条事实（"+fact.key()+"）"));
+                    evidence(fact.evidence(),body,bodyText,"第"+(index+1)+"条事实（"+fact.key()+"）"));
         }
         for(int index=0;index<output.relations().size();index++) {
             var relation=output.relations().get(index);
             String key="relation:"+relation.subject()+":"+relation.predicate()+":"+relation.object();
             if(key.length()>350 || !keys.add(key)) throw new IllegalArgumentException("关系 key 重复或过长");
             ((ObjectNode)normalized.get("relations").get(index)).put("evidence",
-                    evidence(relation.evidence(),body,"第"+(index+1)+"条关系（"+key+"）"));
+                    evidence(relation.evidence(),body,bodyText,"第"+(index+1)+"条关系（"+key+"）"));
         }
         return normalized;
     }
-    private String evidence(String evidence,String body,String source) {
+    private String evidence(String evidence,String body,EvidenceText bodyText,String source) {
         String candidate=evidence;
-        if(!body.contains(candidate) && candidate.length()>=2) {
+        if(matchEvidence(candidate,body,bodyText)==null && candidate.length()>=2) {
             var pairs=Map.of('“','”','‘','’','「','」','『','』','"','"','\'','\'');
             Character closing=pairs.get(candidate.charAt(0));
             if(closing!=null && closing==candidate.charAt(candidate.length()-1)) {
                 String inner=candidate.substring(1,candidate.length()-1);
-                if(body.contains(inner)) candidate=inner;
+                if(matchEvidence(inner,body,bodyText)!=null) candidate=inner;
             }
         }
-        if(candidate.codePointCount(0,candidate.length())<4)
-            throw new IllegalArgumentException(source+"的记忆证据不足4个字符；额外引用引号不计入原文长度，模型响应已保存");
-        if(!body.contains(candidate)) {
+        String compact=indexEvidence(candidate).text();
+        if(compact.codePointCount(0,compact.length())<4)
+            throw new IllegalArgumentException(source+"的记忆证据不足4个字符；空白和额外引用引号不计入原文长度，模型响应已保存");
+        String matched=matchEvidence(candidate,body,bodyText);
+        if(matched==null) {
             String excerpt=evidence.length()>100?evidence.substring(0,100)+"…":evidence;
-            throw new IllegalArgumentException(source+"的记忆证据无法在当前正文中连续匹配："+json.write(excerpt)+"；请逐字引用正文，模型响应已保存");
+            throw new IllegalArgumentException(source+"的记忆证据无法在当前正文中连续匹配："+json.write(excerpt)+"；换行与空白差异已允许，文字和标点必须与正文一致，模型响应已保存");
         }
-        return candidate;
+        return matched;
+    }
+    private record EvidenceText(String text,int[] positions) {}
+
+    private EvidenceText indexEvidence(String text) {
+        StringBuilder compact=new StringBuilder(text.length());
+        int[] positions=new int[text.length()];
+        for(int index=0;index<text.length();index++) {
+            char character=text.charAt(index);
+            if(Character.isWhitespace(character) || Character.isSpaceChar(character) || character=='\u0085') continue;
+            positions[compact.length()]=index;
+            compact.append(character);
+        }
+        return new EvidenceText(compact.toString(),positions);
+    }
+
+    private String matchEvidence(String candidate,String body,EvidenceText bodyText) {
+        if(candidate.isEmpty()) return null;
+        if(body.contains(candidate)) return candidate;
+        String compact=indexEvidence(candidate).text();
+        if(compact.isEmpty()) return null;
+        int start=bodyText.text().indexOf(compact);
+        if(start<0) return null;
+        // 使用正文位置恢复完整原文，保留段落和空白供后续审核引用。
+        return body.substring(bodyText.positions()[start],bodyText.positions()[start+compact.length()-1]+1);
     }
     private String relationKey(JsonNode relation) {
         return "relation:"+json.text(relation,"subject")+":"+json.text(relation,"predicate")+":"+json.text(relation,"object");
