@@ -1,6 +1,6 @@
 # Novel Agent
 
-面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配与 Redis 记忆缓存代码已提供，1.7.0 尚未执行编译、数据库迁移或运行验证。
+面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
 
 ## 框架与执行层
 
@@ -397,7 +397,7 @@ Browser 地址为 [Neo4j Browser](http://127.0.0.1:7474/browser/)，Bolt 为 `bo
 
 ### MySQL 与已有数据迁移
 
-MySQL 账户与连接地址保存在忽略文件 `config/mysql-local.properties`，样例为 `config/mysql-local.example.properties`。业务数据库使用独立的 `novel_agent`，字符集为 utf8mb4，文本比较区分大小写。`mysql` profile 使用 Connector/J、HikariCP 和 Flyway，MyBatis 根据 JDBC 数据库类型选择对应 SQL；H2 SQL 初始化继续适用于已有运行方式。数据库类型也通过 `/api/status` 和观测看板返回。[MyBatis databaseIdProvider 说明](https://mybatis.org/mybatis-3/configuration.html#databaseIdProvider)描述了同名 SQL 按数据库选择的机制。
+MySQL 账户与连接地址保存在忽略文件 `config/mysql-local.properties`，样例为 `config/mysql-local.example.properties`。业务数据库使用独立的 `novel_agent`，字符集为 utf8mb4，文本比较区分大小写。连接使用 `connectionTimeZone=%2B08:00` 并同步设置 session 时区，对应北京时间；该配置不依赖服务器的命名时区表。`mysql` profile 使用 Connector/J、HikariCP 和 Flyway，MyBatis 根据 JDBC 数据库类型选择对应 SQL；H2 SQL 初始化继续适用于已有运行方式。数据库类型也通过 `/api/status` 和观测看板返回。[MyBatis databaseIdProvider 说明](https://mybatis.org/mybatis-3/configuration.html#databaseIdProvider)描述了同名 SQL 按数据库选择的机制。
 
 迁移需要结束应用写入，保留关闭后的 `data/novel.mv.db` 备份。以下命令为迁移操作说明，本次开发未执行：
 
@@ -507,6 +507,18 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 | [schema.sql](src/main/resources/schema.sql) | 作品、任务、章节、记忆及调用记录表 |
 
 ## 验证范围
+
+1.7.2 的59项非模型检查通过，Java 17 打包通过。其中13项在独立 MySQL 测试数据库执行，覆盖并发预算、版本关系、历史修改、草稿更新、调度时间、执行记录和人工评价；2项连接独立 Redis 验证共享限流以及记忆缓存的作品、版本和查询深度隔离。业务验证使用专用测试记录，模型生成另行验证。`ReviewEvidenceIntegrationTest` 覆盖连续原文引用与拼接引用的处理。
+
+本机 Edge 通过 Playwright 在独立测试服务切换全部9个作品页面，核对渲染内容与浏览器错误；1440×1000及390×844尺寸检查通过，手机尺寸没有整页横向溢出。Browser plugin not available，因此使用本机 Playwright；未使用截图，不评价视觉设计。Neo4j 的 Bolt 登录、独立节点写入、读取及删除通过，小说业务仍未接入 Neo4j。原有8096端口服务及其作品数据保持原状。
+
+`MySqlIntegrationTest` 默认关闭，设置 `NOVEL_MYSQL_TEST=true` 后读取本地 MySQL 配置，并创建唯一的 `novel_agent_test_` 数据库。`MemoryCacheIntegrationTest` 受 `NOVEL_REDIS_TEST=true` 控制，Redis 测试可通过 `NOVEL_REDIS_ADDRESS` 指向独立端口，使用独立 key 范围。验证日志和独立 H2 文件保存在忽略目录 `.work/`；完整历史数据迁移尚未执行。
+
+`LiveWorkflowTest` 受 `NOVEL_LOCAL_WORKFLOW_TEST=true` 控制，仅允许连接本机8317端口且计费方式必须为 `unmetered`。该验证使用实际 TaskEngine 调度、真实模型请求和独立文件数据库，允许自动流程停在阶段审核、重要变更审核或修改额度耗尽后的人工处理状态；接口检查通过与正文被接受分别记录。
+
+2026-10-18 使用本地 `gpt-5.6-luna` 执行一次真实流程：大纲、正文、四轮并行检查、四次修改分析与三次正文修改共25次模型调用，输入351621 token、输出31222 token，记录费用0元。流程最终为 `AWAITING_HELP`，正文仍为草稿，记忆版本0；自动修改额度用完后交给人工处理的行为正确，本次正文验收未通过。没有执行记忆提取与记忆审核，不能据此宣称完整连载验证通过。关系记忆、事务与历史修改的验证范围来自专用数据库测试。
+
+本次独立作品为 `e2593cad-c94d-49cb-98bb-1f631c329aef`，数据库位于 `.work/live-workflow-03549cd9-6e9f-4991-bc74-e526f2935e93.mv.db`；保留25条原始模型响应、25次执行记录、任务与事件。运行日志为 `.work/live-workflow.log`，自动化与打包记录为 `.work/regression-test.log`，真实流程检查记录为 `.work/live-workflow-test.log`。这些资料均被 Git 忽略，未包含进发布 JAR；本次没有迁移或修改已有作品的数据。
 
 1.6.1 的6项相关数据库与 HTTP 检查通过；真实 DeepSeek 完成一次选题和一次讨论，验证轻量进度、模型调用阶段、用量、本地日志、回复记录入口及编辑内容保留。Playwright 使用本机 Edge，在1440×1000和390×844窗口验证交互及横向尺寸，未使用截图。两次配置估算费用合计0.083446元，资料保存在独立验证数据库；文学质量、Redis 与全部角色组合、长期连载仍需继续验证。
 

@@ -6,6 +6,7 @@ logging:
     console: "%d{HH:mm:ss} %-5level %msg%n%wEx"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%logger{36}] %msg%n%wEx"
   charset:
+    console: UTF-8
     file: UTF-8
   file:
     name: ${NOVEL_LOG_FILE:./data/logs/novel-agent.log}
