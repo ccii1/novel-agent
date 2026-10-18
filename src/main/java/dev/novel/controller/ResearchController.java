@@ -17,10 +17,10 @@ public class ResearchController {
     @GetMapping public Object reports() { return workspace.researchReports(); }
     @GetMapping("/tasks") public Object tasks() { return workspace.researchTasks(); }
     @PostMapping public Object create(@Valid @RequestBody ResearchRequest request) {
-        return Map.of("id",research.create(request.urls(),request.brief()));
+        return Map.of("id",research.create(request.urls(),request.brief(),request.provider(),request.model()));
     }
     @GetMapping("/{id}") public Object detail(@PathVariable String id) { return research.detail(id); }
     @PostMapping("/{id}/messages") public Object message(@PathVariable String id,@Valid @RequestBody ResearchMessage request) {
-        return Map.of("id",research.chat(id,request.message()));
+        return Map.of("id",research.chat(id,request.message(),request.provider(),request.model()));
     }
 }

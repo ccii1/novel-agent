@@ -13,8 +13,10 @@ public final class ApiRequests {
             @NotNull @DecimalMin("0.01") @DecimalMax("100") BigDecimal chapterBudget,
             @Size(max=80) String provider,@Size(max=200) String model) {}
     public record ModelChoice(@NotBlank @Size(max=80) String provider,@Size(max=200) String model) {}
-    public record ResearchRequest(@Size(max=5) List<@NotBlank @Size(max=1500) String> urls,@Size(max=4000) String brief) {}
-    public record ResearchMessage(@NotBlank @Size(max=4000) String message) {}
+    public record ResearchRequest(@Size(max=5) List<@NotBlank @Size(max=1500) String> urls,@Size(max=4000) String brief,
+            @Size(max=80) String provider,@Size(max=200) String model) {}
+    public record ResearchMessage(@NotBlank @Size(max=4000) String message,
+            @Size(max=80) String provider,@Size(max=200) String model) {}
     public record Revision(@NotBlank @Size(max=12000) String instructions,JsonNode plan) {}
     public record Edit(@Min(1) int chapter,@NotBlank @Size(max=12000) String instructions) {}
     public record EditApproval(boolean acknowledgePublished) {}

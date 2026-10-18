@@ -4,6 +4,7 @@ import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.service.ProjectService;
 import dev.novel.service.BudgetService;
+import dev.novel.service.ResearchService;
 import dev.novel.integration.model.ModelCatalog;
 
 import org.junit.jupiter.api.*;
@@ -16,15 +17,18 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:selection;DB_CLOSE_DELAY=-1","novel.engine-enabled=false",
         "novel.default-provider=local-test","novel.providers.local-test.endpoint=http://localhost:18080/v1",
         "novel.providers.local-test.api-key=test-configuration-only","novel.providers.local-test.name=text-model",
-        "novel.providers.local-test.billing-mode=unmetered"})
+        "novel.providers.local-test.billing-mode=unmetered",
+        "novel.providers.other-test.endpoint=http://localhost:18081/v1","novel.providers.other-test.api-key=test-configuration-only",
+        "novel.providers.other-test.name=another-text-model","novel.providers.other-test.billing-mode=unmetered"})
 class ModelSelectionTest {
     @Autowired TestDatabase store;
     @Autowired ProjectService projects;
     @Autowired ModelCatalog catalog;
     @Autowired BudgetService budget;
     @Autowired Json json;
+    @Autowired ResearchService research;
     @BeforeEach void clean() {
-        for(String table:List.of("events","model_calls","tasks","novels")) store.update("DELETE FROM "+table);
+        for(String table:List.of("events","research_messages","research","model_calls","tasks","novels")) store.update("DELETE FROM "+table);
     }
     @Test void publicCatalogKeepsCredentialsPrivateAndUsesFreeProfile() {
         var selection=catalog.resolve(null,"selected-text-model","WRITE");
@@ -62,5 +66,38 @@ class ModelSelectionTest {
         String call=(String)store.one("SELECT id FROM model_calls WHERE task_id=?",second).get("id");
         assertThatThrownBy(()->budget.reconcile(call,BigDecimal.ONE)).isInstanceOf(IllegalArgumentException.class);
         budget.reconcile(call,BigDecimal.ZERO);
+    }
+    @Test void researchPersistsExplicitChoiceAndRetryRetainsIt() {
+        String id=research.create(List.of(),"职业悬疑","other-test","chosen-research-model");
+        var task=store.one("SELECT * FROM tasks WHERE id=?",id);
+        assertThat(catalog.forTask(task).provider()).isEqualTo("other-test");
+        assertThat(catalog.forTask(task).model()).isEqualTo("chosen-research-model");
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",id);
+        String retried=projects.retry(id);
+        var next=store.one("SELECT * FROM tasks WHERE id=?",retried);
+        assertThat(next.get("provider")).isEqualTo("other-test");
+        assertThat(next.get("model_name")).isEqualTo("chosen-research-model");
+    }
+    @Test void discussionInheritsReportChoiceAndSupportsPerMessageSwitch() {
+        String original=research.create(List.of(),"职业悬疑","other-test","chosen-research-model");
+        store.update("UPDATE tasks SET status='DONE' WHERE id=?",original);
+        String report=UUID.randomUUID().toString();
+        store.update("INSERT INTO research(id,task_id,sources,ideas,brief) VALUES(?,?,'[]','[]','职业悬疑')",report,original);
+        String inherited=research.chat(report,"扩大世界范围");
+        var first=store.one("SELECT * FROM tasks WHERE id=?",inherited);
+        assertThat(catalog.forTask(first).provider()).isEqualTo("other-test");
+        assertThat(catalog.forTask(first).model()).isEqualTo("chosen-research-model");
+        store.update("UPDATE tasks SET status='DONE' WHERE id=?",inherited);
+        String switched=research.chat(report,"补充职业细节","local-test","discussion-model");
+        var second=store.one("SELECT * FROM tasks WHERE id=?",switched);
+        assertThat(catalog.forTask(second).provider()).isEqualTo("local-test");
+        assertThat(catalog.forTask(second).model()).isEqualTo("discussion-model");
+        assertThat(json.write(research.detail(report).get("modelChoice"))).contains("discussion-model","local-test");
+        assertThat(store.one("SELECT model_name FROM tasks WHERE id=?",original).get("model_name")).isEqualTo("chosen-research-model");
+    }
+    @Test void invalidResearchProviderIsRejectedBeforeCreatingTask() {
+        assertThatThrownBy(()->research.create(List.of(),"职业悬疑","missing","")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->research.create(List.of(),"职业悬疑","default","")).isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.list("SELECT * FROM tasks")).isEmpty();
     }
 }

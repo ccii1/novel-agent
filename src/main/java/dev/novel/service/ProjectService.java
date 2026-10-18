@@ -130,6 +130,7 @@ public class ProjectService {
             String next=store.enqueue(novelId,(String)task.get("kind"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),Store.number(task,"memory_version"),
                     task.get("task_key")+":retry:"+UUID.randomUUID(),json.read((String)task.get("payload")));
             if(task.get("research_id")!=null) store.update("tasks.linkResearch",task.get("research_id"),next);
+            if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);
             if(novel!=null) {
                 require(novel,"ERROR","BUDGET_PAUSED","PLANNING","WRITING","CHECKING","REFLECTING","EXTRACTING","CHECKING_MEMORY");
                 if(Set.of("ERROR","BUDGET_PAUSED").contains(novel.get("status")))

@@ -63,6 +63,8 @@ public class ModelCatalog {
         if(task.get("novel_id")!=null) {
             var novel=store.novel((String)task.get("novel_id"));
             provider=Store.string(novel,"provider");model=Store.string(novel,"model_name");
+        } else if(task.get("provider")!=null) {
+            provider=Store.string(task,"provider");model=Store.string(task,"model_name");
         }
         return resolve(provider,model,Store.string(task,"kind"));
     }

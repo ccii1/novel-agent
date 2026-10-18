@@ -1,4 +1,6 @@
 const state = {view: 'new', id: null, tab: 'overview', detail: null, idea: null, researchId: null};
+state.researchChoice = null;
+state.researchChatChoices = {};
 state.observation = {novelId:'',chapter:'',kind:'',status:'',page:0};
 const duration = value => value == null ? '未记录' : Number(value) < 1000 ? `${Math.round(value)} ms` : `${(Number(value) / 1000).toFixed(2)} s`;
 const money = value => value == null ? '待确认' : `¥${Number(value).toFixed(6)}`;
@@ -41,13 +43,17 @@ async function renderNew() {
   <details class="card compact"><summary>配置云端模型</summary><p>将 config/application-local.example.yml 复制为 config/application-local.yml，填写完整的 HTTPS Chat Completions 地址、API key、模型名称及人民币 token 单价，然后重新启动服务。</p><p>也可以通过 NOVEL_MODEL_ENDPOINT、NOVEL_MODEL_API_KEY、NOVEL_MODEL_NAME、NOVEL_INPUT_PRICE、NOVEL_OUTPUT_PRICE 环境变量配置。模型需要支持 JSON object 和 token 用量返回。密钥文件已加入 Git 忽略规则。</p></details>`;
   await modelFields(document.querySelector('#newModelFields'));
 }
-async function modelFields(container, provider, model = '') {
+async function modelFields(container, provider, model = '', callbacks = {}) {
   const catalog = await api('/providers');
   provider = provider || catalog.defaultProvider;
   container.innerHTML = `<div class="grid"><div><label>模型服务</label><select name="provider">${catalog.providers.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === provider ? 'selected' : ''}>${escapeHtml(item.label)} · ${item.billingMode === 'unmetered' ? '免费调用' : '按 token 计费'}${item.ready ? '' : '（待配置）'}</option>`).join('')}</select></div><div><label>文本模型</label><select name="model"></select></div></div><p class="muted">免费服务保留 token 用量；计费服务沿用原有预算。切换后用于后续调用，已有记录继续保留。</p>`;
   const services = container.querySelector('[name=provider]');
   const models = container.querySelector('[name=model]');
+  let loadVersion = 0;
+  const remember = () => callbacks.onChange?.({provider:services.value,model:models.value});
   async function loadModels(chosen = '') {
+    const version = ++loadVersion;
+    callbacks.onReady?.(false);
     models.innerHTML = '<option value="">正在读取模型列表…</option>';
     models.disabled = true;
     const profile = catalog.providers.find(item => item.id === services.value);
@@ -56,12 +62,32 @@ async function modelFields(container, provider, model = '') {
       return;
     }
     const names = await api(`/providers/${encodeURIComponent(services.value)}/models`);
+    if (version !== loadVersion || !container.isConnected) return;
     if (chosen && !names.includes(chosen)) names.unshift(chosen);
     models.innerHTML = `<option value="">服务默认（${escapeHtml(profile.defaultModel)}）</option>${names.map(name => `<option value="${escapeHtml(name)}" ${name === chosen ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}`;
     models.disabled = false;
+    remember();
+    callbacks.onReady?.(true);
   }
-  services.addEventListener('change', () => loadModels().catch(error => notice(error.message, true)));
+  services.addEventListener('change', () => {
+    callbacks.onChange?.({provider:services.value,model:''});
+    loadModels().catch(error => notice(error.message, true));
+  });
+  models.addEventListener('change',remember);
   await loadModels(model);
+}
+async function researchModelFields(container,choice,remember,busy = false) {
+  const submit = container.closest('form').querySelector('button');
+  submit.disabled = true;
+  try {
+    const capabilities = await api('/status');
+    if (!capabilities.researchModelSelection) throw new Error('请重启后端服务以启用选题模型选择');
+    await modelFields(container,choice?.provider,choice?.model || '',{
+      onChange:value => { if (container.isConnected) remember(value); },
+      onReady:ready => { if (container.isConnected) submit.disabled = busy || !ready; }
+    });
+    if (busy && container.isConnected) container.querySelectorAll('select').forEach(select => { select.disabled = true; });
+  } catch(error) { if (container.isConnected) { submit.disabled = true;notice(error.message,true); } }
 }
 async function renderResearch() {
   const [researches, tasks] = await Promise.all([api('/research'),api('/research/tasks')]);
@@ -73,7 +99,11 @@ async function renderResearch() {
     <div class="research-layout"><div class="research-compose"><form id="researchForm" class="card"><h2>你的创作想法</h2><label for="researchBrief">想写怎样的故事？</label><textarea id="researchBrief" name="brief" maxlength="4000" placeholder="例如：想写一个小城修理工卷入旧案的故事，主角靠专业技能调查。希望悬疑感强，有生活气息，感情线克制。"></textarea><p class="field-help">可以描述题材、人设、喜欢的情节，以及不想出现的内容。</p><details class="source-input"><summary>添加参考资料（可选）</summary><label for="researchUrls">番茄公开榜单或作品详情链接</label><textarea id="researchUrls" name="urls" placeholder="每行一个链接，最多五个"></textarea></details><button>开始研究选题 <span aria-hidden="true">→</span></button></form>
     <div class="report-history"><h3>之前的选题</h3>${researches.map(report => `<button type="button" data-report="${escapeHtml(report.id)}" class="report-link ${report.id === state.researchId ? 'active' : ''}"><strong>${escapeHtml(report.brief || JSON.parse(report.ideas)[0]?.title || '选题报告')}</strong><small>${escapeHtml(report.created_at)}</small></button>`).join('') || '<p class="muted">你的选题和交流会保存在这里。</p>'}</div></div>
     <div class="research-results">${tasks.filter(task => task.kind === 'RESEARCH' && !['DONE','CANCELLED'].includes(task.status)).map(task => `<div class="card research-progress"><h3>选题研究 ${badge(task.status)}</h3>${researchTaskProgress(task)}</div>`).join('')}<div id="researchReport"></div></div></div>`;
-  await renderResearchReport();
+  content.querySelector('#researchForm>button').insertAdjacentHTML('beforebegin','<div id="researchModelFields" class="research-model-fields"></div>');
+  await Promise.all([
+    researchModelFields(document.querySelector('#researchModelFields'),state.researchChoice,value => {state.researchChoice = value;}),
+    renderResearchReport()
+  ]);
   await refreshResearchProgress();
 }
 async function renderResearchReport() {
@@ -94,6 +124,10 @@ async function renderResearchReport() {
   panel.querySelectorAll('.message.assistant').forEach((element,index) => {
     if (replies[index]?.task_id) element.insertAdjacentHTML('beforeend',`<button type="button" class="secondary message-trace" data-observe-task="${escapeHtml(replies[index].task_id)}">查看生成过程、耗时与费用</button>`);
   });
+  const composer = panel.querySelector('#researchChatForm');
+  composer.querySelector('.composer-footer').insertAdjacentHTML('beforebegin','<div id="researchChatModelFields" class="research-model-fields"></div>');
+  await researchModelFields(document.querySelector('#researchChatModelFields'),state.researchChatChoices[report.id] || detail.modelChoice,
+    value => {state.researchChatChoices[report.id] = value;},busy);
 }
 function researchTaskProgress(task) {
   return `<section class="task-progress" data-progress-task="${escapeHtml(task.id)}" aria-live="polite"><div class="task-progress-heading"><strong data-progress-stage>${escapeHtml(labels[task.status] || task.status)}</strong><span data-progress-elapsed></span></div><p data-progress-model class="muted">正在读取持久化执行记录…</p><p data-progress-error class="error">${escapeHtml(task.error || '')}</p><small>任务 ${escapeHtml(task.id)}</small><details><summary>最近执行事件 · 北京时间</summary><div data-progress-events></div></details><button type="button" class="secondary" data-observe-task="${escapeHtml(task.id)}">查看调用与执行详情</button>${task.status === 'ERROR' ? `<button type="button" data-retry="${escapeHtml(task.id)}">确认重新执行</button>` : ''}</section>`;
@@ -241,8 +275,8 @@ document.addEventListener('submit', async event => {
       return;
     }
     if (form.id === 'newForm') { const created = await api('/novels','POST',{...data,stageSize:Number(data.stageSize),novelBudget:Number(data.novelBudget),chapterBudget:Number(data.chapterBudget)}); state.view = 'novel'; state.id = created.id; state.tab = 'overview';state.idea = null; }
-    if (form.id === 'researchForm') { await api('/research','POST',{brief:data.brief.trim(),urls:data.urls.split(/\r?\n/).map(item => item.trim()).filter(Boolean)});state.researchId = null; }
-    if (form.id === 'researchChatForm') await api(`/research/${form.dataset.id}/messages`,'POST',{message:data.message});
+    if (form.id === 'researchForm') { await api('/research','POST',{brief:data.brief.trim(),urls:data.urls.split(/\r?\n/).map(item => item.trim()).filter(Boolean),provider:data.provider,model:data.model || ''});state.researchId = null; }
+    if (form.id === 'researchChatForm') await api(`/research/${form.dataset.id}/messages`,'POST',{message:data.message,provider:data.provider,model:data.model || ''});
     if (form.id === 'modelForm') await api(`/novels/${state.id}/model`,'POST',data);
     if (form.id === 'planForm') await api(`/novels/${state.id}/approve-plan`,'POST',JSON.parse(data.plan));
     if (form.id === 'reviseForm') await api(`/novels/${state.id}/revise`,'POST',{instructions:data.instructions,plan:data.plan.trim() ? JSON.parse(data.plan) : null});
@@ -268,6 +302,7 @@ setInterval(async () => {
       const signature = JSON.stringify(tasks.map(task => [task.id,task.status]));
       if (state.view !== 'research') return;
       if (signature === state.researchSignature) { await refreshResearchProgress();return; }
+      if (document.activeElement?.matches('#researchModelFields select,#researchChatModelFields select')) { await refreshResearchProgress();return; }
       state.researchRefreshing = true;
       const brief = document.querySelector('#researchBrief')?.value || '';
       const urls = document.querySelector('#researchUrls')?.value || '';

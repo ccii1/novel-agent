@@ -3,6 +3,7 @@ package dev.novel.service;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelClient;
+import dev.novel.integration.model.ModelCatalog;
 import dev.novel.agent.AgentOutputReader;
 import dev.novel.dto.AgentOutputs;
 
@@ -20,35 +21,66 @@ public class ResearchService {
     private final Json json;
     private final ModelClient model;
     private final AgentOutputReader outputs;
-    public ResearchService(Store store,Json json,ModelClient model,AgentOutputReader outputs) { this.store=store;this.json=json;this.model=model;this.outputs=outputs; }
+    private final ModelCatalog catalog;
+    public ResearchService(Store store,Json json,ModelClient model,AgentOutputReader outputs,ModelCatalog catalog) { this.store=store;this.json=json;this.model=model;this.outputs=outputs;this.catalog=catalog; }
     public String create(List<String> urls,String brief) {
+        return create(urls,brief,null,null);
+    }
+    public String create(List<String> urls,String brief,String provider,String chosenModel) {
         var links=urls==null?List.<String>of():List.copyOf(urls);
         String instruction=Objects.toString(brief,"").trim();
         if(links.size()>5 || instruction.length()>4000 || (links.isEmpty() && instruction.isBlank()))
             throw new IllegalArgumentException("请填写自己的想法或参考链接，想法最多4000字符，链接最多五个");
         links.forEach(this::validateUrl);
-        return store.transaction(()->store.enqueue(null,"RESEARCH",0,0,0,"research:"+UUID.randomUUID(),Map.of("urls",links,"brief",instruction)));
+        var selected=selection(provider,chosenModel,"RESEARCH");
+        return store.transaction(()-> {
+            String task=store.enqueue(null,"RESEARCH",0,0,0,"research:"+UUID.randomUUID(),Map.of("urls",links,"brief",instruction));
+            store.update("tasks.modelChoice",selected.provider(),selected.model(),task);
+            return task;
+        });
     }
     public Map<String,Object> detail(String id) {
         return Map.of("report",store.one("research.find",id),
                 "messages",store.list("research.messages",id),
-                "tasks",store.list("tasks.byResearch",id));
+                "tasks",store.list("tasks.byResearch",id),"modelChoice",reportChoice(id));
     }
     public String chat(String id,String message) {
+        return chat(id,message,null,null);
+    }
+    public String chat(String id,String message,String provider,String chosenModel) {
         if(message==null || message.isBlank() || message.length()>4000) throw new IllegalArgumentException("讨论内容需要为1至4000字符");
         return store.transaction(()-> {
             var report=store.one("research.lock",id);
             if(!store.list("tasks.activeResearch",id).isEmpty())
                 throw new IllegalStateException("请等待当前回复完成；失败任务需要处理后继续讨论");
+            var choice=reportChoice(id);
+            boolean inherit=(provider==null || provider.isBlank()) && (chosenModel==null || chosenModel.isBlank());
+            var selected=selection(provider==null || provider.isBlank()?choice.get("provider"):provider,
+                    inherit?choice.get("model"):chosenModel,"RESEARCH_CHAT");
             var history=new ArrayList<>(store.list("research.recent",id));
             Collections.reverse(history);
             String task=store.enqueue(null,"RESEARCH_CHAT",0,0,0,"research-chat:"+UUID.randomUUID(),
                     Map.of("researchId",id,"message",message,"history",history,"previousIdeas",json.read((String)report.get("ideas")),
                             "evidence",json.read((String)report.get("sources")),"brief",Store.string(report,"brief")));
             store.update("tasks.linkResearch",id,task);
+            store.update("tasks.modelChoice",selected.provider(),selected.model(),task);
             store.update("research.userMessage",id,message,task);
             return task;
         });
+    }
+    private ModelCatalog.Selection selection(String provider,String chosenModel,String kind) {
+        if(provider!=null && provider.length()>80 || chosenModel!=null && chosenModel.length()>200)
+            throw new IllegalArgumentException("模型服务或模型名称超出长度限制");
+        var selected=catalog.resolve(provider,chosenModel,kind);
+        if((provider!=null && !provider.isBlank() || chosenModel!=null && !chosenModel.isBlank()) && !selected.ready())
+            throw new IllegalArgumentException("所选模型服务尚未配置完成");
+        return selected;
+    }
+    private Map<String,String> reportChoice(String id) {
+        var rows=store.list("tasks.researchModel",id);
+        var selected=rows.isEmpty()?catalog.resolve(null,"","RESEARCH_CHAT"):
+                catalog.resolve(Store.string(rows.get(0),"provider"),Store.string(rows.get(0),"model_name"),"RESEARCH_CHAT");
+        return Map.of("provider",selected.provider(),"model",selected.model());
     }
     public JsonNode execute(Map<String,Object> task,JsonNode payload,String system) throws Exception {
         JsonNode sources=payload.path("evidence");
