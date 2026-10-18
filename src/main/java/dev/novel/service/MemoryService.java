@@ -8,6 +8,7 @@ import dev.novel.repository.mapper.MemoryMapper;
 import dev.novel.repository.model.MemoryEntry;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.tinkerpop.gremlin.structure.*;
 import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
@@ -124,22 +125,43 @@ public class MemoryService {
         Map<String,Object> result=new LinkedHashMap<>(grouped);
         result.put("retainedMemoryCount",snapshot.size());return result;
     }
-    public void validateDelta(JsonNode delta, String body) {
+    public JsonNode validateDelta(JsonNode delta, String body) {
         var output=outputs.read(delta,AgentOutputs.MemoryDelta.class);
         if(output.facts().size()+output.relations().size()>40) throw new IllegalArgumentException("单章记忆变更最多40条");
         Set<String> keys=new HashSet<>();
-        for(var fact:output.facts()) {
+        JsonNode normalized=delta.deepCopy();
+        for(int index=0;index<output.facts().size();index++) {
+            var fact=output.facts().get(index);
             if(!keys.add(fact.key())) throw new IllegalArgumentException("记忆 key 重复");
-            evidence(fact.evidence(),body);
+            ((ObjectNode)normalized.get("facts").get(index)).put("evidence",
+                    evidence(fact.evidence(),body,"第"+(index+1)+"条事实（"+fact.key()+"）"));
         }
-        for(var relation:output.relations()) {
+        for(int index=0;index<output.relations().size();index++) {
+            var relation=output.relations().get(index);
             String key="relation:"+relation.subject()+":"+relation.predicate()+":"+relation.object();
             if(key.length()>350 || !keys.add(key)) throw new IllegalArgumentException("关系 key 重复或过长");
-            evidence(relation.evidence(),body);
+            ((ObjectNode)normalized.get("relations").get(index)).put("evidence",
+                    evidence(relation.evidence(),body,"第"+(index+1)+"条关系（"+key+"）"));
         }
+        return normalized;
     }
-    private void evidence(String evidence,String body) {
-        if(!body.contains(evidence)) throw new IllegalArgumentException("记忆证据必须引用正文中至少4个字符的原文");
+    private String evidence(String evidence,String body,String source) {
+        String candidate=evidence;
+        if(!body.contains(candidate) && candidate.length()>=2) {
+            var pairs=Map.of('“','”','‘','’','「','」','『','』','"','"','\'','\'');
+            Character closing=pairs.get(candidate.charAt(0));
+            if(closing!=null && closing==candidate.charAt(candidate.length()-1)) {
+                String inner=candidate.substring(1,candidate.length()-1);
+                if(body.contains(inner)) candidate=inner;
+            }
+        }
+        if(candidate.codePointCount(0,candidate.length())<4)
+            throw new IllegalArgumentException(source+"的记忆证据不足4个字符；额外引用引号不计入原文长度，模型响应已保存");
+        if(!body.contains(candidate)) {
+            String excerpt=evidence.length()>100?evidence.substring(0,100)+"…":evidence;
+            throw new IllegalArgumentException(source+"的记忆证据无法在当前正文中连续匹配："+json.write(excerpt)+"；请逐字引用正文，模型响应已保存");
+        }
+        return candidate;
     }
     private String relationKey(JsonNode relation) {
         return "relation:"+json.text(relation,"subject")+":"+json.text(relation,"predicate")+":"+json.text(relation,"object");

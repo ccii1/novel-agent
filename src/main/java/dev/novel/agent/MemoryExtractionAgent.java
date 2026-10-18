@@ -24,9 +24,9 @@ public class MemoryExtractionAgent implements NovelAgent {
                 "relations:[{subject:string,predicate:string,object:string,detail:string,deleted:boolean,evidence:string}]}。"+
                 "summary 不超过600字。kind 仅为 WORLD/CHARACTER/EVENT/FORESHADOW。伏笔可以附加 dueChapter 整数表示计划回收章节。"+
                 "相同事实沿用已有 key；伏笔回收时沿用 key 并设置 active=false。关系改变时沿用 subject/predicate/object，结束旧关系设置 deleted=true。"+
-                "人物获知秘密用 KNOWS 关系，秘密作为 object。evidence 必须逐字引用当前正文至少4个字符。只抽取已有事实，最多40条增量。"+
+                "人物获知秘密用 KNOWS 关系，秘密作为 object。evidence 必须是当前正文中连续、逐字一致且至少4个字符的原文；"+
+                "不要额外添加引用引号，不要改写、拼接不同位置的句子或修改标点。只抽取当前正文已明确支持的事实，最多40条增量；历史记忆为空时仍可建立首批记忆。"+
                 "上下文="+context.context(task,contextFiles())+"；正文="+json.write(draft));
-        memory.validateDelta(result,(String)draft.get("body"));
-        return result;
+        return memory.validateDelta(result,(String)draft.get("body"));
     }
 }
