@@ -76,6 +76,19 @@
       skill_version,skill_fingerprint,execution_id,response FROM model_calls WHERE task_id=#{id}
   </select>
   <select id="executions" resultType="map">SELECT * FROM agent_executions WHERE task_id=#{id} ORDER BY started_at,id</select>
+  <select id="progress" resultType="map">
+    SELECT t.id,t.kind,t.status,t.error,t.created_at,t.updated_at,e.id AS execution_id,e.started_at,e.finished_at,
+      CASE WHEN e.status='RUNNING' THEN GREATEST(0,DATEDIFF('MILLISECOND',e.started_at,CURRENT_TIMESTAMP)) ELSE e.duration_ms END AS elapsed_ms,
+      GREATEST(0,DATEDIFF('MILLISECOND',t.created_at,CURRENT_TIMESTAMP)) AS task_age_ms,
+      c.id AS call_id,c.status AS call_status,c.provider,c.model,c.actual,c.reserved,c.input_tokens,c.output_tokens,
+      CASE WHEN c.status='IN_FLIGHT' THEN GREATEST(0,DATEDIFF('MILLISECOND',c.created_at,CURRENT_TIMESTAMP)) ELSE c.latency_ms END AS model_elapsed_ms
+    FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
+    LEFT JOIN agent_executions e ON e.task_id=t.id AND e.id=(SELECT e2.id FROM agent_executions e2 WHERE e2.task_id=t.id ORDER BY e2.started_at DESC,e2.id DESC LIMIT 1)
+    WHERE t.id=#{id}
+  </select>
+  <select id="progressEvents" resultType="map">
+    SELECT id,type,message,created_at,execution_id FROM events WHERE task_id=#{id} ORDER BY id DESC LIMIT 12
+  </select>
   <select id="events" resultType="map">SELECT * FROM events WHERE task_id=#{id} ORDER BY id DESC LIMIT 500</select>
   <select id="feedback" resultType="map">SELECT * FROM agent_feedback WHERE task_id=#{id} ORDER BY id DESC</select>
   <insert id="addFeedback">INSERT INTO agent_feedback(task_id,rating,note) VALUES(#{id},#{rating},#{note})</insert>

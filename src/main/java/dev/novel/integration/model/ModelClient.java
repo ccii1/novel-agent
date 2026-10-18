@@ -27,9 +27,10 @@ public class ModelClient {
     private final AgentScopeExecutor executor;
     private final ModelRateLimiter rateLimiter;
     private final ModelCallMapper calls;
+    private final Store events;
     public ModelClient(Json json, BudgetService budget,
             @Value("${novel.model.max-output-tokens}") int maxOutput, @Value("${novel.max-context-bytes}") int maxContext,
-            ModelCatalog catalog,SkillService skills,AgentScopeExecutor executor,ModelRateLimiter rateLimiter,ModelCallMapper calls) {
+            ModelCatalog catalog,SkillService skills,AgentScopeExecutor executor,ModelRateLimiter rateLimiter,ModelCallMapper calls,Store events) {
         this.json=json; this.budget=budget;
         this.maxOutput=maxOutput; this.maxContext=maxContext;
         this.catalog=catalog;
@@ -37,6 +38,7 @@ public class ModelClient {
         this.executor=executor;
         this.rateLimiter=rateLimiter;
         this.calls=calls;
+        this.events=events;
     }
     public boolean configured() { return catalog.resolve(null,"","PLAN").ready(); }
     public void validateCheckpoint(Map<String,Object> task) {
@@ -75,8 +77,11 @@ public class ModelClient {
                 budget.reserve(task,reserve.get(),selected.model(),selectedInputPrice,selectedOutputPrice,skill,body,
                         selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
                 started.set(System.nanoTime());
+                storeEvent(task,"MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),
+                        "contextBytes",bytes,"maxOutputTokens",maxOutput,"reserved",reserve.get(),"callId",callId));
             },response -> {
                 long latency=elapsed(started.get());
+                storeEvent(task,"MODEL_RESPONSE_RECEIVED",Map.of("callId",callId,"httpStatus",response.getStatusCode(),"latencyMs",latency));
                 if(!response.isSuccessful()) {
                     calls.observation(callId,latency,null,null);
                     throw new IllegalStateException("模型 API 返回 HTTP "+response.getStatusCode()+"，请在供应商后台核对是否计费");
@@ -88,6 +93,10 @@ public class ModelClient {
                 Long cachedTokens=cached.isIntegralNumber() && cached.canConvertToLong() && cached.asLong()>=0?cached.asLong():null;
                 calls.observation(callId,latency,usage.isMissingNode()?null:json.write(usage),cachedTokens);
                 settle(callId,selected,reserve.get(),response);
+                Map<String,Object> usageMetadata=new LinkedHashMap<>();
+                usageMetadata.put("callId",callId);usageMetadata.put("inputTokens",usage.path("prompt_tokens").asLong());
+                usageMetadata.put("outputTokens",usage.path("completion_tokens").asLong());usageMetadata.put("cachedInputTokens",cachedTokens);
+                storeEvent(task,"MODEL_USAGE_RECORDED",usageMetadata);
             });
             return json.read(content);
         } catch (Exception e) {
@@ -104,6 +113,9 @@ public class ModelClient {
         }
     }
     private long elapsed(long started) { return Math.max(0,(System.nanoTime()-started)/1_000_000); }
+    private void storeEvent(Map<String,Object> task,String type,Object metadata) {
+        events.event((String)task.get("novel_id"),Store.string(task,"id"),type,json.write(metadata),(String)task.get("execution_id"));
+    }
     private void settle(String callId,ModelCatalog.Selection selected,BigDecimal reserve,HttpResponse response) {
         if(!response.isSuccessful())
             throw new IllegalStateException("模型 API 返回 HTTP " + response.getStatusCode() + "，请在供应商后台核对是否计费");

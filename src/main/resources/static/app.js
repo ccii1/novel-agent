@@ -2,6 +2,7 @@ const state = {view: 'new', id: null, tab: 'overview', detail: null, idea: null,
 state.observation = {novelId:'',chapter:'',kind:'',status:'',page:0};
 const duration = value => value == null ? '未记录' : Number(value) < 1000 ? `${Math.round(value)} ms` : `${(Number(value) / 1000).toFixed(2)} s`;
 const money = value => value == null ? '待确认' : `¥${Number(value).toFixed(6)}`;
+const localTime = value => value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚未记录';
 const labels = {PLANNING:'规划中',AWAITING_PLAN:'等待大纲审核',WRITING:'写作中',CHECKING:'并行检查中',REFLECTING:'制定修改计划',EXTRACTING:'提取创作记忆',CHECKING_MEMORY:'检查记忆变更',AWAITING_STAGE_REVIEW:'等待阶段审核',AWAITING_CHANGE:'等待重大变更审核',AWAITING_HELP:'需要人工处理',PAUSED:'已暂停',ERROR:'执行失败',BUDGET_PAUSED:'费用额度不足',WAITING:'等待执行',READY:'结果等待处理',RUNNING:'执行中',DONE:'已完成',CANCELLED:'已取消',DRAFT:'草稿',ACCEPTED:'检查通过',INVALIDATED:'等待重新生成',IN_FLIGHT:'调用中',COMPLETE:'已结算',UNCERTAIN:'费用待核对',RECONCILED:'已人工核对'};
 const content = document.querySelector('#content');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
@@ -71,8 +72,9 @@ async function renderResearch() {
   content.innerHTML = `<div class="intro"><h1>好故事，从一个想法开始</h1><p class="muted">告诉 Agent 你想写什么。一起讨论人物、冲突与读者期待，找到值得持续创作的方向。</p></div>
     <div class="research-layout"><div class="research-compose"><form id="researchForm" class="card"><h2>你的创作想法</h2><label for="researchBrief">想写怎样的故事？</label><textarea id="researchBrief" name="brief" maxlength="4000" placeholder="例如：想写一个小城修理工卷入旧案的故事，主角靠专业技能调查。希望悬疑感强，有生活气息，感情线克制。"></textarea><p class="field-help">可以描述题材、人设、喜欢的情节，以及不想出现的内容。</p><details class="source-input"><summary>添加参考资料（可选）</summary><label for="researchUrls">番茄公开榜单或作品详情链接</label><textarea id="researchUrls" name="urls" placeholder="每行一个链接，最多五个"></textarea></details><button>开始研究选题 <span aria-hidden="true">→</span></button></form>
     <div class="report-history"><h3>之前的选题</h3>${researches.map(report => `<button type="button" data-report="${escapeHtml(report.id)}" class="report-link ${report.id === state.researchId ? 'active' : ''}"><strong>${escapeHtml(report.brief || JSON.parse(report.ideas)[0]?.title || '选题报告')}</strong><small>${escapeHtml(report.created_at)}</small></button>`).join('') || '<p class="muted">你的选题和交流会保存在这里。</p>'}</div></div>
-    <div class="research-results">${tasks.filter(task => task.kind === 'RESEARCH' && !['DONE','CANCELLED'].includes(task.status)).map(task => `<div class="card research-progress"><h3>正在研究你的想法 ${badge(task.status)}</h3><p class="muted">完成后会生成三个方案，你可以继续讨论和修改。</p>${task.status === 'ERROR' ? taskCard(task) : ''}</div>`).join('')}<div id="researchReport"></div></div></div>`;
+    <div class="research-results">${tasks.filter(task => task.kind === 'RESEARCH' && !['DONE','CANCELLED'].includes(task.status)).map(task => `<div class="card research-progress"><h3>选题研究 ${badge(task.status)}</h3>${researchTaskProgress(task)}</div>`).join('')}<div id="researchReport"></div></div></div>`;
   await renderResearchReport();
+  await refreshResearchProgress();
 }
 async function renderResearchReport() {
   const panel = document.querySelector('#researchReport');
@@ -85,9 +87,32 @@ async function renderResearchReport() {
   panel.innerHTML = `<div class="report-heading"><div><h2>一起把故事想清楚</h2><p class="muted">三个故事方向，随着交流持续更新。</p></div><span class="report-count">${ideas.length} 个方案</span></div>
     <div class="idea-list">${ideas.map((idea,index) => `<article class="idea-card"><div class="idea-number">0${index + 1}</div><div class="idea-content"><p class="idea-meta">${escapeHtml(idea.audience)} · ${escapeHtml(idea.genre)}</p><h3>${escapeHtml(idea.title)}</h3><p>${escapeHtml(idea.premise)}</p><div class="idea-hook">${escapeHtml(idea.hook)}</div><details><summary>长期冲突与创作难点</summary><p>${escapeHtml(idea.longTermConflict)}</p><ul>${(idea.risks || []).map(risk => `<li>${escapeHtml(risk)}</li>`).join('')}</ul></details><div class="idea-actions"><button type="button" data-discuss-idea="${index}" class="secondary">讨论这个方向</button><button type="button" data-idea="${escapeHtml(report.id)}" data-index="${index}">用这个方案创建作品</button></div></div></article>`).join('')}</div>
     <section class="discussion"><h2>选题讨论</h2><div class="messages" aria-live="polite">${detail.messages.map(message => `<div class="message ${message.role === 'USER' ? 'user' : 'assistant'}"><div class="message-author">${message.role === 'USER' ? '你' : '选题 Agent'} <small>${escapeHtml(message.created_at)}</small></div><div class="message-body">${escapeHtml(message.content)}</div>${message.ideas ? `<details><summary>查看本轮三个方案</summary><pre>${escapeHtml(pretty(message.ideas))}</pre></details>` : ''}</div>`).join('') || '<p class="muted">在下方补充你的想法，开始这份报告的讨论。</p>'}</div>
-    <div id="discussionTask">${detail.tasks.filter(task => !['DONE','CANCELLED'].includes(task.status)).map(task => task.status === 'ERROR' ? taskCard(task) : `<p class="discussion-pending">Agent 正在思考你的意见…</p>`).join('')}</div>
+    <div id="discussionTask">${detail.tasks.filter(task => !['DONE','CANCELLED'].includes(task.status)).map(task => researchTaskProgress(task)).join('')}</div>
     <form id="researchChatForm" data-id="${escapeHtml(report.id)}"><label for="researchMessage">补充想法，继续讨论</label><textarea id="researchMessage" name="message" required maxlength="4000" placeholder="例如：我喜欢第二个方向，但希望主角更主动，减少系统设定，增加职业细节。" ${busy ? 'disabled' : ''}></textarea><div class="composer-footer"><small>回复后会更新上方方案，交流记录持续保留。</small><button ${busy ? 'disabled' : ''}>发送并调整方案 →</button></div></form></section>
     <details class="report-sources"><summary>参考资料与最初想法</summary><p>${escapeHtml(report.brief)}</p>${JSON.parse(report.sources).length ? `<pre>${escapeHtml(pretty(report.sources))}</pre>` : '<p class="muted">本次基于个人想法进行创意讨论。</p>'}</details>`;
+  const replies = detail.messages.filter(message => message.role !== 'USER');
+  panel.querySelectorAll('.message.assistant').forEach((element,index) => {
+    if (replies[index]?.task_id) element.insertAdjacentHTML('beforeend',`<button type="button" class="secondary message-trace" data-observe-task="${escapeHtml(replies[index].task_id)}">查看生成过程、耗时与费用</button>`);
+  });
+}
+function researchTaskProgress(task) {
+  return `<section class="task-progress" data-progress-task="${escapeHtml(task.id)}" aria-live="polite"><div class="task-progress-heading"><strong data-progress-stage>${escapeHtml(labels[task.status] || task.status)}</strong><span data-progress-elapsed></span></div><p data-progress-model class="muted">正在读取持久化执行记录…</p><p data-progress-error class="error">${escapeHtml(task.error || '')}</p><small>任务 ${escapeHtml(task.id)}</small><details><summary>最近执行事件 · 北京时间</summary><div data-progress-events></div></details><button type="button" class="secondary" data-observe-task="${escapeHtml(task.id)}">查看调用与执行详情</button>${task.status === 'ERROR' ? `<button type="button" data-retry="${escapeHtml(task.id)}">确认重新执行</button>` : ''}</section>`;
+}
+async function refreshResearchProgress() {
+  await Promise.all([...content.querySelectorAll('[data-progress-task]')].map(async element => {
+    try {
+      const progress = await api(`/observability/tasks/${encodeURIComponent(element.dataset.progressTask)}/progress`);
+      if (!element.isConnected) return;
+      const task = progress.task;
+      element.querySelector('[data-progress-stage]').textContent = progress.stage;
+      element.querySelector('[data-progress-elapsed]').textContent = task.elapsed_ms == null ? `任务创建于 ${localTime(task.created_at)}` : `本次执行 ${duration(task.elapsed_ms)}`;
+      element.querySelector('[data-progress-model]').textContent = task.call_id ? `${task.provider} · ${task.model} · 模型等待 ${duration(task.model_elapsed_ms)} · ${task.input_tokens == null ? '完整响应返回后记录 token 与费用' : `输入 / 输出 ${task.input_tokens} / ${task.output_tokens} token · 费用 ${money(task.actual)}`}` : '尚未发送模型请求；任务记录已保存在本地数据库。';
+      element.querySelector('[data-progress-error]').textContent = task.error || '';
+      element.querySelector('[data-progress-events]').innerHTML = progress.events.map(event => `<p><small>${escapeHtml(localTime(event.created_at))} · ${escapeHtml(event.type)}</small></p>`).join('') || '<p class="muted">暂无执行事件。</p>';
+    } catch(error) {
+      if (element.isConnected) element.querySelector('[data-progress-error]').textContent = `无法读取执行进度：${error.message}`;
+    }
+  }));
 }
 async function renderBudget() {
   const budget = await api('/budget');
@@ -241,7 +266,8 @@ setInterval(async () => {
     if (state.view === 'research' && !state.researchRefreshing) {
       const tasks = await api('/research/tasks');
       const signature = JSON.stringify(tasks.map(task => [task.id,task.status]));
-      if (state.view !== 'research' || signature === state.researchSignature) return;
+      if (state.view !== 'research') return;
+      if (signature === state.researchSignature) { await refreshResearchProgress();return; }
       state.researchRefreshing = true;
       const brief = document.querySelector('#researchBrief')?.value || '';
       const urls = document.querySelector('#researchUrls')?.value || '';

@@ -60,6 +60,7 @@ class HttpIntegrationTest {
         assertThat(response.body()).contains("summary","tasks","total","storage");
         assertThat(request("/api/observability?page=-1",null).statusCode()).isEqualTo(400);
         assertThat(request("/api/observability/tasks/missing",null).statusCode()).isEqualTo(404);
+        assertThat(request("/api/observability/tasks/missing/progress",null).statusCode()).isEqualTo(404);
         assertThat(request("/api/observability/tasks/missing/feedback","{\"rating\":6,\"note\":\"评分无效\"}").statusCode()).isEqualTo(400);
         assertThat(request("/",null).body()).contains("Agent 看板","observationDialog");
     }

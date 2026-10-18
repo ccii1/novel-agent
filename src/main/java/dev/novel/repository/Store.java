@@ -5,11 +5,18 @@ import dev.novel.support.Json;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.function.Supplier;
 
 @Repository
 public class Store {
+    private static final Logger log=LoggerFactory.getLogger(Store.class);
+    private static final Set<String> LOG_METADATA=Set.of("AGENT_STARTED","AGENT_FINISHED","MODEL_REQUEST_SENT",
+            "MODEL_RESPONSE_RECEIVED","MODEL_USAGE_RECORDED","RESEARCH_INPUT_READY","RESEARCH_OUTPUT_VALIDATED");
     private final SqlSessionTemplate db;
     private final TransactionTemplate tx;
     private final Json json;
@@ -29,6 +36,13 @@ public class Store {
     }
     public void event(String novel,String task,String type,String message,String execution) {
         update("events.create",novel,task,type,message,execution);
+        Runnable output=()->log.info("event={} taskId={} executionId={} novelId={} metadata={}",
+                type,task,execution,novel,LOG_METADATA.contains(type)?message:"");
+        if(TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { output.run(); }
+            });
+        } else output.run();
     }
     public String enqueue(String novel, String kind, int chapter, int revision, long version, String key, Object payload) {
         var existing = list("tasks.byKey", key);

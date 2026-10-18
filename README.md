@@ -407,6 +407,22 @@ flowchart LR
 
 接口：`GET /api/observability`，参数为 `novelId`、`chapter`、`kind`、`status`、`page`（从0开始，每页30个任务）；`GET /api/observability/tasks/{id}` 提供任务详情；`POST /api/observability/tasks/{id}/feedback` 接收 `rating` 和 `note`。详情不包含模型请求正文，事件页面显示最近500条；全部事件继续保留在数据库。
 
+## 本地日志与选题进度
+
+启动后，IDEA Console 和本地文件 `data/logs/novel-agent.log` 同时显示任务关键事件。日志包含 `taskId`、`executionId`、Agent 类型、模型名称、HTTP 状态、耗时及 token 用量；请求正文、API key 和请求头不进入这些事件日志。事务中的事件在提交后输出，数据库中继续保留原始事件记录。
+
+执行期间每15秒输出一次 `TASK_RUNNING`，说明当前阶段、执行时间和模型等待时间。`MODEL_REQUEST_SENT` 表示进入模型请求阶段，`MODEL_RESPONSE_RECEIVED` 表示收到完整 HTTP 响应，`MODEL_USAGE_RECORDED` 表示用量已保存。当前采用完整响应模式，等待期间没有已完成的正文 token 统计；响应返回后显示用量和费用。
+
+日志按10MB轮转，保留14天，总容量上限200MB；通过 `NOVEL_LOG_FILE` 可以修改输出位置。默认日志位于 Git 忽略的 `data/` 目录。PowerShell 持续查看：
+
+```powershell
+Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log' -Tail 80 -Wait -Encoding UTF8
+```
+
+选题研究与讨论页面每5秒读取持久化进度，展示任务阶段、已执行时间、模型等待时间、最近事件和错误；状态未变化时继续更新时间，填写中的内容会保留。回复完成后可以点击“查看生成过程、耗时与费用”查看关联任务。时间显示采用北京时间。
+
+`GET /api/observability/tasks/{id}/progress` 返回轻量进度信息和最近12条事件，不返回任务输入或模型输出；全部历史与原始输出继续通过任务详情查询。执行阶段根据已保存的任务、调用及事件计算。
+
 ## 代码入口
 
 后端采用 MVC 分层。`NovelApplication` 位于根包，`controller` 处理 HTTP 路由与响应，`dto` 定义请求和参数校验，`service` 承担业务流程，`repository` 封装 MyBatis 访问与事务，`repository/mapper` 保存 Mapper 接口。模型接入位于 `integration/model`，持久化任务调度位于 `engine`，框架配置位于 `config`，JSON 工具位于 `support`。Controller 通过 service 访问业务数据。
@@ -447,7 +463,9 @@ flowchart LR
 
 ## 验证范围
 
-1.6.0 针对观测功能使用真实 H2 文件和 HTTP 接口验证，覆盖重启保留、执行恢复、费用与检查统计去重、人工评价历史及接口参数检查。费用统计检查使用记账测试资料，不替代真实模型验证。Playwright 使用本机 Edge，在1440×1000和390×844窗口检查全局与作品看板、筛选、任务详情、真实失败任务、横向尺寸及浏览器错误；按用户规则未使用截图。没有调用真实模型，也没有评价文学质量；最终组合的模型、Redis 联调和长期连载验证尚未完成。
+1.6.1 的6项相关数据库与 HTTP 检查通过；真实 DeepSeek 完成一次选题和一次讨论，验证轻量进度、模型调用阶段、用量、本地日志、回复记录入口及编辑内容保留。Playwright 使用本机 Edge，在1440×1000和390×844窗口验证交互及横向尺寸，未使用截图。两次配置估算费用合计0.083446元，资料保存在独立验证数据库；文学质量、Redis 与全部角色组合、长期连载仍需继续验证。
+
+观测功能还使用真实 H2 文件验证重启保留、执行恢复、费用与检查统计去重、人工评价历史及接口参数。费用统计检查中的记账资料与真实模型调用分别记录；全局及作品看板、筛选、详情与人工评价交互已验证。
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'

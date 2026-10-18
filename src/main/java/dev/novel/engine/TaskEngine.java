@@ -7,6 +7,7 @@ import dev.novel.service.AgentService;
 import dev.novel.service.WorkflowService;
 import dev.novel.service.BudgetService;
 import dev.novel.service.ObservationService;
+import dev.novel.service.TaskProgressService;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,13 +31,14 @@ public class TaskEngine {
     private final AgentService agents;
     private final WorkflowService workflow;
     private final ObservationService observations;
+    private final TaskProgressService progress;
     private final AsyncTaskExecutor workers;
     private final int limit;
     private final AtomicInteger active=new AtomicInteger();
     private final Logger log=LoggerFactory.getLogger(TaskEngine.class);
     private volatile boolean ready;
     @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,ObservationService observations,
+    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,ObservationService observations,TaskProgressService progress,
             @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers,@Value("${novel.workers}") int limit) {
         if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
         this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
@@ -44,6 +46,7 @@ public class TaskEngine {
         this.calls=calls;
         this.workers=workers;
         this.observations=observations;
+        this.progress=progress;
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
@@ -125,5 +128,16 @@ public class TaskEngine {
         });
     }
     public Map<String,Object> status() { return Map.of("workers",limit,"active",active.get(),"ready",ready); }
+    @Scheduled(fixedDelay=15000,initialDelay=15000)
+    public void logRunning() {
+        if(!ready || !enabled) return;
+        for(var running:store.list("tasks.running")) {
+            var snapshot=progress.progress(Store.string(running,"id"));
+            var task=(Map<?,?>)snapshot.get("task");
+            if(!"RUNNING".equals(task.get("status"))) continue;
+            log.info("event=TASK_RUNNING taskId={} executionId={} kind={} stage={} elapsedMs={} modelElapsedMs={}",
+                    task.get("id"),task.get("execution_id"),task.get("kind"),snapshot.get("stage"),task.get("elapsed_ms"),task.get("model_elapsed_ms"));
+        }
+    }
     @PreDestroy public void close() { ready=false; }
 }

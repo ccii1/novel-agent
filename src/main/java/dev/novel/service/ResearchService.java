@@ -78,8 +78,12 @@ public class ResearchService {
                 "用户想法="+payload.path("brief").asText()+"；公开资料="+json.write(sources);
         if(discussion) instruction+="；当前三个方案="+json.write(payload.path("previousIdeas"))+"；最近交流="+json.write(payload.path("history"))+
                 "；本轮用户意见="+payload.path("message").asText()+"。具体回应本轮意见，保留用户认可的设定，返回更新后的三个完整方案。";
+        store.event((String)task.get("novel_id"),Store.string(task,"id"),"RESEARCH_INPUT_READY",
+                json.write(Map.of("sourceCount",sources.size(),"discussion",discussion)),(String)task.get("execution_id"));
         var result=model.call(task,system+"你负责原创选题和持续讨论。",instruction);
         validateResult(result,sources);
+        store.event((String)task.get("novel_id"),Store.string(task,"id"),"RESEARCH_OUTPUT_VALIDATED",
+                json.write(Map.of("ideaCount",result.path("ideas").size())),(String)task.get("execution_id"));
         return json.tree(Map.of("sources",sources,"ideas",result.get("ideas"),"reply",result.get("reply"),"brief",payload.path("brief").asText()));
     }
     void validateResult(JsonNode result,JsonNode sources) {

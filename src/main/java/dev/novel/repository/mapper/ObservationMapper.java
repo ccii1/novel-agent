@@ -16,6 +16,8 @@ public interface ObservationMapper {
     long count(Map<String,Object> filter);
     Map<String,Object> task(@Param("id") String id);
     Map<String,Object> call(@Param("id") String id);
+    Map<String,Object> progress(@Param("id") String id);
+    List<Map<String,Object>> progressEvents(@Param("id") String id);
     List<Map<String,Object>> executions(@Param("id") String id);
     List<Map<String,Object>> events(@Param("id") String id);
     List<Map<String,Object>> feedback(@Param("id") String id);

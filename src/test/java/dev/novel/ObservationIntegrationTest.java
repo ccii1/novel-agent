@@ -31,6 +31,9 @@ class ObservationIntegrationTest {
             assertThat(execution.get("error").toString()).contains("请配置模型");
             assertThat(execution.get("duration_ms")).isNotNull();
             assertThat(detail.get("call")).isNull();
+            var progress=app.getBean(TaskProgressService.class).progress(id);
+            assertThat(progress.get("stage").toString()).contains("执行失败");
+            assertThat(((Map<?,?>)progress.get("task")).get("elapsed_ms")).isNotNull();
         }
     }
     @Test void fileDatabaseRetainsExecutionsCostsReviewsAndFeedbackAcrossRestart() {
@@ -76,6 +79,10 @@ class ObservationIntegrationTest {
             assertThat(((Number)row.get("rejected_reviews")).intValue()).isEqualTo(1);
             assertThat(((Number)row.get("human_rating")).intValue()).isEqualTo(4);
             assertThat(((Number)row.get("cache_reported_calls")).intValue()).isEqualTo(1);
+            var completedProgress=app.getBean(TaskProgressService.class).progress(taskId);
+            assertThat(completedProgress.get("stage")).isEqualTo("回复已生成并保存");
+            var publicTask=(Map<?,?>)completedProgress.get("task");
+            for(String field:List.of("payload","response","result","api_key")) assertThat(publicTask.containsKey(field)).isFalse();
             assertThat(((Number)observations.dashboard(null,null,"PLAN",null,0).get("total")).intValue()).isZero();
             String interrupted=store.enqueue(null,"PLAN",0,0,0,UUID.randomUUID().toString(),Map.of());
             store.transaction(() -> {
