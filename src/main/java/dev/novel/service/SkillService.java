@@ -44,8 +44,9 @@ public class SkillService {
             case "WRITE", "REWRITE" -> references(files, "ai-detox-guide.md", "battle-scene-guide.md", "dialogue-monitor.md");
             case "CHECK_PACING" -> references(files, "battle-scene-guide.md", "dialogue-monitor.md", "pattern-detection.md");
             case "CHECK_STYLE" -> references(files, "ai-detox-guide.md", "commercial-review.md");
+            case "CHECK_CHAPTER" -> references(files,"audit-dimensions.md","battle-scene-guide.md","dialogue-monitor.md","pattern-detection.md","ai-detox-guide.md","commercial-review.md");
             case "REFLECT" -> references(files, "audit-dimensions.md", "ai-detox-guide.md");
-            case "CHECK_CHARACTER", "CHECK_PLOT", "MEMORY", "CHECK_MEMORY" -> references(files, "audit-dimensions.md");
+            case "CHECK_CHARACTER", "CHECK_PLOT", "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" -> references(files, "audit-dimensions.md");
             default -> throw new IllegalArgumentException("未知技能角色：" + role);
         }
         if (chapter > 0 && chapter % 5 == 0) references(files, "pattern-detection.md");

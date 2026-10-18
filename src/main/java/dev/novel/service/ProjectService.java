@@ -62,7 +62,7 @@ public class ProjectService {
                 "chapters",store.list("chapters.byNovel",id),
                 "tasks",store.list("tasks.byNovel",id),
                 "events",store.list("events.byNovel",id),
-                "edits",store.list("edits.byNovel",id));
+                "edits",store.list("edits.byNovel",id),"memoryReview",memoryReview(id));
     }
     public void approvePlan(String id,JsonNode plan) {
         store.transaction(() -> {
@@ -103,6 +103,7 @@ public class ProjectService {
         if(instructions==null || instructions.isBlank() || instructions.length()>12000) throw new IllegalArgumentException("请提供有效修改要求，最多12000字符");
         store.transaction(() -> {
             var novel=store.lockNovel(id);require(novel,"AWAITING_CHANGE","AWAITING_HELP");
+            if(memoryPending(novel)!=null) throw new IllegalStateException("当前需要修正记忆，请使用记忆修正入口");
             if("AWAITING_CHANGE".equals(novel.get("status")) && (plan==null || plan.isNull())) throw new IllegalArgumentException("重大变更需要提供完整批准的大纲");
             if(plan!=null && !plan.isNull()) {
                 var old=json.read((String)novel.get("plan"));
@@ -114,6 +115,46 @@ public class ProjectService {
             store.update("novels.rewrite",json.write(Map.of("instructions",instructions,"humanApproved",true)),id);
             workflow.schedule(store.novel(id),"REWRITE",chapter,revision,Map.of());
             store.event(id,null,"REVISION_APPROVED",instructions);return null;
+        });
+    }
+    private Map<String,Object> memoryPending(Map<String,Object> novel) {
+        if(!"AWAITING_HELP".equals(novel.get("status"))) return null;
+        var chapters=store.list("chapters.find",novel.get("id"),novel.get("chapter_no"));
+        if(chapters.isEmpty()) return null;
+        var reviews=store.list("tasks.memoryReviews",novel.get("id"),novel.get("chapter_no"),chapters.get(0).get("revision"),novel.get("memory_version"));
+        if(reviews.isEmpty()) return null;
+        var result=json.read(Store.string(reviews.get(0),"result"));
+        if(result.path("approved").asBoolean() && !result.path("majorChange").asBoolean()) return null;
+        return reviews.get(0);
+    }
+    public Map<String,Object> memoryReview(String id) {
+        var novel=store.novel(id);
+        var task=memoryPending(novel);
+        if(task==null) return Map.of("pending",false);
+        var payload=json.read(Store.string(task,"payload"));
+        return Map.of("pending",true,"taskId",task.get("id"),"chapter",task.get("chapter_no"),"revision",task.get("revision"),
+                "memoryVersion",task.get("memory_version"),"delta",WorkflowService.memoryDelta(payload),"review",json.read(Store.string(task,"result")),
+                "repairAttempt",payload.path("repairAttempt").asInt(0),"automaticLimit",WorkflowService.MEMORY_REPAIR_LIMIT);
+    }
+    public String repairMemory(String id,String taskId,String instructions,JsonNode editedDelta) {
+        if(instructions==null || instructions.isBlank() || instructions.length()>12000) throw new IllegalArgumentException("请填写记忆修改要求，最多12000字符");
+        return store.transaction(()-> {
+            var novel=store.lockNovel(id);
+            var task=memoryPending(novel);
+            if(task==null || !task.get("id").equals(taskId)) throw new IllegalStateException("待处理记忆已经变化，请刷新后重新提交");
+            if(!store.list("tasks.runningNovel",id).isEmpty()) throw new IllegalStateException("请等待执行中的任务结束");
+            var delta=WorkflowService.memoryDelta(json.read(Store.string(task,"payload")));
+            String next;
+            if(editedDelta!=null && !editedDelta.isNull()) {
+                var draft=store.one("chapters.find",id,task.get("chapter_no"));
+                next=workflow.scheduleMemoryCheck(novel,task,memory.validateDelta(editedDelta,Store.string(draft,"body")),0);
+            } else next=workflow.repairMemory(novel,task,delta,json.read(Store.string(task,"result")),instructions,1);
+            var nextTask=store.one("tasks.find",next);
+            var approvedPayload=(com.fasterxml.jackson.databind.node.ObjectNode)json.read(Store.string(nextTask,"payload"));
+            approvedPayload.put("humanApproved",true);
+            store.update("tasks.payload",json.write(approvedPayload),next);
+            store.event(id,next,"MEMORY_REPAIR_APPROVED",instructions);
+            return next;
         });
     }
     public String retry(String taskId) {

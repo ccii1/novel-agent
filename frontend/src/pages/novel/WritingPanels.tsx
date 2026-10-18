@@ -4,13 +4,30 @@ import {useAction, useApi, useDraft} from '../../api';
 import {Empty, ErrorBox, JsonView, Loading, Modal, Panel, pretty, Stats, Status, time} from '../../ui';
 import ModelSelect from '../../components/ModelSelect';
 import TaskProgress from '../../components/TaskProgress';
+import MemoryRepairPanel from '../../components/MemoryRepairPanel';
 import type {Chapter, Choice, Novel, NovelDetail} from '../../domain';
 
 export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: string) => void}) {
   const {novel,tasks} = data;
   const active = tasks.filter(task => ['WAITING','RUNNING','READY','ERROR'].includes(task.status));
   const [settings,setSettings] = useState(false);
-  return <><Stats items={[{label:'已接受章节',value:data.chapters.filter(chapter => chapter.status === 'ACCEPTED').length},{label:'待处理任务',value:active.length},{label:'当前记忆版本',value:novel.memory_version}]}/><div className="workspace-columns"><div><Panel title="创作设定"><p className="prose">{novel.premise}</p>{novel.bible && <div className="setting-text">{novel.bible}</div>}</Panel>{['AWAITING_HELP','AWAITING_CHANGE'].includes(novel.status) && <RevisionForm novel={novel}/>}<Panel title="当前执行"><div className="task-grid">{active.map(task => <TaskProgress key={task.id} task={task} inspect={inspect}/>)}</div>{active.length === 0 && <p className="muted">当前没有执行中的任务。<Link to={`/books/${novel.id}/plan`}>查看阶段大纲</Link></p>}</Panel></div><div><Panel title="接下来需要你处理"><p>{novel.status === 'AWAITING_PLAN' ? '阶段大纲已经生成，审核后开始写作。' : novel.status === 'AWAITING_HELP' ? '自动修改已达到限制，请查看检查意见并提供修改要求。' : novel.status === 'ERROR' ? '查看失败任务与调用记录，再决定是否重新执行。' : '重要剧情变化和阶段结局会暂停，等待你的审核。'}</p><Link className="button secondary" to={`/books/${novel.id}/${novel.status === 'AWAITING_PLAN' ? 'plan' : 'tasks'}`}>前往处理</Link></Panel><Panel title="生成模型"><p className="muted">{novel.provider} · {novel.model_name || '服务默认模型'}</p><button className="subtle" onClick={() => setSettings(!settings)}>{settings ? '收起设置' : '调整后续调用模型'}</button>{settings && <BookModel novel={novel}/>}</Panel><Panel title="最近事件"><div className="event-list">{data.events.slice(0,6).map(event => <div key={event.id}><small>{time(event.created_at)}</small><strong>{event.type}</strong></div>)}</div></Panel></div></div></>;
+  const pending = data.memoryReview;
+  const awaiting = ['AWAITING_HELP','AWAITING_CHANGE'].includes(novel.status);
+  return <>
+    <Stats items={[{label:'已接受章节',value:data.chapters.filter(chapter => chapter.status === 'ACCEPTED').length},{label:'待处理任务',value:active.length},{label:'当前记忆版本',value:novel.memory_version}]}/>
+    <div className="workspace-columns"><div>
+      <Panel title="创作设定"><p className="prose">{novel.premise}</p>{novel.bible && <div className="setting-text">{novel.bible}</div>}</Panel>
+      {awaiting && <div id="intervention">{pending?.pending ? <MemoryRepairPanel key={pending.taskId} novel={novel} pending={pending}/> : <RevisionForm novel={novel}/>}</div>}
+      <Panel title="当前执行"><div className="task-grid">{active.map(task => <TaskProgress key={task.id} task={task} inspect={inspect}/>)}</div>{active.length === 0 && <p className="muted">当前没有执行中的任务。<Link to={`/books/${novel.id}/plan`}>查看阶段大纲</Link></p>}</Panel>
+    </div><div>
+      <Panel title="接下来需要你处理">
+        <p>{pending?.pending ? '记忆审核需要处理，请查看问题并修正待审核记忆。' : novel.status === 'AWAITING_PLAN' ? '阶段大纲已经生成，审核后开始写作。' : novel.status === 'AWAITING_HELP' ? '正文自动修改已达到限制，请查看检查意见并提供修改要求。' : novel.status === 'ERROR' ? '查看失败任务与调用记录，再决定是否重新执行。' : '重要剧情变化和阶段结局会暂停，等待你的审核。'}</p>
+        {awaiting ? <button className="secondary" onClick={() => document.getElementById('intervention')?.scrollIntoView({behavior:'smooth',block:'start'})}>{pending?.pending ? '处理记忆审核' : '查看修改要求'}</button> : <Link className="button secondary" to={`/books/${novel.id}/${novel.status === 'AWAITING_PLAN' ? 'plan' : 'tasks'}`}>前往处理</Link>}
+      </Panel>
+      <Panel title="生成模型"><p className="muted">{novel.provider} · {novel.model_name || '服务默认模型'}</p><button className="subtle" onClick={() => setSettings(!settings)}>{settings ? '收起设置' : '调整后续调用模型'}</button>{settings && <BookModel novel={novel}/>}</Panel>
+      <Panel title="最近事件"><div className="event-list">{data.events.slice(0,6).map(event => <div key={event.id}><small>{time(event.created_at)}</small><strong>{event.type}</strong></div>)}</div></Panel>
+    </div></div>
+  </>;
 }
 function BookModel({novel}: {novel: Novel}) {
   const [choice,setChoice] = useState<Choice>({provider:novel.provider,model:novel.model_name ?? ''});

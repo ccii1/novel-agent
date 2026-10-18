@@ -2,6 +2,7 @@ package dev.novel.service;
 
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
+import dev.novel.support.EvidenceMatcher;
 import dev.novel.agent.AgentOutputReader;
 import dev.novel.dto.AgentOutputs;
 import dev.novel.repository.mapper.MemoryMapper;
@@ -22,8 +23,9 @@ public class MemoryService {
     private final MemoryMapper memories;
     private final AgentOutputReader outputs;
     private final MemoryProjectionCache cache;
-    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs,MemoryProjectionCache cache) {
-        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;this.cache=cache;
+    private final EvidenceMatcher evidence;
+    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs,MemoryProjectionCache cache,EvidenceMatcher evidence) {
+        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;this.cache=cache;this.evidence=evidence;
     }
     public List<Map<String,Object>> snapshot(String novel, long version) {
         return cache.snapshot(novel,version,()->memories.snapshot(novel,version));
@@ -126,69 +128,37 @@ public class MemoryService {
         result.put("retainedMemoryCount",snapshot.size());return result;
     }
     public JsonNode validateDelta(JsonNode delta, String body) {
-        var output=outputs.read(delta,AgentOutputs.MemoryDelta.class);
+        JsonNode normalized=delta.deepCopy();
+        var paragraphs=evidence.paragraphs(body);
+        for(String section:List.of("facts","relations")) for(var item:normalized.path(section)) {
+            if(item.has("evidencePath")) {
+                String path=item.path("evidencePath").asText();
+                String selected=null;
+                for(var paragraph:paragraphs.entrySet()) if(path.equals("/paragraphs/"+paragraph.getKey())) selected=paragraph.getValue();
+                if(selected==null) throw new IllegalArgumentException("记忆证据的正文段落不存在："+path);
+                var node=(ObjectNode)item;
+                node.put("evidence",evidence.source(selected).require(selected,"记忆"));
+                node.remove("evidencePath");
+            }
+        }
+        var output=outputs.read(normalized,AgentOutputs.MemoryDelta.class);
         if(output.facts().size()+output.relations().size()>40) throw new IllegalArgumentException("单章记忆变更最多40条");
         Set<String> keys=new HashSet<>();
-        JsonNode normalized=delta.deepCopy();
-        var bodyText=indexEvidence(body);
+        var bodyText=evidence.source(body);
         for(int index=0;index<output.facts().size();index++) {
             var fact=output.facts().get(index);
             if(!keys.add(fact.key())) throw new IllegalArgumentException("记忆 key 重复");
             ((ObjectNode)normalized.get("facts").get(index)).put("evidence",
-                    evidence(fact.evidence(),body,bodyText,"第"+(index+1)+"条事实（"+fact.key()+"）"));
+                    bodyText.require(fact.evidence(),"第"+(index+1)+"条事实（"+fact.key()+"）"));
         }
         for(int index=0;index<output.relations().size();index++) {
             var relation=output.relations().get(index);
             String key="relation:"+relation.subject()+":"+relation.predicate()+":"+relation.object();
             if(key.length()>350 || !keys.add(key)) throw new IllegalArgumentException("关系 key 重复或过长");
             ((ObjectNode)normalized.get("relations").get(index)).put("evidence",
-                    evidence(relation.evidence(),body,bodyText,"第"+(index+1)+"条关系（"+key+"）"));
+                    bodyText.require(relation.evidence(),"第"+(index+1)+"条关系（"+key+"）"));
         }
         return normalized;
-    }
-    private String evidence(String evidence,String body,EvidenceText bodyText,String source) {
-        String candidate=evidence;
-        if(matchEvidence(candidate,body,bodyText)==null && candidate.length()>=2) {
-            var pairs=Map.of('“','”','‘','’','「','」','『','』','"','"','\'','\'');
-            Character closing=pairs.get(candidate.charAt(0));
-            if(closing!=null && closing==candidate.charAt(candidate.length()-1)) {
-                String inner=candidate.substring(1,candidate.length()-1);
-                if(matchEvidence(inner,body,bodyText)!=null) candidate=inner;
-            }
-        }
-        String compact=indexEvidence(candidate).text();
-        if(compact.codePointCount(0,compact.length())<4)
-            throw new IllegalArgumentException(source+"的记忆证据不足4个字符；空白和额外引用引号不计入原文长度，模型响应已保存");
-        String matched=matchEvidence(candidate,body,bodyText);
-        if(matched==null) {
-            String excerpt=evidence.length()>100?evidence.substring(0,100)+"…":evidence;
-            throw new IllegalArgumentException(source+"的记忆证据无法在当前正文中连续匹配："+json.write(excerpt)+"；换行与空白差异已允许，文字和标点必须与正文一致，模型响应已保存");
-        }
-        return matched;
-    }
-    private record EvidenceText(String text,int[] positions) {}
-
-    private EvidenceText indexEvidence(String text) {
-        StringBuilder compact=new StringBuilder(text.length());
-        int[] positions=new int[text.length()];
-        for(int index=0;index<text.length();index++) {
-            char character=text.charAt(index);
-            if(Character.isWhitespace(character) || Character.isSpaceChar(character) || character=='\u0085') continue;
-            positions[compact.length()]=index;
-            compact.append(character);
-        }
-        return new EvidenceText(compact.toString(),positions);
-    }
-
-    private String matchEvidence(String candidate,String body,EvidenceText bodyText) {
-        if(candidate.isEmpty()) return null;
-        if(body.contains(candidate)) return candidate;
-        String compact=indexEvidence(candidate).text();
-        if(compact.isEmpty()) return null;
-        int start=bodyText.text().indexOf(compact);
-        if(start<0) return null;
-        // 使用正文位置恢复完整原文，保留段落和空白供后续审核引用。
-        return body.substring(bodyText.positions()[start],bodyText.positions()[start+compact.length()-1]+1);
     }
     private String relationKey(JsonNode relation) {
         return "relation:"+json.text(relation,"subject")+":"+json.text(relation,"predicate")+":"+json.text(relation,"object");

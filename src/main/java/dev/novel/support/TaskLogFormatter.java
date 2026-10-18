@@ -54,6 +54,7 @@ public class TaskLogFormatter {
             case "RESEARCH_INPUT_READY" -> "选题资料已准备完成，公开资料 "+json.read(message).path("sourceCount").asInt()+" 份";
             case "RESEARCH_OUTPUT_VALIDATED" -> "选题输出检查通过，方案 "+json.read(message).path("ideaCount").asInt()+" 个";
             case "DONE" -> kind.equals("PLAN")?"阶段大纲已保存，等待人工审核":"任务结果已保存";
+            case "REVIEW_APPROVED", "REVIEW_REJECTED", "MEMORY_REPAIR_STARTED", "MEMORY_REPAIR_APPROVED" -> message;
             case "CHAPTER_ACCEPTED" -> "章节检查通过，正文和记忆已保存";
             case "ERROR" -> "执行失败："+line(message);
             case "RATE_WAIT" -> "调用频率达到限制，任务已重新排队";
@@ -92,6 +93,8 @@ public class TaskLogFormatter {
             case "CHECK_PLOT" -> "剧情与伏笔检查";
             case "CHECK_PACING" -> "节奏检查";
             case "CHECK_STYLE" -> "文风检查";
+            case "CHECK_CHAPTER" -> "正文联合审核";
+            case "MEMORY_REPAIR" -> "记忆修正";
             case "REFLECT" -> "修改方案分析";
             case "MEMORY" -> "记忆提取";
             case "CHECK_MEMORY" -> "记忆检查";

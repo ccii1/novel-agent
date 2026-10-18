@@ -132,15 +132,8 @@ Plan 对应已批准的阶段及章节计划。Execute 生成正文，Check 独�
 ```mermaid
 flowchart TD
     Context["读取批准的计划和当前版本的创作记忆"] --> Write["WRITE：生成章节草稿"]
-    Write --> Character["CHECK_CHARACTER：人物关系、动机与知情范围"]
-    Write --> Plot["CHECK_PLOT：因果、时间线、设定和伏笔"]
-    Write --> Pacing["CHECK_PACING：冲突、节奏与追读意愿"]
-    Write --> Style["CHECK_STYLE：文风、字数与开篇吸引力"]
-    Character --> Join["等待本轮四个检查任务全部完成"]
-    Plot --> Join
-    Pacing --> Join
-    Style --> Join
-    Join --> Passed{"四个检查是否全部通过？"}
+    Write --> Joint["正文审核：默认四项并行，可选联合审核"]
+    Joint --> Passed{"四个维度是否全部通过？"}
     Passed -->|存在问题| Reflect["REFLECT：汇总问题和冲突意见，制定修改计划"]
     Reflect --> Major{"是否涉及重大剧情变更？"}
     Major -->|涉及| HumanMajor["AWAITING_CHANGE：人工批准修改要求和完整大纲"]
@@ -149,14 +142,15 @@ flowchart TD
     Limit -->|尚未达到| Rewrite["REWRITE：统一修改章节正文"]
     HumanMajor --> Rewrite
     HumanHelp --> Rewrite
-    Rewrite --> Character
-    Rewrite --> Plot
-    Rewrite --> Pacing
-    Rewrite --> Style
+    Rewrite --> Joint
     Passed -->|全部通过| Extract["MEMORY：提取摘要、事实、伏笔和关系变化"]
     Extract --> MemoryCheck["CHECK_MEMORY：检查变更是否得到正文支持"]
     MemoryCheck --> MemoryPassed{"记忆检查是否通过？"}
-    MemoryPassed -->|未通过| HumanHelp
+    MemoryPassed -->|一般问题且未超过三次| Repair["MEMORY_REPAIR：仅修正记忆"]
+    Repair --> MemoryCheck
+    MemoryPassed -->|超过次数或重要变更| MemoryHelp["人工确认建议或编辑待审核记忆"]
+    MemoryHelp -->|按要求修正| Repair
+    MemoryHelp -->|直接编辑| MemoryCheck
     MemoryPassed -->|通过| Commit["同一事务提交：正文、摘要、记忆变更和新版本"]
     Commit --> Next["生成下一章，或等待阶段审核"]
 ```
@@ -166,43 +160,45 @@ flowchart TD
 | `RESEARCH` / `RESEARCH_CHAT` | 依据个人想法和可选资料提出、讨论原创选题 | 回复、三个完整创意及来源 |
 | `PLAN` | 阶段冲突、剧情节点和章节安排 | 阶段大纲 |
 | `WRITE` / `REWRITE` | 生成或统一修改章节 | 标题、正文 |
+| `CHECK_CHAPTER` | 联合检查人物、剧情、节奏与文风 | 四个维度结论、问题归属、原文证据、叙事结构和篇幅建议 |
 | `CHECK_CHARACTER` | 人物关系、动机、性格与知情范围 | 结论、正文证据和修改建议 |
 | `CHECK_PLOT` | 因果、时间线、世界规则、伏笔与大纲执行 | 结论、正文证据和修改建议 |
 | `CHECK_PACING` | 冲突推进、失败代价、信息揭示、高潮与缓和 | 结论、正文证据和修改建议 |
 | `CHECK_STYLE` | 文风、重复表达、语义完整性、字数与开篇吸引力 | 检查结论及程序统计的问题 |
 | `REFLECT` | 汇总检查意见，处理相互冲突的建议 | 统一修改计划、重大变更标记 |
 | `MEMORY` | 提取本章记忆增量 | 摘要、事实与关系变更 |
+| `MEMORY_REPAIR` | 根据检查意见与人工要求修正待审核记忆 | 完整的记忆增量，继续接受正文证据校验 |
 | `CHECK_MEMORY` | 核对记忆变更与正文、历史设定 | 检查结论及问题证据 |
 
 每个角色由独立任务、提示词及结构化输入输出定义，任务在同一 Java 应用中执行。检查角色提交报告，正文由写作角色统一修改，记忆由流程模块统一提交。
 
 ## 独立 Agent 与信息范围
 
-系统采用工作流式多 Agent 协作，`agent` 包提供11个独立 Spring 组件，处理12种任务。`ResearchAgent` 同时处理选题与选题讨论，其他组件分别负责规划、写作、修改、人物检查、剧情检查、节奏检查、文风检查、反思、记忆提取和记忆检查。`AgentService` 负责类型注册、响应恢复、分发和分析查询，启动时检查遗漏或重复的任务类型。
+系统采用工作流式多 Agent 协作，`agent` 包提供12个独立 Spring 组件，处理14种任务。`ResearchAgent` 处理选题与选题讨论，`MemoryExtractionAgent` 处理记忆提取与修正，`ChapterReviewAgent` 负责正文联合审核。独立的人物、剧情、节奏及文风组件用于默认并行模式。`AgentService` 负责类型注册、响应恢复、分发和分析查询，启动时检查遗漏或重复的任务类型。
+
+默认 `novel.review-mode=parallel` 使用四项并行审核，正常章节从正文生成到记忆提交需要7次模型调用。设置环境变量 `NOVEL_REVIEW_MODE=combined` 后，正文一次调用检查四个维度，对应正常章节4次调用；每条问题标明 `dimension`，各维度与总体结论必须一致，节奏结构和文风程序统计继续保存。阶段规划及有问题时的修改调用另计。已经创建的检查任务继续按该轮原有模式执行，服务恢复不会混入另一种模式。
+
+联合审核可以减少重复读取正文和规则、模型调用及报告汇总。四项并行审核的等待时间取决于最慢任务，调用数下降不能直接换算为同比耗时下降。联合审核存在同一次推理遗漏多个维度的风险，因此保留四项模式、结构校验和人工评价用于比较。正文审核与记忆审核保持独立，后者核对另外一次模型生成的记忆内容。比较方案与测量范围见 [Agent 审核评估](docs/agent-review-evaluation.md)。
 
 ```mermaid
 flowchart TD
     Registry["AgentService：任务类型注册表"] --> Planner["PlannerAgent：阶段计划"]
     Planner --> Approval["人工批准"]
     Approval --> Writer["WriterAgent：章节正文"]
-    Writer --> Character["CharacterCheckAgent"]
-    Writer --> Plot["PlotCheckAgent"]
-    Writer --> Pacing["PacingCheckAgent"]
-    Writer --> Style["StyleCheckAgent"]
-    Character --> Reports["四份独立报告：绑定正文修订和记忆版本"]
-    Plot --> Reports
-    Pacing --> Reports
-    Style --> Reports
+    Writer --> Mode{"审核模式"}
+    Mode -->|combined| Joint["ChapterReviewAgent：四个维度联合检查"]
+    Mode -->|parallel，默认| Parallel["人物、剧情、节奏、文风四个独立检查 Agent"]
+    Parallel --> Reports
+    Joint --> Reports["报告绑定正文修订和记忆版本"]
     Reports --> Decision{"全部通过？"}
     Decision -->|否| Reflect["ReflectionAgent：分析问题与意见冲突"]
     Reflect --> Gate["业务流程检查修改次数、预算与人工审批条件"]
     Gate --> Rewrite["RewriterAgent：统一修改正文"]
-    Rewrite --> Character
-    Rewrite --> Plot
-    Rewrite --> Pacing
-    Rewrite --> Style
+    Rewrite --> Mode
     Decision -->|是| Extract["MemoryExtractionAgent：记忆增量"]
     Extract --> MemoryCheck["MemoryCheckAgent：正文证据检查"]
+    MemoryCheck -->|一般问题，最多三次| Repair["MemoryExtractionAgent：MEMORY_REPAIR"]
+    Repair --> MemoryCheck
     MemoryCheck --> Commit["WorkflowService：检查通过后事务提交正文与记忆"]
 ```
 
@@ -216,6 +212,7 @@ flowchart TD
 | PlotCheckAgent | 基础故事资料、当前正文 |
 | PacingCheckAgent | 基础故事资料、近期质量、对话及循环模式记录、当前正文统计 |
 | StyleCheckAgent | 基础故事资料、文风及对话记录、当前正文统计 |
+| ChapterReviewAgent | 人物、剧情、节奏与文风资料的并集，正文和统计只提供一次 |
 | ReflectionAgent | 基础故事资料、当前正文、四份独立检查报告 |
 | MemoryExtractionAgent / MemoryCheckAgent | 基础故事资料、人物关系、知情范围与正文；记忆检查增加待提交增量 |
 | ResearchAgent | 用户想法、已采集资料、当前方案与最近交流 |
@@ -282,7 +279,13 @@ flowchart LR
 
 记忆提取每章最多产生40条事实与关系变更，每条变更需要正文证据。通过检查后，正文转为 `ACCEPTED`，摘要、记忆变更和 `memory_version` 在同一事务内提交。后续章节读取新版本；旧记忆版本下执行的任务不能提交为当前结果。
 
-记忆证据需要在当前正文中连续匹配，允许换行、缩进和 Unicode 空白的排版差异；文字、顺序与标点保持逐字一致。匹配时忽略空白，并通过字符位置恢复正文中的完整原始片段，包括段落换行。额外添加的一层成对引用引号，仅在去除后能够匹配正文时规范化；正文自身包含的引号保留。证据至少包含4个非空白 Unicode 字符。校验返回独立的记忆增量副本，后续审核与保存使用恢复后的正文原文，模型原始响应继续保留。省略中间文字、改写或修改标点均无法通过匹配。无法匹配时，错误信息包含事实或关系的序号、key 与证据片段。第一章从当前正文建立首批记忆，历史记忆可以为空。
+记忆审核的一般问题进入 `MEMORY_REPAIR → CHECK_MEMORY`，每次修正结果及审核意见分别保存为任务，自动修正最多三次。达到次数上限或涉及重要变更时，概况显示“修正记忆并重新审核”，提供具体问题、原文引用、建议和修改要求。可以让模型按要求修正，也可以编辑摘要、事实说明、关系说明与证据后直接提交审核。记忆修正保留正文、大纲和正文修订版本，通过审核后才更新正式记忆；当前等待人工处理的旧记忆审核也可使用该入口。人工提交后重新计算本轮自动修正次数。
+
+`GET /api/novels/{id}/memory-review` 读取待处理内容；`POST /api/novels/{id}/memory-repair` 接受 `taskId`、`instructions` 和可选 `delta`。提供 `delta` 时先校验全部正文证据，再创建审核任务；省略时创建模型修正任务。事务内锁定作品并检查任务、正文及记忆版本，重复或过期的人工提交被拒绝。记忆审核问题可使用 `quoteSource=BODY` 引用正文，或使用 `quoteSource=MEMORY`、`quotePath=/summary` 等 JSON Pointer 引用待审核记忆；引用恢复为对应来源的原文，并保留模型原始响应。
+
+正文以 `paragraphs` 对象提供固定的本章段落编号。审核选择 `quoteSource=BODY`、`quotePath=/paragraphs/p0`，或指定允许的记忆字段路径；程序从当前版本读取原文，生成审核结果的 `quote`。记忆提取与修正使用 `evidencePath=/paragraphs/p0`，程序填入 `evidence`，正式记忆保留原文。段落和字段路径必须实际存在，来源至少4个字符；旧记录的原文引用继续接受连续匹配校验。路径、正文修订、记忆版本以及模型原始响应共同保存证据来源。
+
+记忆证据需要在当前正文中连续匹配，允许换行、缩进、Unicode 空白差异及省略中文对话引号。匹配通过字符位置恢复正文中的完整原始片段，包括段落换行和原有引号；文字、顺序、逗号、句号及其他句内标点保持逐字一致。额外添加的一层成对引用引号，仅在去除后能够匹配正文时规范化。证据至少包含4个非空白 Unicode 字符。校验返回独立的记忆增量副本，后续审核与保存使用恢复后的正文原文，模型原始响应继续保留。省略中间文字、改写或改变句内标点均无法通过匹配。无法匹配时，错误信息包含事实或关系的序号、key 与证据片段。第一章从当前正文建立首批记忆，历史记忆可以为空。
 
 ### Truth Files 与质量记录
 

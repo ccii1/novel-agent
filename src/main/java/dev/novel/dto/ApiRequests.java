@@ -19,6 +19,7 @@ public final class ApiRequests {
     public record ResearchMessage(@NotBlank @Size(max=4000) String message,
             @Size(max=80) String provider,@Size(max=200) String model) {}
     public record Revision(@NotBlank @Size(max=12000) String instructions,JsonNode plan) {}
+    public record MemoryRepair(@NotBlank String taskId,@NotBlank @Size(max=12000) String instructions,JsonNode delta) {}
     public record Edit(@Min(1) int chapter,@NotBlank @Size(max=12000) String instructions) {}
     public record EditApproval(boolean acknowledgePublished) {}
     public record Reconcile(@NotNull @DecimalMin("0") @DecimalMax("10000") BigDecimal actual) {}

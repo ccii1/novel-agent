@@ -36,6 +36,10 @@ public class NovelController {
         return Map.of("id",projects.create(request.title(),request.premise(),request.bible(),request.stageSize(),request.novelBudget(),request.chapterBudget(),request.provider(),request.model()));
     }
     @GetMapping("/novels/{id}") public Object detail(@PathVariable String id) { return projects.detail(id); }
+    @GetMapping("/novels/{id}/memory-review") public Object memoryReview(@PathVariable String id) { return projects.memoryReview(id); }
+    @PostMapping("/novels/{id}/memory-repair") public Object repairMemory(@PathVariable String id,@Valid @RequestBody MemoryRepair request) {
+        return Map.of("id",projects.repairMemory(id,request.taskId(),request.instructions(),request.delta()));
+    }
     @PostMapping("/novels/{id}/approve-plan") public Object approve(@PathVariable String id,@RequestBody(required=false) JsonNode plan) { projects.approvePlan(id,plan);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/continue") public Object next(@PathVariable String id) { projects.continueStage(id);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/pause") public Object pause(@PathVariable String id) { projects.pause(id);return Map.of("ok",true); }

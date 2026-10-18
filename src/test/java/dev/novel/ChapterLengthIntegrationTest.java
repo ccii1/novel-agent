@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:chapter-length;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:chapter-length;DB_CLOSE_DELAY=-1","novel.engine-enabled=false","novel.review-mode=combined"})
 class ChapterLengthIntegrationTest {
     @Autowired ChapterQualityService quality;
     @Autowired AgentOutputReader outputs;
@@ -75,6 +75,7 @@ class ChapterLengthIntegrationTest {
         assertThat(saved.get("body")).isEqualTo(parsed.body());
         assertThat(saved.get("status")).isEqualTo("DRAFT");
         assertThat(store.one("novels.find",novel).get("status")).isEqualTo("CHECKING");
-        assertThat(store.list("tasks.byNovel",novel).stream().filter(task->String.valueOf(task.get("kind")).startsWith("CHECK_"))).hasSize(4);
+        assertThat(store.list("tasks.byNovel",novel).stream().filter(task->String.valueOf(task.get("kind")).startsWith("CHECK_")))
+                .extracting(task->task.get("kind")).containsExactly("CHECK_CHAPTER");
     }
 }

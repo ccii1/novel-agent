@@ -17,17 +17,20 @@ public abstract class ReviewAgent implements NovelAgent {
     protected String additionalInput(Map<String,Object> task,String body) { return ""; }
     protected String additionalSchema() { return ""; }
     protected void validateAdditional(JsonNode result,String body) {}
+    protected JsonNode validateReview(Map<String,Object> task,JsonNode result,String body) { return validator.validate(result,body); }
+    protected ReviewValidator validator() { return validator; }
     public JsonNode execute(Map<String,Object> task) throws Exception {
         var draft=context.draft(task);
         String body=(String)draft.get("body");
         var result=model.call(task,AgentInstructions.SYSTEM+"你负责独立检查，不能修改正文或记忆。",
                 "检查重点="+purpose()+"。输出：{approved:boolean,majorChange:boolean,issues:[{severity:string,quote:string,reason:string,suggestion:string}]}。"+
                 "approved=true 时 issues 必须为空；只有改变核心剧情、人物重要转变、关键伏笔答案或阶段结局才设置 majorChange=true。"+
-                "证据不足时不得声称存在矛盾。每个 quote 必须逐字复制当前正文中至少4个字符的单个连续片段，"+
-                "保持原有标点与换行，禁止拼接多处引用，禁止增加省略号。比较两处表达时，quote 选择其中一个连续片段，reason 说明比较理由。"+additionalSchema()+
-                "；上下文="+context.context(task,contextFiles())+"；正文="+json.write(Map.of("title",draft.get("title"),"body",body))+
+                "证据不足时不得声称存在矛盾。每个问题填写 quoteSource=BODY 和 quotePath=/paragraphs/p0 等已提供的段落路径，选择至少4个字符的段落；"+
+                "quote 可省略，由程序读取所选段落的完整原文，禁止编造路径。比较两处表达时选择其中一段，reason 说明比较理由。"+
+                "记忆审核引用待审核记忆时，按该任务的 quoteSource 和 quotePath 规则标明来源。"+additionalSchema()+
+                "；上下文="+context.context(task,contextFiles())+"；正文="+json.write(Map.of("title",draft.get("title"),"paragraphs",validator.paragraphs(body)))+
                 additionalInput(task,body));
-        validator.validate(result,body);
+        result=validateReview(task,result,body);
         validateAdditional(result,body);
         return result;
     }

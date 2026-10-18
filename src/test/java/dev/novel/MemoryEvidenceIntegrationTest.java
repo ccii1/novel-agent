@@ -94,6 +94,27 @@ class MemoryEvidenceIntegrationTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("不足4个字符");
     }
 
+    @Test void omittedDialogueQuotesRestoreTheActualContinuousBodySpan() {
+        String body="她问：“每个门都一样？”\n\n陆砚点头。沈月收起密信。";
+        var result=memory.validateDelta(delta("每个门都一样？\n\n陆砚点头。","沈月收起密信"),body);
+        assertThat(result.path("facts").get(0).path("evidence").asText()).isEqualTo("每个门都一样？”\n\n陆砚点头。");
+        assertThatThrownBy(()->memory.validateDelta(delta("每个门都一样。陆砚点头。","沈月收起密信"),body))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("连续匹配");
+    }
+    @Test void paragraphReferencesSupplyEvidenceAndLeaveTheRecordedResponseUnchanged() {
+        var original=delta("林舟交出钥匙","沈月收起密信");
+        var fact=(com.fasterxml.jackson.databind.node.ObjectNode)original.path("facts").get(0);
+        fact.remove("evidence");fact.put("evidencePath","/paragraphs/p0");
+        var before=original.deepCopy();
+        var result=memory.validateDelta(original,"林舟交出钥匙。\n\n沈月收起密信。");
+        assertThat(result.path("facts").get(0).path("evidence").asText()).isEqualTo("林舟交出钥匙。");
+        assertThat(result.path("facts").get(0).has("evidencePath")).isFalse();
+        assertThat(original).isEqualTo(before);
+        fact.put("evidencePath","/paragraphs/p999");
+        assertThatThrownBy(()->memory.validateDelta(original,"林舟交出钥匙。\n\n沈月收起密信。"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("正文段落不存在");
+    }
+
     @ParameterizedTest
     @ValueSource(strings={"林舟交出钥匙；沈月收起密信","林舟递出了钥匙","“林舟交出钥匙！”","“林舟交出钥匙"})
     void mismatchedEvidenceReportsRelationAndLeavesEntireDeltaUnchanged(String quote) {

@@ -36,6 +36,7 @@ spring:
       pool:
         size: 1
 novel:
+  review-mode: ${NOVEL_REVIEW_MODE:parallel}
   redis:
     enabled: ${NOVEL_REDIS_ENABLED:false}
     address: ${NOVEL_REDIS_ADDRESS:redis://127.0.0.1:6379}

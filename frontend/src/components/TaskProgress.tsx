@@ -9,11 +9,12 @@ export default function TaskProgress({task, inspect}: {task: Task; inspect: (id:
   const [now, setNow] = useState(Date.now());
   useEffect(() => {if(task.status !== 'RUNNING') return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer);}, [task.status]);
   const progress = query.data;
+  const review = task.status === 'DONE' && task.kind.startsWith('CHECK_') && task.result ? JSON.parse(task.result) as {approved: boolean; issues: unknown[]} : null;
   const elapsed = progress?.task.elapsed_ms;
   const runningElapsed = elapsed == null ? null : Number(elapsed) + (task.status === 'RUNNING' ? Math.max(0, now - query.dataUpdatedAt) : 0);
   return <article className="task-progress">
     <div className="split"><strong>{roles[task.kind] ?? task.kind}</strong><Status value={task.status}/></div>
-    <p aria-live="polite">{live ? progress?.stage ?? '正在读取执行进度' : task.status === 'DONE' ? '结果已保存，执行时间与用量可在详情中查看。' : '任务已取消。'}</p>
+    <p aria-live="polite">{live ? progress?.stage ?? '正在读取执行进度' : review ? review.approved ? '审核通过，结果已保存。' : `审核未通过，发现 ${review.issues.length} 项问题，请查看检查意见。` : task.status === 'DONE' ? '结果已保存，执行时间与用量可在详情中查看。' : '任务已取消。'}</p>
     {live && <div className="task-meta"><span>执行 {duration(runningElapsed)}</span>{progress?.task.model ? <span>{String(progress.task.model)} · 模型 {duration(progress.task.model_elapsed_ms)}</span> : <span>尚未发出模型请求</span>}</div>}
     {task.error && <div className="error-text">{task.error}</div>}
     <ErrorBox error={query.error}/>

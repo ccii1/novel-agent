@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="NOVEL_LIVE_TEST",matches="true")
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:live;DB_CLOSE_DELAY=-1","novel.engine-enabled=false"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:live;DB_CLOSE_DELAY=-1","novel.engine-enabled=false","novel.review-mode=parallel"})
 class LiveModelTest {
     @Autowired TestDatabase store;
     @Autowired ProjectService projects;
@@ -51,6 +51,9 @@ class LiveModelTest {
         assertThat(store.novel(id).get("status")).isIn("EXTRACTING","REFLECTING");
         if("EXTRACTING".equals(store.novel(id).get("status"))) {
             run(next(id,"MEMORY"));run(next(id,"CHECK_MEMORY"));
+            for(int attempt=0;"EXTRACTING".equals(store.novel(id).get("status")) && attempt<WorkflowService.MEMORY_REPAIR_LIMIT;attempt++) {
+                run(next(id,"MEMORY_REPAIR"));run(next(id,"CHECK_MEMORY"));
+            }
             assertThat(store.novel(id).get("status")).isIn("AWAITING_STAGE_REVIEW","AWAITING_HELP");
         }
     }

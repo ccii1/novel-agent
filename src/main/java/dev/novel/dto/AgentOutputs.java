@@ -13,6 +13,7 @@ public final class AgentOutputs {
     public record Chapter(@NotBlank String title,@NotBlank String body) {}
     public record Review(@NotNull Boolean approved,@NotNull Boolean majorChange,
             @NotNull List<@NotNull @Valid Issue> issues) {}
+    public record Dimensions(@NotNull Boolean character,@NotNull Boolean plot,@NotNull Boolean pacing,@NotNull Boolean style) {}
     public record Issue(String severity,@NotBlank @Size(min=4) String quote,@NotBlank String reason,@NotBlank String suggestion) {}
     public record Narrative(@NotBlank String opening,@NotBlank String activity,@NotBlank String ending,
             @NotBlank String resolution,@NotBlank String pattern,@NotNull Boolean climax,@NotNull Boolean combat) {}

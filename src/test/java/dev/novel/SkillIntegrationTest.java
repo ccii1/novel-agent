@@ -33,7 +33,7 @@ class SkillIntegrationTest {
     }
     private String novel() { return projects.create("密信","围绕密信展开悬疑故事","保持人物知情范围",2,new BigDecimal("100"),new BigDecimal("5")); }
     @Test void everyRoleLoadsPinnedMainSkillAndRoleReferences() {
-        for(String role:List.of("RESEARCH","PLAN","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE","REFLECT","MEMORY","CHECK_MEMORY")) {
+        for(String role:List.of("RESEARCH","PLAN","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE","CHECK_CHAPTER","REFLECT","MEMORY","MEMORY_REPAIR","CHECK_MEMORY")) {
             var snapshot=skills.load(role,10);
             assertThat(snapshot.files()).contains("SKILL.md","references/pattern-detection.md","references/audit-dimensions.md");
             assertThat(snapshot.version()).isEqualTo("2.0.1");
