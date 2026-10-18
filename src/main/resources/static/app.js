@@ -49,19 +49,33 @@ async function modelFields(container, provider, model = '', callbacks = {}) {
   container.innerHTML = `<div class="grid"><div><label>模型服务</label><select name="provider">${catalog.providers.map(item => `<option value="${escapeHtml(item.id)}" ${item.id === provider ? 'selected' : ''}>${escapeHtml(item.label)} · ${item.billingMode === 'unmetered' ? '免费调用' : '按 token 计费'}${item.ready ? '' : '（待配置）'}</option>`).join('')}</select></div><div><label>文本模型</label><select name="model"></select></div></div><p class="muted">免费服务保留 token 用量；计费服务沿用原有预算。切换后用于后续调用，已有记录继续保留。</p>`;
   const services = container.querySelector('[name=provider]');
   const models = container.querySelector('[name=model]');
+  const failure = document.createElement('p');failure.className = 'error model-list-error';failure.hidden = true;failure.setAttribute('role','alert');
+  const retry = document.createElement('button');retry.type = 'button';retry.className = 'secondary';retry.textContent = '重新读取模型列表';
+  container.append(failure);
   let loadVersion = 0;
+  let requestedModel = model;
   const remember = () => callbacks.onChange?.({provider:services.value,model:models.value});
   async function loadModels(chosen = '') {
     const version = ++loadVersion;
+    requestedModel = chosen;
+    failure.hidden = true;retry.remove();
     callbacks.onReady?.(false);
     models.innerHTML = '<option value="">正在读取模型列表…</option>';
     models.disabled = true;
     const profile = catalog.providers.find(item => item.id === services.value);
-    if (!profile.ready) {
+    if (!profile?.ready) {
       models.innerHTML = '<option value="">服务尚未配置</option>';
       return;
     }
-    const names = await api(`/providers/${encodeURIComponent(services.value)}/models`);
+    let names;
+    try {
+      names = await api(`/providers/${encodeURIComponent(services.value)}/models`);
+    } catch(error) {
+      if (version !== loadVersion || !container.isConnected) return;
+      models.innerHTML = '<option value="">模型列表读取失败</option>';
+      failure.textContent = error.message;failure.hidden = false;container.append(retry);
+      throw error;
+    }
     if (version !== loadVersion || !container.isConnected) return;
     if (chosen && !names.includes(chosen)) names.unshift(chosen);
     models.innerHTML = `<option value="">服务默认（${escapeHtml(profile.defaultModel)}）</option>${names.map(name => `<option value="${escapeHtml(name)}" ${name === chosen ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}`;
@@ -74,10 +88,11 @@ async function modelFields(container, provider, model = '', callbacks = {}) {
     loadModels().catch(error => notice(error.message, true));
   });
   models.addEventListener('change',remember);
+  retry.addEventListener('click',()=>loadModels(requestedModel).catch(error=>notice(error.message,true)));
   await loadModels(model);
 }
 async function researchModelFields(container,choice,remember,busy = false) {
-  const submit = container.closest('form').querySelector('button');
+  const submit = container.closest('form').querySelector('button:not([type]),button[type="submit"]');
   submit.disabled = true;
   try {
     const capabilities = await api('/status');
@@ -86,8 +101,8 @@ async function researchModelFields(container,choice,remember,busy = false) {
       onChange:value => { if (container.isConnected) remember(value); },
       onReady:ready => { if (container.isConnected) submit.disabled = busy || !ready; }
     });
-    if (busy && container.isConnected) container.querySelectorAll('select').forEach(select => { select.disabled = true; });
   } catch(error) { if (container.isConnected) { submit.disabled = true;notice(error.message,true); } }
+  finally { if (busy && container.isConnected) container.querySelectorAll('select').forEach(select => { select.disabled = true; }); }
 }
 async function renderResearch() {
   const [researches, tasks] = await Promise.all([api('/research'),api('/research/tasks')]);
@@ -261,7 +276,7 @@ document.addEventListener('click', async event => {
   } catch(error) { notice(error.message,true); }
 });
 document.addEventListener('submit', async event => {
-  event.preventDefault(); const form = event.target; const data = Object.fromEntries(new FormData(form)); const button = form.querySelector('button'); button.disabled = true;
+  event.preventDefault(); const form = event.target; const data = Object.fromEntries(new FormData(form)); const button = form.querySelector('button:not([type]),button[type="submit"]'); button.disabled = true;
   try {
     if (form.id === 'observationFilter') {
       state.observation = {...state.observation,...data,page:0};

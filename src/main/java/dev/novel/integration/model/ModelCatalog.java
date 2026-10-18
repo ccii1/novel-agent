@@ -9,6 +9,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.net.http.*;
+import java.net.ConnectException;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
 
@@ -78,21 +80,44 @@ public class ModelCatalog {
         }
         return Map.of("defaultProvider",defaultProvider(),"providers",options);
     }
-    public List<String> models(String provider) throws Exception {
+    public List<String> models(String provider) {
         var selected=resolve(provider,"","PLAN");
         if(!selected.ready()) throw new IllegalStateException("请在本机配置该服务的地址、凭据及计费方式");
         var endpoint=ModelEndpoint.resolve(selected.endpoint()).resolve("../models");
         var request=HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(20)).header("Authorization","Bearer "+selected.apiKey()).GET().build();
-        var response=http.send(request,HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
-        if(response.statusCode()!=200) throw new IllegalStateException("模型列表返回 HTTP "+response.statusCode());
-        var data=json.read(response.body()).path("data");
-        if(!data.isArray()) throw new IllegalArgumentException("模型服务未返回有效列表");
-        List<String> models=new ArrayList<>();
-        for(var entry:data) {
-            String name=json.text(entry,"id");
-            if(!name.toLowerCase(Locale.ROOT).contains("image") && !name.equals("codex-auto-review")) models.add(name);
+        String target=endpoint.getHost()+(endpoint.getPort()<0?"":":"+endpoint.getPort());
+        HttpResponse<String> response;
+        try {
+            response=http.send(request,HttpResponse.BodyHandlers.ofString(java.nio.charset.StandardCharsets.UTF_8));
+        } catch(HttpTimeoutException error) {
+            throw new ModelServiceException(provider,ModelServiceException.Reason.TIMEOUT,"模型服务 "+provider+"（"+target+"）读取模型列表超时，请检查网络和服务状态",error);
+        } catch(ConnectException error) {
+            throw new ModelServiceException(provider,ModelServiceException.Reason.CONNECT,"无法连接模型服务 "+provider+"（"+target+"），请确认服务已启动并检查服务地址",error);
+        } catch(IOException error) {
+            throw new ModelServiceException(provider,ModelServiceException.Reason.CONNECT,"模型服务 "+provider+"（"+target+"）网络请求失败，请检查网络和服务地址",error);
+        } catch(InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new ModelServiceException(provider,ModelServiceException.Reason.INTERRUPTED,"模型服务 "+provider+"的列表请求已中断，请重新读取",error);
         }
-        if(models.isEmpty()) throw new IllegalStateException("模型列表中没有可用的文本模型");
-        return models;
+        if(response.statusCode()!=200) {
+            boolean auth=response.statusCode()==401 || response.statusCode()==403;
+            throw new ModelServiceException(provider,auth?ModelServiceException.Reason.AUTH:ModelServiceException.Reason.UPSTREAM,
+                    "模型服务 "+provider+"返回 HTTP "+response.statusCode()+(auth?"，请检查本机配置的 API key":"，请检查供应商服务状态"),null);
+        }
+        try {
+            var root=json.read(response.body());
+            if(root==null) throw new IllegalArgumentException("响应为空");
+            var data=root.path("data");
+            if(!data.isArray()) throw new IllegalArgumentException("缺少 data 数组");
+            List<String> models=new ArrayList<>();
+            for(var entry:data) {
+                String name=json.text(entry,"id");
+                if(!name.toLowerCase(Locale.ROOT).contains("image") && !name.equals("codex-auto-review")) models.add(name);
+            }
+            if(models.isEmpty()) throw new IllegalArgumentException("没有可用文本模型");
+            return models;
+        } catch(IllegalArgumentException error) {
+            throw new ModelServiceException(provider,ModelServiceException.Reason.INVALID_RESPONSE,"模型服务 "+provider+"未返回有效的文本模型列表",error);
+        }
     }
 }

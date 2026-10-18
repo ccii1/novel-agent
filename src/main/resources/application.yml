@@ -2,6 +2,8 @@ server:
   address: 127.0.0.1
   port: ${PORT:8096}
 logging:
+  charset:
+    file: UTF-8
   file:
     name: ${NOVEL_LOG_FILE:./data/logs/novel-agent.log}
   logback:

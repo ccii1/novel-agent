@@ -367,6 +367,8 @@ Copy-Item -LiteralPath 'config\application-local.example.yml' -Destination 'conf
 
 模型列表正在读取、服务尚未配置或列表读取失败时，选题提交按钮保持禁用；讨论已有待处理任务时，模型选择与发送按钮禁用。页面自动更新会保留当前选择。升级后需要重启后端并刷新页面；前端检查后端是否支持选题模型选择，确认支持后开放提交。API key 和服务地址继续保存在本机配置中。
 
+模型列表读取失败时，页面显示对应服务与具体原因，并提供“重新读取模型列表”按钮；重新读取保持当前服务选择。连接失败返回502、请求超时返回504，请求中断返回503；鉴权与上游响应错误也通过结构化错误说明。日志记录服务标识和错误类别，凭据及响应正文保留在输出范围之外。本地服务需要启动后才能读取其模型列表。
+
 ```powershell
 .\start.ps1
 ```
@@ -417,7 +419,7 @@ flowchart LR
 
 执行期间每15秒输出一次 `TASK_RUNNING`，说明当前阶段、执行时间和模型等待时间。`MODEL_REQUEST_SENT` 表示进入模型请求阶段，`MODEL_RESPONSE_RECEIVED` 表示收到完整 HTTP 响应，`MODEL_USAGE_RECORDED` 表示用量已保存。当前采用完整响应模式，等待期间没有已完成的正文 token 统计；响应返回后显示用量和费用。
 
-日志按10MB轮转，保留14天，总容量上限200MB；通过 `NOVEL_LOG_FILE` 可以修改输出位置。默认日志位于 Git 忽略的 `data/` 目录。PowerShell 持续查看：
+日志文件使用 UTF-8，按10MB轮转，保留14天，总容量上限200MB；通过 `NOVEL_LOG_FILE` 可以修改输出位置。默认日志位于 Git 忽略的 `data/` 目录。PowerShell 持续查看：
 
 ```powershell
 Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log' -Tail 80 -Wait -Encoding UTF8
