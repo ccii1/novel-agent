@@ -1,6 +1,6 @@
 # Novel Agent
 
-面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、Redisson、H2 和 Apache TinkerGraph。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。
+面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配与 Redis 记忆缓存代码已提供，1.7.0 尚未执行编译、数据库迁移或运行验证。
 
 ## 框架与执行层
 
@@ -10,7 +10,7 @@ AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core` 与 `agentscope-ext
 flowchart TD
     API["Controller：创作与审核请求"] --> Business["Service：阶段、章节与记忆流程"]
     Business --> Repository["MyBatis Mapper 与 Spring 事务"]
-    Repository --> DB["H2：任务、正文、版本与费用"]
+    Repository --> DB["MySQL / H2：任务、正文、版本与费用"]
     DB --> Scheduler["TaskEngine：认领任务与并行调度"]
     Scheduler --> Role["AgentService：独立角色注册与分发"]
     Role --> Specialists["NovelAgent：独立提示词、上下文清单与输出检查"]
@@ -44,7 +44,7 @@ MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处�
 
 `MemoryService.contextData` 返回上下文对象，`TruthDocumentService` 直接组装按角色选择的资料。一次上下文构建读取一份版本快照，graph 构建和事实排序共用该快照。规划记忆按分类和数量上限收集，每条选中记录的 JSON 内容解析一次。对外保留 JSON 文本入口，内部对象通过 Jackson `valueToTree` 转换，避免字符串生成后再次解析。
 
-启用 Redis 后，`ModelRateLimiter` 使用 Redisson `RRateLimiter` 共享每分钟调用额度，超限任务延后调度。连接中断会明确报告失败；费用与请求状态继续由数据库记录。数据库的60秒调用数量检查同时保留，Redis 清空后仍受已有调用记录约束。Redis 许可在数据库预留前取得，预留失败时许可仍计入当前一分钟，限流结果保持保守。此项目当前采用单个应用进程与 H2 文件数据库，多实例部署还需要共享数据库和执行所有权管理。
+启用 Redis 后，`ModelRateLimiter` 使用 Redisson `RRateLimiter` 共享每分钟调用额度，超限任务延后调度。连接中断会明确报告失败；费用与请求状态继续由数据库记录。数据库的60秒调用数量检查同时保留，Redis 清空后仍受已有调用记录约束。Redis 许可在数据库预留前取得，预留失败时许可仍计入当前一分钟，限流结果保持保守。应用当前采用单个进程；连接 MySQL 后，多实例部署仍需要补充执行所有权管理。
 
 框架学习入口：`AgentScopeExecutor` → `ModelClient` → `TaskEngine` → `TaskDispatchMapper` / `ModelCallMapper` → 对应 Mapper XML → `ModelRateLimiter` / `RedisConfiguration`。
 
@@ -224,7 +224,9 @@ flowchart LR
 
 事实沿用稳定的 `key`；关系使用 `subject`、`predicate`、`object` 标识，并保存来源章节和原文证据。例如，人物掌握某个秘密使用 `KNOWS` 关系，秘密作为对象。结束的关系通过 `deleted=true` 标记；伏笔回收沿用原 `key` 并设置 `active=false`。
 
-关系记录持久化在 H2，查询时使用指定记忆版本构建 TinkerGraph。网页支持一至三层关联查询，章节上下文默认查询两层关联。
+关系记录持久化在所选关系数据库中，查询时使用指定记忆版本构建 TinkerGraph。项目当前没有接入 Neo4j。网页支持一至三层关联查询，章节上下文默认查询两层关联。
+
+启用 Redis 后，`MemoryProjectionCache` 通过 Redisson 缓存记忆快照和关系查询结果。快照键包含作品与记忆版本；关系键还包含排序去重的人物名单、查询深度与格式版本。缓存有效期30分钟，正式记忆新增后使用新的版本键，历史版本保持独立。缓存未命中时读取数据库；关系命中时复用投影结果，减少重复构建 TinkerGraph。Redis 已启用时，连接失败会明确失败；正式正文、历史记忆与费用继续由关系数据库保存。缓存命中率、延迟和并发效果尚未验证。
 
 ### 本章上下文选择
 
@@ -251,7 +253,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant Workflow as WorkflowService
-    participant DB as H2
+    participant DB as 关系数据库
     participant Engine as TaskEngine
     participant Character as 人物检查任务
     participant Plot as 剧情检查任务
@@ -381,7 +383,23 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 网页操作顺序：选题研究或直接创建作品 → 阶段大纲审核 → 查看章节和执行记录 → 处理修改或费用待办 → 阶段阅读审核 → 继续下一阶段。正文可以导出为文本文件，发布及平台正文修改由人工完成。
 
-数据库默认位于 `data/novel`。`data/`、`target/`、`.work/`、日志、`.env` 和 `config/application-local.yml` 已加入 Git 忽略规则。
+未指定 MySQL profile 时，数据库位于 `data/novel`。`data/`、`target/`、`.work/`、日志、`.env`、`config/application-local.yml` 和 `config/mysql-local.properties` 已加入 Git 忽略规则。
+
+### MySQL 与已有数据迁移
+
+MySQL 账户与连接地址保存在忽略文件 `config/mysql-local.properties`，样例为 `config/mysql-local.example.properties`。业务数据库使用独立的 `novel_agent`，字符集为 utf8mb4，文本比较区分大小写。`mysql` profile 使用 Connector/J、HikariCP 和 Flyway，MyBatis 根据 JDBC 数据库类型选择对应 SQL；H2 SQL 初始化继续适用于已有运行方式。数据库类型也通过 `/api/status` 和观测看板返回。[MyBatis databaseIdProvider 说明](https://mybatis.org/mybatis-3/configuration.html#databaseIdProvider)描述了同名 SQL 按数据库选择的机制。
+
+迁移需要结束应用写入，保留关闭后的 `data/novel.mv.db` 备份。以下命令为迁移操作说明，本次开发未执行：
+
+```powershell
+.\migrate-mysql.ps1
+```
+
+脚本发现应用端口仍在监听时直接终止。工具使用只读 H2 连接，源文件被其他进程占用时终止；使用 Flyway 创建 MySQL 表，目标业务表已有数据时终止。工具逐表复制13张业务表，保留任务、章节、记忆版本、费用、事件与评价编号，核对每张表的记录数量后在同一 MySQL 事务中提交数据。预算锁由建表迁移初始化。源文件保持只读，工具不切换或重启应用。数量核对覆盖记录数量，完整内容和实际运行效果尚未验证。
+
+完成迁移后的启动方式为 `.\start.ps1 -Database mysql`；IDEA 配置启用 `local,mysql` profiles，工作目录设置为项目目录。默认启动方式继续读取 H2，防止已有数据尚未迁移时进入空数据库。切换 MySQL 后不应继续向 H2 写入新业务数据。
+
+Redis 配置通过 `NOVEL_REDIS_ENABLED=true` 启用；启动脚本仍负责检查本机 Redis。安装目录存在与服务正在运行需要分别确认，应用启动时会检查连接。
 
 ## Agent 观测看板
 
@@ -394,7 +412,7 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 任务认领与执行记录创建使用同一事务，任务结果与执行结束记录也在同一事务内保存。模型响应后的原始 usage 和 token 保存在调用记录。服务启动时将未结束执行标记为 `INTERRUPTED`，结束时间和最终耗时保留未知；已有模型费用恢复流程继续处理结果不确定的调用。限流等待和线程拒绝分别记录，后续执行产生新的执行编号。
 
-全部记录保存在本地 H2 文件 `data/novel.mv.db`，包含已有的 `tasks`、`model_calls`、`events` 和新增的 `agent_executions`、`agent_feedback`。关闭网页、重启服务后仍可查询；`data/` 已加入 Git 忽略规则。新增字段和表通过幂等 SQL 创建，历史任务继续显示已有结果与费用，缺失的耗时显示“未记录”。迁移不会根据旧事件猜测执行耗时。
+全部记录保存在当前配置的关系数据库，包含 `tasks`、`model_calls`、`events`、`agent_executions`、`agent_feedback`。MySQL 使用独立业务库，H2 使用 `data/novel.mv.db`。关闭网页、重启服务后仍可查询；看板显示当前数据库类型。历史任务继续显示已有结果与费用，缺失的耗时显示“未记录”。迁移不会根据旧事件猜测执行耗时。
 
 ```mermaid
 flowchart LR
@@ -404,7 +422,7 @@ flowchart LR
     Call --> Usage[HTTP 耗时与原始 usage]
     Agent --> Result[输出与自动检查指标]
     Result --> Commit[事务保存任务与执行结果]
-    Execution --> Database[(本地 H2 文件)]
+    Execution --> Database[(MySQL / H2)]
     Usage --> Database
     Commit --> Database
     Feedback[人工评分与依据] --> Database

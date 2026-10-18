@@ -2,6 +2,11 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="quality">
   <update id="record">MERGE INTO chapter_metrics(novel_id,chapter_no,revision,characters,total_lines,dialogue_lines,dialogue_ratio) KEY(novel_id,chapter_no,revision) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},#{args[6]})</update>
+  <update id="record" databaseId="mysql">
+    INSERT INTO chapter_metrics(novel_id,chapter_no,revision,characters,total_lines,dialogue_lines,dialogue_ratio)
+    VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},#{args[6]})
+    ON DUPLICATE KEY UPDATE characters=#{args[3]},total_lines=#{args[4]},dialogue_lines=#{args[5]},dialogue_ratio=#{args[6]}
+  </update>
   <update id="pacing">UPDATE chapter_metrics SET pacing_data=#{args[0]} WHERE novel_id=#{args[1]} AND chapter_no=#{args[2]} AND revision=#{args[3]}</update>
   <select id="recent" resultType="map">SELECT m.* FROM chapter_metrics m JOIN chapters c ON c.novel_id=m.novel_id AND c.number=m.chapter_no AND c.revision=m.revision WHERE c.novel_id=#{args[0]} AND c.number&lt;#{args[1]} AND c.status='ACCEPTED' ORDER BY c.number DESC LIMIT #{args[2]}</select>
 </mapper>

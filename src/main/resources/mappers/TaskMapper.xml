@@ -17,6 +17,7 @@
   <insert id="create">INSERT INTO tasks(id,novel_id,kind,task_key,status,chapter_no,revision,memory_version,payload) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'WAITING',#{args[4]},#{args[5]},#{args[6]},#{args[7]})</insert>
   <update id="wait">UPDATE tasks SET status='WAITING',updated_at=CURRENT_TIMESTAMP WHERE id=#{args[0]}</update>
   <update id="defer">UPDATE tasks SET status='WAITING',available_at=DATEADD('SECOND',5,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=#{args[0]} AND status='RUNNING'</update>
+  <update id="defer" databaseId="mysql">UPDATE tasks SET status='WAITING',available_at=DATE_ADD(CURRENT_TIMESTAMP(3),INTERVAL 5 SECOND),updated_at=CURRENT_TIMESTAMP(3) WHERE id=#{args[0]} AND status='RUNNING'</update>
   <update id="fail">UPDATE tasks SET status='ERROR',error=#{args[0]},updated_at=CURRENT_TIMESTAMP WHERE id=#{args[1]}</update>
   <update id="ready">UPDATE tasks SET result=#{args[0]},status='READY',updated_at=CURRENT_TIMESTAMP WHERE id=#{args[1]}</update>
   <update id="stale">UPDATE tasks SET status='CANCELLED',error='记忆版本已变化' WHERE id=#{args[0]}</update>

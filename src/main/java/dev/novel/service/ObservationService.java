@@ -15,8 +15,9 @@ public class ObservationService {
     private final ModelCallMapper calls;
     private final Store store;
     private final Json json;
-    public ObservationService(ObservationMapper observations,ModelCallMapper calls,Store store,Json json) {
-        this.observations=observations;this.calls=calls;this.store=store;this.json=json;
+    private final DatabaseStorage storage;
+    public ObservationService(ObservationMapper observations,ModelCallMapper calls,Store store,Json json,DatabaseStorage storage) {
+        this.observations=observations;this.calls=calls;this.store=store;this.json=json;this.storage=storage;
     }
     public void start(Map<String,Object> task) {
         String id=UUID.randomUUID().toString();
@@ -50,7 +51,7 @@ public class ObservationService {
         filter.put("limit",30);filter.put("offset",page*30);
         return Map.of("summary",observations.summary(filter),"tasks",observations.tasks(filter),
                 "total",observations.count(filter),"page",page,"pageSize",30,
-                "storage","本地文件数据库 data/novel.mv.db","historicalTiming","新增观测前的任务可能没有耗时记录；中断执行的结束时间未知");
+                "storage",storage.description(),"historicalTiming","新增观测前的任务可能没有耗时记录；中断执行的结束时间未知");
     }
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String,Object> detail(String id) {

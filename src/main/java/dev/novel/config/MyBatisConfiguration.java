@@ -12,6 +12,14 @@ import java.util.Map;
 
 @Configuration
 public class MyBatisConfiguration {
+    @Bean org.apache.ibatis.mapping.DatabaseIdProvider databaseIdProvider() {
+        var provider=new org.apache.ibatis.mapping.VendorDatabaseIdProvider();
+        var names=new java.util.Properties();
+        names.setProperty("MySQL","mysql");
+        names.setProperty("H2","h2");
+        provider.setProperties(names);
+        return provider;
+    }
     @Bean ConfigurationCustomizer mapColumnNames() {
         return configuration -> {
             configuration.setCallSettersOnNulls(true);

@@ -4,5 +4,6 @@
 /.idea/
 *.log
 /config/application-local.yml
+/config/mysql-local.properties
 .env
 .env.*

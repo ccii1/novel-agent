@@ -13,6 +13,12 @@
   <select id="totals" resultType="map">SELECT COUNT(*) AS chapters,COALESCE(SUM(CHAR_LENGTH(body)),0) AS stored_characters FROM chapters WHERE novel_id=#{args[0]} AND status='ACCEPTED'</select>
   <insert id="history">INSERT INTO chapter_history(id,novel_id,number,revision,title,body) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]})</insert>
   <update id="draft">MERGE INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version,published) KEY(novel_id,number) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},'DRAFT',#{args[6]},FALSE)</update>
+  <update id="draft" databaseId="mysql">
+    INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version,published)
+    VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},#{args[4]},#{args[5]},'DRAFT',#{args[6]},FALSE)
+    ON DUPLICATE KEY UPDATE stage_no=#{args[2]},revision=#{args[3]},title=#{args[4]},body=#{args[5]},
+      status='DRAFT',memory_version=#{args[6]},published=FALSE
+  </update>
   <update id="accept">UPDATE chapters SET status='ACCEPTED',summary=#{args[0]},memory_version=#{args[1]} WHERE novel_id=#{args[2]} AND number=#{args[3]}</update>
   <update id="publish">UPDATE chapters SET published=#{args[0]} WHERE novel_id=#{args[1]} AND number=#{args[2]} AND status='ACCEPTED'</update>
   <update id="invalidate">UPDATE chapters SET status='INVALIDATED' WHERE novel_id=#{args[0]} AND number&gt;=#{args[1]}</update>

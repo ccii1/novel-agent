@@ -20,14 +20,18 @@ public class MemoryService {
     private final Json json;
     private final MemoryMapper memories;
     private final AgentOutputReader outputs;
-    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs) {
-        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;
+    private final MemoryProjectionCache cache;
+    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs,MemoryProjectionCache cache) {
+        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;this.cache=cache;
     }
     public List<Map<String,Object>> snapshot(String novel, long version) {
-        return memories.snapshot(novel,version);
+        return cache.snapshot(novel,version,()->memories.snapshot(novel,version));
     }
     public Map<String,Object> graph(String novel, long version, List<String> characters, int depth) {
-        return graph(snapshot(novel,version),version,characters,depth);
+        if(depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
+        var selected=characters.stream().distinct().sorted().toList();
+        return cache.graph(novel,version,json.write(Map.of("characters",selected,"depth",depth)),
+                ()->graph(snapshot(novel,version),version,selected,depth));
     }
     private Map<String,Object> graph(List<Map<String,Object>> facts,long version,List<String> characters,int depth) {
         if (depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
@@ -73,7 +77,8 @@ public class MemoryService {
         });
         List<Map<String,Object>> relevant=new ArrayList<>();
         var snapshot=snapshot(id,version);
-        var relatedGraph=graph(snapshot,version,characters,2);
+        var relatedGraph=cache.graph(id,version,json.write(Map.of("characters",characters.stream().distinct().sorted().toList(),"depth",2)),
+                ()->graph(snapshot,version,characters,2));
         String terms=json.write(relatedGraph.get("nodes"));
         Set<String> requestedKeys=new HashSet<>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) item.path("foreshadowIds").forEach(key->requestedKeys.add(key.asText()));});

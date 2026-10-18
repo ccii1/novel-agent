@@ -17,6 +17,19 @@
   <update id="interruptRunning">
     UPDATE agent_executions SET status='INTERRUPTED',error='服务中断，执行结束时间未知' WHERE status='RUNNING'
   </update>
+  <insert id="start" databaseId="mysql">
+    INSERT INTO agent_executions(id,task_id,status,result_source,queue_ms)
+    VALUES(#{id},#{task.id},'RUNNING',#{source},
+      GREATEST(0,TIMESTAMPDIFF(MICROSECOND,#{task.queued_at,jdbcType=TIMESTAMP},CURRENT_TIMESTAMP(3)) DIV 1000))
+  </insert>
+  <update id="finish" databaseId="mysql">
+    UPDATE agent_executions SET status=#{status},finished_at=CURRENT_TIMESTAMP(3),
+      duration_ms=GREATEST(0,TIMESTAMPDIFF(MICROSECOND,started_at,CURRENT_TIMESTAMP(3)) DIV 1000),error=#{error},result=#{result},
+      approved=#{metrics.approved,jdbcType=BOOLEAN},issue_count=#{metrics.issueCount,jdbcType=INTEGER},
+      major_change=#{metrics.majorChange,jdbcType=BOOLEAN},body_characters=#{metrics.bodyCharacters,jdbcType=INTEGER},
+      fact_count=#{metrics.factCount,jdbcType=INTEGER},relation_count=#{metrics.relationCount,jdbcType=INTEGER}
+    WHERE id=#{id} AND status='RUNNING'
+  </update>
   <sql id="filter">
     <where>
       <if test="taskId != null">t.id=#{taskId}</if>
@@ -88,6 +101,16 @@
   </select>
   <select id="progressEvents" resultType="map">
     SELECT id,type,message,created_at,execution_id FROM events WHERE task_id=#{id} ORDER BY id DESC LIMIT 12
+  </select>
+  <select id="progress" databaseId="mysql" resultType="map">
+    SELECT t.id,t.kind,t.status,t.error,t.created_at,t.updated_at,e.id AS execution_id,e.started_at,e.finished_at,
+      CASE WHEN e.status='RUNNING' THEN GREATEST(0,TIMESTAMPDIFF(MICROSECOND,e.started_at,CURRENT_TIMESTAMP(3)) DIV 1000) ELSE e.duration_ms END AS elapsed_ms,
+      GREATEST(0,TIMESTAMPDIFF(MICROSECOND,t.created_at,CURRENT_TIMESTAMP(3)) DIV 1000) AS task_age_ms,
+      c.id AS call_id,c.status AS call_status,c.provider,c.model,c.actual,c.reserved,c.input_tokens,c.output_tokens,
+      CASE WHEN c.status='IN_FLIGHT' THEN GREATEST(0,TIMESTAMPDIFF(MICROSECOND,c.created_at,CURRENT_TIMESTAMP(3)) DIV 1000) ELSE c.latency_ms END AS model_elapsed_ms
+    FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
+    LEFT JOIN agent_executions e ON e.task_id=t.id AND e.id=(SELECT e2.id FROM agent_executions e2 WHERE e2.task_id=t.id ORDER BY e2.started_at DESC,e2.id DESC LIMIT 1)
+    WHERE t.id=#{id}
   </select>
   <select id="events" resultType="map">SELECT * FROM events WHERE task_id=#{id} ORDER BY id DESC LIMIT 500</select>
   <select id="feedback" resultType="map">SELECT * FROM agent_feedback WHERE task_id=#{id} ORDER BY id DESC</select>
