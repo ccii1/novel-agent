@@ -30,6 +30,8 @@ public class NovelController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename("truth-files-"+id+".zip").build().toString()).body(truth.archive(id));
     }
     @GetMapping("/novels") public Object novels() { return workspace.novels(); }
+    @GetMapping("/novels/summaries") public Object summaries() { return workspace.novelSummaries(); }
+    @GetMapping("/novels/{id}/snapshot") public Object snapshot(@PathVariable String id) { return workspace.snapshot(id); }
     @PostMapping("/novels") public Object create(@Valid @RequestBody CreateNovel request) {
         return Map.of("id",projects.create(request.title(),request.premise(),request.bible(),request.stageSize(),request.novelBudget(),request.chapterBudget(),request.provider(),request.model()));
     }

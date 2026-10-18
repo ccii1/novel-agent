@@ -21,7 +21,12 @@ class HttpIntegrationTest {
         return http.send(builder.build(),HttpResponse.BodyHandlers.ofString());
     }
     @Test void servesWorkspaceAndPublicStatusWithoutExposingSecrets() throws Exception {
-        assertThat(request("/",null).body()).contains("Novel Agent","app.js");
+        var document = org.jsoup.Jsoup.parse(request("/",null).body());
+        assertThat(document.title()).contains("Novel Agent");
+        assertThat(document.select("#root")).hasSize(1);
+        String module = document.selectFirst("script[type=module]").attr("src");
+        assertThat(module).startsWith("/assets/");
+        assertThat(request(module,null).statusCode()).isEqualTo(200);
         var response=request("/api/status",null);assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("modelConfigured").doesNotContain("api-key","Authorization");
         assertThat(json.read(response.body()).path("skill").path("version").asText()).isEqualTo("2.0.1");
@@ -36,6 +41,18 @@ class HttpIntegrationTest {
             """);
         assertThat(created.statusCode()).isEqualTo(200);String id=json.read(created.body()).get("id").asText();
         var detail=request("/api/novels/"+id,null);assertThat(detail.body()).contains("PLANNING","PLAN");
+        var summaries = json.read(request("/api/novels/summaries",null).body());
+        var summary = java.util.stream.StreamSupport.stream(summaries.spliterator(),false)
+            .filter(row -> row.path("id").asText().equals(id)).findFirst().orElseThrow();
+        assertThat(summary.path("title").asText()).isEqualTo("密信");
+        assertThat(summary.has("bible")).isFalse();
+        assertThat(summary.has("premise")).isFalse();
+        var before = json.read(request("/api/novels/"+id+"/snapshot",null).body());
+        assertThat(before.path("event_cursor").asLong()).isPositive();
+        assertThat(request("/api/novels/"+id+"/pause","{}").statusCode()).isEqualTo(200);
+        var after = json.read(request("/api/novels/"+id+"/snapshot",null).body());
+        assertThat(after.path("event_cursor").asLong()).isGreaterThan(before.path("event_cursor").asLong());
+        assertThat(after.path("status").asText()).isEqualTo("PAUSED");
         assertThat(request("/api/novels/"+id+"/approve-plan","null").statusCode()).isEqualTo(409);
         assertThat(request("/api/novels/"+id+"/graph",null).statusCode()).isEqualTo(200);
         var truth=request("/api/novels/"+id+"/truth-files",null);
@@ -63,6 +80,5 @@ class HttpIntegrationTest {
         assertThat(request("/api/observability/tasks/missing",null).statusCode()).isEqualTo(404);
         assertThat(request("/api/observability/tasks/missing/progress",null).statusCode()).isEqualTo(404);
         assertThat(request("/api/observability/tasks/missing/feedback","{\"rating\":6,\"note\":\"评分无效\"}").statusCode()).isEqualTo(400);
-        assertThat(request("/",null).body()).contains("Agent 看板","observationDialog");
     }
 }

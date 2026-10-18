@@ -1,6 +1,44 @@
 # Novel Agent
 
-面向中文网文持续连载的个人创作工作台，使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
+面向中文网文持续连载的个人创作工作台，前端使用 React、TypeScript、Vite 与 TanStack Query，后端使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
+
+## React 前端与 IDEA 运行
+
+使用 IDEA 打开整个项目目录，重新加载 Maven 项目。前端代码位于 `frontend/src`，按页面、通用组件和数据访问模块组织。Node.js 需要22.12或更高版本，本机使用24.15。首次安装前端依赖：
+
+```powershell
+Set-Location 'D:\java_learning\novel-agent\frontend'
+npm.cmd ci
+```
+
+项目的 `.run/` 目录提供共享运行配置，IDEA 右上角运行列表可选择：
+
+| 配置 | 用途 |
+| --- | --- |
+| `Novel Frontend` | 执行 `frontend/package.json` 中的 `dev` 命令，地址为 `http://127.0.0.1:5173` |
+| `Novel Backend` | 使用项目 JDK 和 `local` profile 启动 Spring Boot，端口8096 |
+| `Novel Fullstack` | 同时运行上述两个配置 |
+
+已有后端在 IDEA 运行时，只运行 `Novel Frontend`。后端配置需要 Java 17或更高版本；使用 MySQL 时，将 `Novel Backend` 的 Active profiles 设置为 `local,mysql`。`npm` 配置需要 IDEA 启用 JavaScript/Node.js 功能，Node interpreter 使用本机 `D:\Program Files\NodeJs\node.exe`。共享配置不包含密钥。
+
+开发页面使用5173端口；Vite 将 `/api` 转发到8096，保存 React 或 CSS 文件后执行热更新。后端端口改变时，在前端运行配置的环境变量中设置 `NOVEL_BACKEND_URL=http://127.0.0.1:实际端口`。本次升级包含新增后端接口，需要在 IDEA 重新启动后端后使用新版前端。
+
+作品页面每2秒读取状态快照，返回状态、阶段、章节、记忆版本和最新事件编号；只有快照变化时才更新正文、大纲、记忆与交接资料。事件查询使用 `(novel_id,id)` 索引，侧栏列表只返回作品摘要。选题与任务进度每2秒更新，Agent 看板与费用每3秒更新；页面重新获得焦点时同步数据。数据更新通过 React 更新相应组件，自动同步不会覆盖输入；正在编辑的创意文字、大纲、修改意见与讨论内容保存在当前浏览器的 `sessionStorage`，页面切换和刷新后仍可读取。模型列表缓存5分钟，手动同步可主动重新读取。模型生成耗时仍由供应商响应决定。
+
+```mermaid
+flowchart LR
+    Browser["React 页面 · 5173"] --> Cache["TanStack Query · 缓存与自动更新"]
+    Cache --> Proxy["Vite /api 代理"]
+    Proxy --> API["Spring Boot · 8096"]
+    API --> Snapshot["状态快照与事件编号"]
+    Snapshot --> Change{"是否变化"}
+    Change -->|变化| Content["读取当前页面业务资料"]
+    Content --> Browser
+    Vite["保存 React / CSS"] --> HMR["Vite 热更新"]
+    HMR --> Browser
+```
+
+执行 `npm.cmd run build` 可单独检查 TypeScript 并构建前端。项目根目录的 `mvnw.cmd package` 自动执行 `npm ci` 和前端构建，将产物打入 Java JAR；打包后通过8096访问相同的 React 页面。前端依赖与产物分别保存在已忽略的 `frontend/node_modules`、`frontend/dist`，Node 仅在开发与构建时使用。已有前端构建产物时，可通过 `mvnw.cmd "-Dfrontend.skip=true" package` 跳过 npm 步骤。
 
 ## 框架与执行层
 

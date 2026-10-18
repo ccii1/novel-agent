@@ -43,6 +43,11 @@ class MySqlIntegrationTest extends DomainIntegrationTest {
 
     @Test void mysqlPersistsDraftRevisionsTaskTimingAndObservationFeedback() {
         String novel=projects.create("修理铺","追查失物单","保持知情范围",1,BigDecimal.TEN,BigDecimal.ONE);
+        var snapshot=repository.one("novels.snapshot",novel);
+        assertThat(snapshot.get("status")).isEqualTo("PLANNING");
+        assertThat(((Number)snapshot.get("event_cursor")).longValue()).isPositive();
+        assertThat(repository.list("novels.summaries").stream().filter(row -> novel.equals(row.get("id"))).findFirst().orElseThrow())
+                .containsEntry("title","修理铺").doesNotContainKeys("bible","premise");
         var task=repository.one("tasks.byNovel",novel);
         task.put("queued_at",task.get("created_at"));
         repository.transaction(()-> {

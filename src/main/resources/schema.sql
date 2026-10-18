@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS events (
  message CLOB NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS event_task_idx ON events(task_id,id);
+CREATE INDEX IF NOT EXISTS event_novel_idx ON events(novel_id,id);
 ALTER TABLE events ADD COLUMN IF NOT EXISTS execution_id VARCHAR(36);
 CREATE TABLE IF NOT EXISTS agent_executions (
  id VARCHAR(36) PRIMARY KEY, task_id VARCHAR(36) NOT NULL,

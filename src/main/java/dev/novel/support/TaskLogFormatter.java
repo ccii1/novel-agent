@@ -60,6 +60,7 @@ public class TaskLogFormatter {
             case "RECOVERY" -> "任务恢复检查完成，结果不确定的调用等待人工核对";
             case "BILLING_RECONCILED" -> "调用费用已人工核对并保存";
             case "MODEL_SELECTED" -> "作品的模型选择已保存";
+            case "PUBLICATION_MARKED" -> line(message);
             case "PLAN_APPROVED" -> "阶段大纲已批准，继续生成章节";
             case "STAGE_APPROVED" -> "已批准进入下一阶段，开始规划";
             case "PAUSED" -> "作品已暂停，已发出的模型调用仍会结算并保存结果";
