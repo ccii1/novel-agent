@@ -44,6 +44,8 @@ flowchart LR
 
 上次调用处于费用待核对状态时，详情窗口同时提供费用核对：免费服务点击确认0元，计费服务填写供应商确认的金额；核对完成后才能重新执行。后端通过 `/api/status` 的 `retryModelSelection` 声明支持该功能，升级后需要在 IDEA 重新启动后端。
 
+章节列表每章提供“复制全文”按钮，点击后读取当前完整正文并复制到剪贴板，保留原文和段落换行，无需打开阅读窗口。按钮显示复制进度、成功提示和失败原因。
+
 ## 框架与执行层
 
 AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core` 与 `agentscope-extensions-model-openai`。该版本支持 Java 17。MyBatis Spring Boot Starter 使用 `3.0.5`，Redisson 使用 `3.52.0`。

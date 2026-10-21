@@ -5,6 +5,7 @@ import {Empty, ErrorBox, JsonView, Loading, Modal, Panel, pretty, Stats, Status,
 import ModelSelect from '../../components/ModelSelect';
 import TaskProgress from '../../components/TaskProgress';
 import MemoryRepairPanel from '../../components/MemoryRepairPanel';
+import CopyChapterButton from '../../components/CopyChapterButton';
 import type {Chapter, Choice, Novel, NovelDetail} from '../../domain';
 
 export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: string) => void}) {
@@ -55,7 +56,7 @@ function PlanEditor({novel}: {novel: Novel}) {
 export function Chapters({id,chapters}: {id: string; chapters: Chapter[]}) {
   const [reading,setReading] = useState<number | null>(null);
   const action = useAction();
-  return <><ErrorBox error={action.error}/><Panel title="章节列表">{chapters.length === 0 ? <Empty title="还没有正文">大纲批准后会逐章生成，列表会自动更新。</Empty> : <div className="table-wrap"><table><thead><tr><th>章节</th><th>状态</th><th>修改轮次</th><th>发布标记</th><th>操作</th></tr></thead><tbody>{chapters.map(chapter => <tr key={chapter.number}><td><strong>第 {chapter.number} 章</strong><small>{chapter.title}</small></td><td><Status value={chapter.status}/></td><td>{chapter.revision}</td><td>{chapter.published ? '已发布' : '未发布'}</td><td><div className="actions"><button className="secondary" onClick={() => setReading(chapter.number)}>阅读正文</button>{chapter.status === 'ACCEPTED' && <button className="subtle" disabled={action.isPending} onClick={() => action.mutate({path:`/novels/${id}/chapters/${chapter.number}/published`,body:{published:!chapter.published}})}>{chapter.published ? '取消发布标记' : '标记已发布'}</button>}</div></td></tr>)}</tbody></table></div>}</Panel>{reading != null && <ChapterReader key={reading} id={id} number={reading} close={() => setReading(null)}/>}</>;
+  return <><ErrorBox error={action.error}/><Panel title="章节列表">{chapters.length === 0 ? <Empty title="还没有正文">大纲批准后会逐章生成，列表会自动更新。</Empty> : <div className="table-wrap"><table><thead><tr><th>章节</th><th>状态</th><th>修改轮次</th><th>发布标记</th><th>操作</th></tr></thead><tbody>{chapters.map(chapter => <tr key={chapter.number}><td><strong>第 {chapter.number} 章</strong><small>{chapter.title}</small></td><td><Status value={chapter.status}/></td><td>{chapter.revision}</td><td>{chapter.published ? '已发布' : '未发布'}</td><td><div className="actions"><button className="secondary" onClick={() => setReading(chapter.number)}>阅读正文</button><CopyChapterButton key={`${chapter.number}:${chapter.revision}`} id={id} number={chapter.number}/>{chapter.status === 'ACCEPTED' && <button className="subtle" disabled={action.isPending} onClick={() => action.mutate({path:`/novels/${id}/chapters/${chapter.number}/published`,body:{published:!chapter.published}})}>{chapter.published ? '取消发布标记' : '标记已发布'}</button>}</div></td></tr>)}</tbody></table></div>}</Panel>{reading != null && <ChapterReader key={reading} id={id} number={reading} close={() => setReading(null)}/>}</>;
 }
 function ChapterReader({id,number,close}: {id: string; number: number; close: () => void}) {
   const chapter = useApi<Chapter>(['novel',id,'chapter',number],`/novels/${id}/chapters/${number}`);
