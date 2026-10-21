@@ -21,7 +21,7 @@ public class AgentService {
         for(var agent:agents) for(String kind:agent.kinds()) {
             if(registered.putIfAbsent(kind,agent)!=null) throw new IllegalStateException("Agent 任务类型重复："+kind);
         }
-        Set<String> expected=Set.of("PLAN","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE",
+        Set<String> expected=Set.of("PLAN","PLAN_CHANGE","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE",
                 "REFLECT","MEMORY","MEMORY_REPAIR","CHECK_MEMORY","CHECK_CHAPTER","RESEARCH","RESEARCH_CHAT");
         if(!registered.keySet().equals(expected)) throw new IllegalStateException("Agent 注册类型与业务流程不一致");
         this.registry=Map.copyOf(registered);this.model=model;this.store=store;this.json=json;

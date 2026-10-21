@@ -63,6 +63,7 @@ public class TaskLogFormatter {
             case "MODEL_SELECTED" -> "作品的模型选择已保存";
             case "PUBLICATION_MARKED" -> line(message);
             case "PLAN_APPROVED" -> "阶段大纲已批准，继续生成章节";
+            case "PLAN_CHANGE_READY", "PLAN_CHANGE_APPLIED" -> line(message);
             case "STAGE_APPROVED" -> "已批准进入下一阶段，开始规划";
             case "PAUSED" -> "作品已暂停，已发出的模型调用仍会结算并保存结果";
             case "RESUMED" -> "作品已恢复执行";
@@ -87,6 +88,7 @@ public class TaskLogFormatter {
     private String role(String kind) {
         return switch(kind) {
             case "PLAN" -> "阶段大纲规划";
+            case "PLAN_CHANGE" -> "局部大纲修改";
             case "WRITE" -> "正文创作";
             case "REWRITE" -> "正文修改";
             case "CHECK_CHARACTER" -> "人物一致性检查";

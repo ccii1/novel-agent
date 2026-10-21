@@ -46,6 +46,28 @@ flowchart LR
 
 章节列表每章提供“复制全文”按钮，点击后读取当前完整正文并复制到剪贴板，保留原文和段落换行，无需打开阅读窗口。按钮显示复制进度、成功提示和失败原因。
 
+## 局部修改大纲
+
+在“阶段大纲”页面选择章节的情节与人物变化、出场人物、伏笔安排，或阶段目标与核心剧情节点，输入修改要求后点击“生成局部修改建议”。建议作为独立 `PLAN_CHANGE` 后台任务执行，使用作品当前模型，调用时间、用量和费用沿用执行记录与 Agent 看板。
+
+页面展示所选字段的修改前后内容、修改原因、AI 的关联影响分析，以及程序按相关章节和后续章节确定的审核范围。涉及核心剧情、人物安排、伏笔或已完成章节时需要明确确认。点击“确认并保存局部修改”后，程序仅更新所选字段，完整修改前后大纲、修改要求、建议与确认时间保存在数据库的 `plan_changes` 中；已保存记录在页面折叠展示。
+
+修改需要处于人工审核阶段或暂停状态，正在执行或等待处理的结果需要先完成处理。保存时通过作品记录的事务锁核对阶段、当前章节、记忆版本和原大纲，过期建议不能覆盖新内容。保存后保持当前审核或暂停状态，概况中可批准正文修改并直接使用服务器当前大纲，无需复制整份 JSON。已完成正文与记忆的调整通过“历史修改”处理，页面会说明涉及的章节范围。
+
+```mermaid
+flowchart TD
+    Scope["选择章节、人物或伏笔 · 输入修改要求"] --> Task["持久化局部修改任务与原大纲"]
+    Task --> Agent["PlanChangeAgent · 建议与关联影响"]
+    Agent --> Preview["展示修改前后与审核范围"]
+    Preview --> Confirm["人工确认核心剧情及已完成章节影响"]
+    Confirm --> Check{"原大纲、阶段、章节与记忆版本是否一致"}
+    Check -->|一致| Save["事务合并所选字段 · 保存版本记录"]
+    Check -->|变化| Retry["提示重新生成修改建议"]
+    Save --> Continue["概况批准正文修改 · 或恢复创作"]
+```
+
+接口：`GET /api/novels/{id}/plan-changes` 查询修改范围与历史；`POST` 同地址提交 `{path,instructions}`；`POST /api/novels/{id}/plan-changes/{changeId}/approve` 提交 `{acknowledgeCore,acknowledgeCompleted}` 确认保存。`POST /api/novels/{id}/approve-plan?useCurrentPlan=true` 批准服务器已保存大纲，正文修改接口 `/revise` 支持 `{instructions,useCurrentPlan:true}`。服务器限定允许修改的字段，禁止改写章节编号或替换整个大纲。H2 启动时创建表，MySQL 使用 Flyway V3 迁移。
+
 ## 框架与执行层
 
 AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core` 与 `agentscope-extensions-model-openai`。该版本支持 Java 17。MyBatis Spring Boot Starter 使用 `3.0.5`，Redisson 使用 `3.52.0`。

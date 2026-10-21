@@ -29,6 +29,19 @@ class MySqlIntegrationTest extends DomainIntegrationTest {
     @Autowired ObservationService observations;
     @Autowired TaskProgressService progress;
     @Autowired ChapterQualityService quality;
+    @Autowired dev.novel.service.PlanChangeService planChanges;
+
+    @Test void mysqlPersistsPartialOutlineRequestAndOriginalVersion() {
+        String novel=projects.create("大纲版本验证","调查城门封条","保留人物判断",1,BigDecimal.TEN,BigDecimal.ONE);
+        repository.update("tasks.cancelNovel",novel);
+        var plan=json.read("{\"stageGoal\":\"核对封条\",\"coreMilestones\":[\"辨认来源\"],\"chapters\":[{\"number\":1,\"title\":\"城门\",\"goal\":\"核对封条\",\"characters\":[\"陆禾\"],\"foreshadowIds\":[\"seal\"]}]}");
+        repository.update("novels.awaitPlan",json.write(plan),novel);
+        String change=planChanges.request(novel,"/chapters/0/goal","延迟揭示封条来源");
+        var stored=repository.one("planChanges.find",change);
+        assertThat(stored).containsEntry("status","GENERATING").containsEntry("base_plan",json.write(plan));
+        assertThat(repository.one("tasks.find",stored.get("task_id"))).containsEntry("kind","PLAN_CHANGE");
+        assertThat(repository.novel(novel).get("plan")).isEqualTo(json.write(plan));
+    }
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         var properties=new Properties();

@@ -5,6 +5,9 @@ import jakarta.validation.constraints.*;
 import java.util.List;
 
 public final class AgentOutputs {
+    public record PlanChange(@NotNull com.fasterxml.jackson.databind.JsonNode replacement,@NotBlank String reason,
+            @NotNull Boolean coreChange,@NotNull List<@NotNull @Valid PlanImpact> impacts) {}
+    public record PlanImpact(@NotNull @Positive Integer chapter,@NotBlank String reason) {}
     public record Plan(@NotBlank String stageGoal,@NotEmpty List<@NotBlank String> coreMilestones,
             @NotEmpty List<@NotNull @Valid PlannedChapter> chapters) {}
     public record PlannedChapter(@NotNull @Positive Integer number,@NotBlank String title,@NotBlank String goal,

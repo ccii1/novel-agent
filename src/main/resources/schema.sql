@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS chapter_metrics (
  dialogue_ratio DOUBLE PRECISION NOT NULL, pacing_data CLOB,
  PRIMARY KEY(novel_id,chapter_no,revision)
 );
+CREATE TABLE IF NOT EXISTS plan_changes (
+ id VARCHAR(36) PRIMARY KEY, novel_id VARCHAR(36) NOT NULL, task_id VARCHAR(36) NOT NULL,
+ stage_no INT NOT NULL, base_memory BIGINT NOT NULL, base_chapter INT NOT NULL,
+ base_plan CLOB NOT NULL, target_path VARCHAR(200) NOT NULL, instructions CLOB NOT NULL,
+ suggestion CLOB, applied_plan CLOB, status VARCHAR(30) NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, applied_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS plan_change_novel_idx ON plan_changes(novel_id,created_at);
 CREATE TABLE IF NOT EXISTS budget_lock (id INT PRIMARY KEY);
 MERGE INTO budget_lock KEY(id) VALUES(1);
 CREATE TABLE IF NOT EXISTS research (

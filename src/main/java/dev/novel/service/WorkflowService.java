@@ -15,12 +15,13 @@ public class WorkflowService {
     private final MemoryService memory;
     private final ChapterQualityService quality;
     private final ResearchService research;
+    private final PlanChangeService planChanges;
     @Value("${novel.review-mode:parallel}") private String reviewMode;
     public static final int MEMORY_REPAIR_LIMIT=3;
     @jakarta.annotation.PostConstruct void validateConfiguration() {
         if(!Set.of("combined","parallel").contains(reviewMode)) throw new IllegalArgumentException("review-mode 必须为 combined 或 parallel");
     }
-    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ResearchService research) { this.store=store;this.json=json;this.memory=memory;this.quality=quality;this.research=research; }
+    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ResearchService research,PlanChangeService planChanges) { this.store=store;this.json=json;this.memory=memory;this.quality=quality;this.research=research;this.planChanges=planChanges; }
     public String schedule(Map<String,Object> novel,String kind,int chapter,int revision,Object payload) {
         String id=(String)novel.get("id");long version=Store.number(novel,"memory_version");
         String key=id+":"+novel.get("stage_no")+":"+chapter+":"+revision+":"+version+":"+kind;
@@ -32,6 +33,12 @@ public class WorkflowService {
             Map<String,Object> novel=novelId==null?null:store.lockNovel(novelId);
             var persisted=store.one("tasks.lock",taskId);
             if(!"RUNNING".equals(persisted.get("status"))) return null;
+            if(kind.equals("PLAN_CHANGE")) {
+                planChanges.finished(task,result);
+                store.update("tasks.done",json.write(result),taskId);
+                store.event(novelId,taskId,"DONE",kind);
+                return null;
+            }
             if(novel!=null && (Set.of("PAUSED","ERROR","BUDGET_PAUSED").contains(novel.get("status")))) {
                 store.update("tasks.ready",json.write(result),taskId);
                 return null;

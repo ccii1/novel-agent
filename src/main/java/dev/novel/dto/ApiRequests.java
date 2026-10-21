@@ -18,7 +18,7 @@ public final class ApiRequests {
             @Size(max=80) String provider,@Size(max=200) String model) {}
     public record ResearchMessage(@NotBlank @Size(max=4000) String message,
             @Size(max=80) String provider,@Size(max=200) String model) {}
-    public record Revision(@NotBlank @Size(max=12000) String instructions,JsonNode plan) {}
+    public record Revision(@NotBlank @Size(max=12000) String instructions,JsonNode plan,boolean useCurrentPlan) {}
     public record MemoryRepair(@NotBlank String taskId,@NotBlank @Size(max=12000) String instructions,JsonNode delta) {}
     public record Edit(@Min(1) int chapter,@NotBlank @Size(max=12000) String instructions) {}
     public record EditApproval(boolean acknowledgePublished) {}

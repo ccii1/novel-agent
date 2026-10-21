@@ -118,7 +118,7 @@ public class TaskEngine {
             String message=Objects.toString(error.getMessage(),error.getClass().getSimpleName());
             observations.finish(task,"ERROR",null,message);
             store.update("tasks.fail",message,task.get("id"));
-            if(novelId!=null) store.update("novels.fail",
+            if(novelId!=null && !"PLAN_CHANGE".equals(task.get("kind"))) store.update("novels.fail",
                     error instanceof BudgetService.BudgetExceeded?"BUDGET_PAUSED":"ERROR",message,novelId);
             store.event(novelId,(String)task.get("id"),"ERROR",message);
             return null;

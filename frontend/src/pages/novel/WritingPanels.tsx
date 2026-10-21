@@ -1,11 +1,12 @@
 import {useState} from 'react';
 import {Link} from 'react-router-dom';
 import {useAction, useApi, useDraft} from '../../api';
-import {Empty, ErrorBox, JsonView, Loading, Modal, Panel, pretty, Stats, Status, time} from '../../ui';
+import {Empty, ErrorBox, JsonView, Loading, Modal, Panel, Stats, Status, time} from '../../ui';
 import ModelSelect from '../../components/ModelSelect';
 import TaskProgress from '../../components/TaskProgress';
 import MemoryRepairPanel from '../../components/MemoryRepairPanel';
 import CopyChapterButton from '../../components/CopyChapterButton';
+import PlanChangePanel from '../../components/PlanChangePanel';
 import type {Chapter, Choice, Novel, NovelDetail} from '../../domain';
 
 export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: string) => void}) {
@@ -38,20 +39,17 @@ function BookModel({novel}: {novel: Novel}) {
 }
 function RevisionForm({novel}: {novel: Novel}) {
   const [instructions,setInstructions] = useDraft(`revision:${novel.id}`);
-  const [plan,setPlan] = useDraft(`revision-plan:${novel.id}`,novel.plan ? pretty(novel.plan) : '');
   const action = useAction();
-  const [error,setError] = useState<Error | null>(null);
-  return <Panel title="人工修改要求">{novel.reflection && <JsonView value={novel.reflection} title="检查与修改计划"/>}<form onSubmit={event => {event.preventDefault(); let parsed: unknown = null; if(plan.trim()) {try {parsed=JSON.parse(plan);} catch {setError(new Error('阶段大纲需要符合 JSON 格式')); return;}} setError(null); action.mutate({path:`/novels/${novel.id}/revise`,body:{instructions,plan:parsed}});}}><label>批准的修改要求<textarea rows={5} required maxLength={12000} value={instructions} onChange={event => setInstructions(event.target.value)}/></label><label>完整阶段大纲（重要变更必填）<textarea className="code" rows={7} value={plan} onChange={event => setPlan(event.target.value)}/></label><ErrorBox error={error ?? action.error}/><button disabled={action.isPending}>批准修改并重新检查</button></form></Panel>;
+  const [approved,setApproved] = useState(false);
+  return <Panel title="人工修改要求">{novel.reflection && <JsonView value={novel.reflection} title="检查与修改计划"/>}<p><Link to={`/books/${novel.id}/plan`}>局部修改大纲：选择章节、人物或伏笔并审核变化</Link></p><form onSubmit={event => {event.preventDefault(); action.mutate({path:`/novels/${novel.id}/revise`,body:{instructions,useCurrentPlan:novel.status === 'AWAITING_CHANGE'}});}}><label>批准的修改要求<textarea rows={5} required maxLength={12000} value={instructions} onChange={event => setInstructions(event.target.value)}/></label>{novel.status === 'AWAITING_CHANGE' && <label className="checkbox-label"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)}/>我已审核重要变更，同意按当前已保存大纲修改正文</label>}<ErrorBox error={action.error}/><button disabled={action.isPending || novel.status === 'AWAITING_CHANGE' && !approved}>批准修改并重新检查</button></form></Panel>;
 }
 export function Plan({novel}: {novel: Novel}) {
   if (!novel.plan) return <Panel><Empty title="阶段大纲正在规划">生成完成后会自动出现在这里，无需刷新页面。</Empty></Panel>;
   return <PlanEditor key={`${novel.id}:${novel.stage_no}`} novel={novel}/>;
 }
 function PlanEditor({novel}: {novel: Novel}) {
-  const [draft,setDraft] = useDraft(`plan:${novel.id}:${novel.stage_no}`,pretty(novel.plan));
   const action = useAction();
-  const [error,setError] = useState<Error | null>(null);
-  return <Panel title="阶段大纲"><p className="muted">审核阶段目标、人物变化、核心剧情与伏笔安排。输入内容会保留，自动同步不会覆盖修改。</p><form onSubmit={event => {event.preventDefault(); let plan: unknown; try {plan=JSON.parse(draft);} catch {setError(new Error('大纲 JSON 格式无效，请检查后提交'));return;} setError(null); action.mutate({path:`/novels/${novel.id}/approve-plan`,body:plan});}}><label>大纲内容<textarea rows={24} className="code" value={novel.status === 'AWAITING_PLAN' ? draft : pretty(novel.plan)} onChange={event => setDraft(event.target.value)} readOnly={novel.status !== 'AWAITING_PLAN'}/></label><ErrorBox error={error ?? action.error}/>{novel.status === 'AWAITING_PLAN' && <div className="form-footer"><button type="button" className="secondary" onClick={() => setDraft(pretty(novel.plan))}>重新载入已保存大纲</button><button disabled={action.isPending}>批准大纲并开始创作</button></div>}</form></Panel>;
+  return <><PlanChangePanel novel={novel}/><Panel title="阶段大纲"><JsonView value={novel.plan} title="展开完整阶段大纲"/><ErrorBox error={action.error}/>{novel.status === 'AWAITING_PLAN' && <button disabled={action.isPending} onClick={() => action.mutate({path:`/novels/${novel.id}/approve-plan?useCurrentPlan=true`})}>批准已保存大纲并开始创作</button>}</Panel></>;
 }
 export function Chapters({id,chapters}: {id: string; chapters: Chapter[]}) {
   const [reading,setReading] = useState<number | null>(null);

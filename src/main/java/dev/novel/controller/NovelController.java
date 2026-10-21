@@ -40,11 +40,11 @@ public class NovelController {
     @PostMapping("/novels/{id}/memory-repair") public Object repairMemory(@PathVariable String id,@Valid @RequestBody MemoryRepair request) {
         return Map.of("id",projects.repairMemory(id,request.taskId(),request.instructions(),request.delta()));
     }
-    @PostMapping("/novels/{id}/approve-plan") public Object approve(@PathVariable String id,@RequestBody(required=false) JsonNode plan) { projects.approvePlan(id,plan);return Map.of("ok",true); }
+    @PostMapping("/novels/{id}/approve-plan") public Object approve(@PathVariable String id,@RequestBody(required=false) JsonNode plan,@RequestParam(defaultValue="false") boolean useCurrentPlan) { projects.approvePlan(id,useCurrentPlan?null:plan);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/continue") public Object next(@PathVariable String id) { projects.continueStage(id);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/pause") public Object pause(@PathVariable String id) { projects.pause(id);return Map.of("ok",true); }
     @PostMapping("/novels/{id}/resume") public Object resume(@PathVariable String id) { projects.resume(id);return Map.of("ok",true); }
-    @PostMapping("/novels/{id}/revise") public Object revise(@PathVariable String id,@Valid @RequestBody Revision request) { projects.revise(id,request.instructions(),request.plan());return Map.of("ok",true); }
+    @PostMapping("/novels/{id}/revise") public Object revise(@PathVariable String id,@Valid @RequestBody Revision request) { projects.revise(id,request.instructions(),request.plan(),request.useCurrentPlan());return Map.of("ok",true); }
     @PostMapping("/tasks/{id}/retry") public Object retry(@PathVariable String id,@Valid @RequestBody(required=false) RetryTask request) {
         return Map.of("id",projects.retry(id,request==null?null:request.provider(),request==null?null:request.model()));
     }
