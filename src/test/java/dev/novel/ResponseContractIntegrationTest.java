@@ -14,7 +14,8 @@ import java.util.LinkedHashMap;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
-        "spring.datasource.url=jdbc:h2:mem:response-contract;DB_CLOSE_DELAY=-1", "novel.engine-enabled=false"})
+        "spring.datasource.url=jdbc:h2:mem:response-contract;DB_CLOSE_DELAY=-1", "novel.engine-enabled=false",
+        "novel.model.reasoning-efforts[0]=low", "novel.model.reasoning-efforts[1]=high"})
 class ResponseContractIntegrationTest {
     @LocalServerPort int port;
     @Autowired Store store;
@@ -31,6 +32,24 @@ class ResponseContractIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(json.read(response.body()).size()).isEqualTo(1);
         return json.read(response.body()).path("id").asText();
+    }
+
+    @Test void httpPersistsReasoningChoiceAndRejectsUnsupportedLevels() throws Exception {
+        var http=AuthHttp.owner(port);
+        var created=http.request("/api/novels", """
+                {"title":"思考强度验证","premise":"调查信件","bible":"保持人物状态",
+                 "stageSize":1,"novelBudget":10,"chapterBudget":1,"provider":"default","reasoningEffort":"high"}
+                """);
+        assertThat(created.statusCode()).isEqualTo(200);
+        String id=json.read(created.body()).path("id").asText();
+        var detail=json.read(http.request("/api/novels/"+id,null).body());
+        assertThat(detail.path("novel").path("reasoning_effort").asText()).isEqualTo("high");
+        var research=http.request("/api/research", "{\"brief\":\"调查信件\",\"reasoningEffort\":\"low\"}");
+        assertThat(research.statusCode()).isEqualTo(200);
+        String taskId=json.read(research.body()).path("id").asText();
+        var task=json.read(http.request("/api/observability/tasks/"+taskId,null).body());
+        assertThat(task.path("task").path("reasoning_effort").asText()).isEqualTo("low");
+        assertThat(http.request("/api/research", "{\"brief\":\"调查信件\",\"reasoningEffort\":\"invalid\"}").statusCode()).isEqualTo(400);
     }
 
     @Test void preservesFieldNamesAndProjectsOnlyDeclaredDatabaseColumns() throws Exception {

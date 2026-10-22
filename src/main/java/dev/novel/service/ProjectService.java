@@ -33,18 +33,25 @@ public class ProjectService {
         return create(title,premise,bible,size,novelBudget,chapterBudget,null,"");
     }
     public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget,String provider,String model) {
+        return create(title,premise,bible,size,novelBudget,chapterBudget,provider,model,null);
+    }
+    public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget,String provider,String model,String reasoningEffort) {
         if(size<1 || size>20) throw new IllegalArgumentException("每阶段章节数量必须为1至20");
         if(novelBudget.signum()<=0 || chapterBudget.signum()<=0) throw new IllegalArgumentException("预算必须大于零");
-        var selection=catalog.resolve(provider,model,"PLAN");
+        var selection=catalog.resolve(provider,model,"PLAN",reasoningEffort);
         return store.transaction(() -> {
             String id=UUID.randomUUID().toString();
             store.update("novels.create",id,title,premise,bible,size,novelBudget,chapterBudget,selection.provider(),Objects.toString(model,""));
+            store.update("novels.reasoning",Objects.toString(reasoningEffort,""),id);
             workflow.schedule(store.novel(id),"PLAN",1,0,Map.of());
             return id;
         });
     }
     public void selectModel(String id,String provider,String model) {
-        var selection=catalog.resolve(provider,model,"PLAN");
+        selectModel(id,provider,model,null);
+    }
+    public void selectModel(String id,String provider,String model,String reasoningEffort) {
+        var selection=catalog.resolve(provider,model,"PLAN",reasoningEffort);
         if(!selection.ready()) throw new IllegalArgumentException("模型服务尚未配置完成");
         store.transaction(()-> {
             var novel=store.lockNovel(id);
@@ -52,6 +59,7 @@ public class ProjectService {
             if(!store.list("tasks.runningNovel",id).isEmpty())
                 throw new IllegalStateException("请等待已经开始的任务结束后切换模型");
             store.update("novels.model",selection.provider(),Objects.toString(model,""),id);
+            store.update("novels.reasoning",Objects.toString(reasoningEffort,""),id);
             store.event(id,null,"MODEL_SELECTED",selection.provider()+" / "+selection.model()+" / "+selection.billingMode());
             return null;
         });
@@ -165,6 +173,9 @@ public class ProjectService {
         return retry(taskId,null,null);
     }
     public String retry(String taskId,String provider,String model) {
+        return retry(taskId,provider,model,null);
+    }
+    public String retry(String taskId,String provider,String model,String reasoningEffort) {
         return store.transaction(() -> {
             var original=store.one("tasks.find",taskId);
             String novelId=(String)original.get("novel_id");
@@ -174,11 +185,12 @@ public class ProjectService {
             if(calls.pendingTaskCount(taskId)>0)
                 throw new IllegalStateException("请先核对供应商费用");
             if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) throw new IllegalStateException("任务记忆版本已失效");
-            boolean override=provider!=null && !provider.isBlank() || model!=null && !model.isBlank();
+            boolean override=provider!=null && !provider.isBlank() || model!=null && !model.isBlank() || reasoningEffort!=null;
             ModelCatalog.Selection choice=null;
             if(override) {
+                String chosenModel=provider==null && model==null?catalog.forTask(task).model():Objects.toString(model,"");
                 choice=catalog.resolve(provider==null || provider.isBlank()?catalog.forTask(task).provider():provider,
-                        Objects.toString(model,""),Store.string(task,"kind"));
+                        chosenModel,Store.string(task,"kind"),reasoningEffort);
                 if(!choice.ready()) throw new IllegalArgumentException("所选模型服务尚未配置完成");
             }
             store.update("tasks.cancel",taskId);
@@ -187,6 +199,7 @@ public class ProjectService {
             if(task.get("research_id")!=null) store.update("tasks.linkResearch",task.get("research_id"),next);
             if(choice!=null) store.update("tasks.modelChoice",choice.provider(),choice.model(),next);
             else if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);
+            store.update("tasks.reasoning",override?Objects.toString(reasoningEffort,""):task.get("reasoning_effort"),next);
             if(Set.of("PLAN_CHANGE","COORDINATE").contains(task.get("kind"))) {
                 require(novel,"PAUSED","AWAITING_PLAN","AWAITING_STAGE_REVIEW","AWAITING_CHANGE","AWAITING_HELP");
                 if("PLAN_CHANGE".equals(task.get("kind"))) store.update("planChanges.task",next,json.read(Store.string(task,"payload")).path("changeId").asText());

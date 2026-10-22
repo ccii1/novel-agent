@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.*;
         "novel.default-provider=local-test","novel.providers.local-test.endpoint=http://localhost:18080/v1",
         "novel.providers.local-test.api-key=test-configuration-only","novel.providers.local-test.name=text-model",
         "novel.providers.local-test.billing-mode=unmetered",
+        "novel.providers.local-test.reasoning-efforts[0]=low","novel.providers.local-test.reasoning-efforts[1]=medium",
+        "novel.providers.local-test.reasoning-efforts[2]=high","novel.providers.local-test.reasoning-effort=medium",
         "novel.providers.other-test.endpoint=http://localhost:18081/v1","novel.providers.other-test.api-key=test-configuration-only",
         "novel.providers.other-test.name=another-text-model","novel.providers.other-test.billing-mode=unmetered"})
 class ModelSelectionTest {
@@ -38,6 +40,51 @@ class ModelSelectionTest {
         assertThat(selection.outputPrice()).isZero();
         assertThat(json.write(catalog.publicProfiles())).contains("local-test","unmetered")
                 .doesNotContain("test-configuration-only","localhost","apiKey","endpoint");
+    }
+    @Test void reasoningSelectionValidatesProviderSupportAndPreservesRetryChoice() {
+        assertThat(catalog.resolve("local-test","","PLAN").reasoningEffort()).isEqualTo("medium");
+        assertThat(catalog.resolve("other-test","","PLAN").reasoningEffort()).isEmpty();
+        assertThatThrownBy(() -> catalog.resolve("other-test","","PLAN","high"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("思考强度");
+        assertThatThrownBy(() -> catalog.resolve("local-test","","PLAN","invalid"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        String novel=projects.create("密信","追查密信","保持人物记忆",1,BigDecimal.TEN,BigDecimal.ONE,"local-test","text-model","high");
+        var task=store.one("SELECT * FROM tasks WHERE novel_id=?",novel);
+        assertThat(store.novel(novel).get("reasoning_effort")).isEqualTo("high");
+        assertThat(catalog.forTask(task).reasoningEffort()).isEqualTo("high");
+        projects.pause(novel);
+        projects.selectModel(novel,"local-test","text-model","low");
+        assertThat(catalog.forTask(task).reasoningEffort()).isEqualTo("low");
+
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",task.get("id"));
+        store.update("UPDATE novels SET status='ERROR' WHERE id=?",novel);
+        String retried=projects.retry(Store.string(task,"id"),"local-test","custom-model","medium");
+        var replacement=store.one("SELECT * FROM tasks WHERE id=?",retried);
+        assertThat(replacement.get("reasoning_effort")).isEqualTo("medium");
+        assertThat(store.novel(novel).get("reasoning_effort")).isEqualTo("low");
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",retried);
+        String again=projects.retry(retried);
+        assertThat(catalog.forTask(store.one("SELECT * FROM tasks WHERE id=?",again)).reasoningEffort()).isEqualTo("medium");
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",again);
+        String effortOnly=projects.retry(again,null,null,"high");
+        var effortChoice=catalog.forTask(store.one("SELECT * FROM tasks WHERE id=?",effortOnly));
+        assertThat(effortChoice.model()).isEqualTo("custom-model");
+        assertThat(effortChoice.reasoningEffort()).isEqualTo("high");
+    }
+
+    @Test void researchDiscussionAndRetryPreserveReasoningChoice() {
+        String first=research.create(List.of(),"调查信件","local-test","text-model","high");
+        assertThat(catalog.forTask(store.one("SELECT * FROM tasks WHERE id=?",first)).reasoningEffort()).isEqualTo("high");
+        String report=UUID.randomUUID().toString();
+        store.update("UPDATE tasks SET status='DONE',research_id=? WHERE id=?",report,first);
+        store.update("INSERT INTO research(id,task_id,sources,ideas,brief) VALUES(?,?, '[]','[]','调查信件')",report,first);
+        assertThat(research.detail(report).get("modelChoice")).isEqualTo(Map.of("provider","local-test","model","text-model","reasoningEffort","high"));
+        String chat=research.chat(report,"继续讨论");
+        assertThat(catalog.forTask(store.one("SELECT * FROM tasks WHERE id=?",chat)).reasoningEffort()).isEqualTo("high");
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",chat);
+        String retry=projects.retry(chat,"local-test","text-model","low");
+        assertThat(catalog.forTask(store.one("SELECT * FROM tasks WHERE id=?",retry)).reasoningEffort()).isEqualTo("low");
     }
     @Test void novelSelectionRequiresIdleStateAndKeepsPriorCall() {
         String id=projects.create("密信","追查密信","保持人物记忆",1,new BigDecimal("100"),new BigDecimal("5"));

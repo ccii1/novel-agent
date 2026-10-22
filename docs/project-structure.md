@@ -1,6 +1,6 @@
 # 项目结构与代码导航
 
-核查版本：1.13.0；日期：2026-10-22。
+核查版本：1.14.0；日期：2026-10-22。
 
 ## 执行关系
 
@@ -54,6 +54,8 @@ flowchart TD
 Controller 按作品、选题、大纲修改、协调、执行观测、Agent、供应商和费用分别提供接口。`SystemController` 只提供运行状态与技能信息。请求共用 `ApiRequests`，响应使用 `dto/response` 中的业务 record；错误与登录响应也使用明确类型。
 
 `ResponseMapper` 使用 Jackson 将内部查询结果映射到响应字段，HTTP 仅输出 record 声明的字段。数据库记录沿用 snake_case，组合响应沿用 camelCase；金额使用 `BigDecimal`，尚未获得的用量保留 `null`。记忆增量与大纲目标值保留 `JsonNode`，承载各自允许的结构。
+
+思考强度由 `ModelCatalog` 校验服务支持的等级并解析作品、任务或服务默认配置，`AgentScopeExecutor` 通过 SDK 参数发送 `reasoning_effort`。业务选择保存在作品和任务中，实际发送值保存在每次模型请求中；`ModelSelect` 共用于作品、选题与重试入口。`ModelSelectionTest` 验证继承和重试，`LiveReasoningEffortTest` 在显式启用后验证真实本地服务与调用持久化。
 
 阅读主流程时从 `WorkflowService.finished` 进入，按任务类型查看 `saveDraft`、`finishChapterReview`、`finishReflection`、`finishMemoryReview` 与 `commitApprovedChapter`。这些方法共享完成事务；正式记忆、章节进度和下一任务共同提交。`TaskEngine` 分别负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
 

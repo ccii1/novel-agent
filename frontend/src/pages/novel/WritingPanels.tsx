@@ -34,7 +34,7 @@ export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: strin
   </>;
 }
 function BookModel({novel}: {novel: Novel}) {
-  const [choice,setChoice] = useState<Choice>({provider:novel.provider,model:novel.model_name ?? ''});
+  const [choice,setChoice] = useState<Choice>({provider:novel.provider,model:novel.model_name ?? '',reasoningEffort:novel.reasoning_effort ?? ''});
   const [ready,setReady] = useState(false);
   const action = useAction();
   return <form onSubmit={event => {event.preventDefault(); action.mutate({path:`/novels/${novel.id}/model`,body:choice});}}><ModelSelect value={choice} change={setChoice} ready={setReady}/><ErrorBox error={action.error}/><button disabled={!ready || action.isPending}>保存模型选择</button>{action.isSuccess && <p className="success-text">模型选择已保存</p>}</form>;

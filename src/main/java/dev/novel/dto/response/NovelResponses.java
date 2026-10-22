@@ -18,7 +18,7 @@ public final class NovelResponses {
             int stageNo, int chapterNo, int stageSize, long memoryVersion,
             String plan, String reflection, BigDecimal novelBudget, BigDecimal chapterBudget,
             String error, String resumeStatus, Date createdAt, String provider,
-            String modelName, String userId) {}
+            String modelName, String userId, String reasoningEffort) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record NovelSummaryResponse(

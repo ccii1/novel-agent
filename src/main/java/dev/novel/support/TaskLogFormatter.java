@@ -35,8 +35,9 @@ public class TaskLogFormatter {
                 var data=json.read(message);
                 String billing="unmetered".equals(data.path("billingMode").asText())?"本次免费":
                         "预留费用上限 "+data.path("reserved").asText()+" 元";
+                  String effort=data.path("reasoningEffort").asText("");
                 yield "请求模型 "+line(data.path("provider").asText())+" / "+line(data.path("model").asText())+
-                        "，"+billing+"，等待完整回复";
+                          "，思考强度 "+(effort.isBlank()?"服务默认":line(effort))+"，"+billing+"，等待完整回复";
             }
             case "MODEL_RESPONSE_RECEIVED" -> {
                 var data=json.read(message);

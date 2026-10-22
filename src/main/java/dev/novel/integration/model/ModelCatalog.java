@@ -21,9 +21,10 @@ public class ModelCatalog {
     private final Json json;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     public record Profile(String endpoint,String apiKey,String name,String billingMode,
-            BigDecimal inputPerMillion,BigDecimal outputPerMillion,String displayName) {}
+            BigDecimal inputPerMillion,BigDecimal outputPerMillion,String displayName,
+            List<String> reasoningEfforts,String reasoningEffort) {}
     public record Selection(String provider,String endpoint,String apiKey,String model,String billingMode,
-            BigDecimal inputPrice,BigDecimal outputPrice) {
+            BigDecimal inputPrice,BigDecimal outputPrice,String reasoningEffort) {
         public boolean ready() {
             return !endpoint.isBlank() && !apiKey.isBlank() && !model.isBlank() &&
                     (billingMode.equals("unmetered") || (inputPrice.signum()>0 && outputPrice.signum()>0));
@@ -35,9 +36,13 @@ public class ModelCatalog {
         return Binder.get(environment).bind("novel.providers",Bindable.mapOf(String.class,Profile.class)).orElse(Map.of());
     }
     public Selection resolve(String provider,String chosenModel,String role) {
+        return resolve(provider,chosenModel,role,null);
+    }
+    public Selection resolve(String provider,String chosenModel,String role,String chosenEffort) {
         provider=provider==null || provider.isBlank()?defaultProvider():provider;
         String prefix;
-        String endpoint,key,name,mode;BigDecimal input,output;
+        String endpoint,key,name,mode,defaultEffort;BigDecimal input,output;
+        List<String> efforts;
         if(provider.equals("default")) {
             prefix="novel.agents."+role.toLowerCase(Locale.ROOT).replace('_','-')+".";
             endpoint=property(prefix,"endpoint",environment.getProperty("novel.model.endpoint",""));
@@ -46,6 +51,8 @@ public class ModelCatalog {
             mode=property(prefix,"billing-mode",environment.getProperty("novel.model.billing-mode","metered"));
             input=environment.getProperty(prefix+"input-per-million",BigDecimal.class,environment.getProperty("novel.model.input-per-million",BigDecimal.class,BigDecimal.ZERO));
             output=environment.getProperty(prefix+"output-per-million",BigDecimal.class,environment.getProperty("novel.model.output-per-million",BigDecimal.class,BigDecimal.ZERO));
+            defaultEffort=property(prefix,"reasoning-effort",environment.getProperty("novel.model.reasoning-effort",""));
+            efforts=Binder.get(environment).bind("novel.model.reasoning-efforts",Bindable.listOf(String.class)).orElse(List.of());
         } else {
             Profile profile=profiles().get(provider);
             if(profile==null) throw new IllegalArgumentException("模型服务不存在："+provider);
@@ -53,22 +60,29 @@ public class ModelCatalog {
             mode=Objects.toString(profile.billingMode(),"metered");
             input=profile.inputPerMillion()==null?BigDecimal.ZERO:profile.inputPerMillion();
             output=profile.outputPerMillion()==null?BigDecimal.ZERO:profile.outputPerMillion();
+            efforts=profile.reasoningEfforts()==null?List.of():List.copyOf(profile.reasoningEfforts());
+            defaultEffort=Objects.toString(profile.reasoningEffort(),"");
         }
         if(!Set.of("metered","unmetered").contains(mode)) throw new IllegalArgumentException("billing-mode 必须为 metered 或 unmetered");
         if(mode.equals("unmetered")) {input=BigDecimal.ZERO;output=BigDecimal.ZERO;}
         if(chosenModel!=null && !chosenModel.isBlank()) name=chosenModel;
-        return new Selection(provider,endpoint,key,name,mode,input,output);
+        String effort=chosenEffort==null || chosenEffort.isBlank()?defaultEffort:chosenEffort;
+        if(!effort.isEmpty() && !efforts.contains(effort))
+            throw new IllegalArgumentException("该模型服务不支持所选思考强度："+effort);
+        return new Selection(provider,endpoint,key,name,mode,input,output,effort);
     }
     private String property(String prefix,String key,String defaultValue) { return environment.getProperty(prefix+key,defaultValue); }
     public Selection forTask(Map<String,Object> task) {
-        String provider=defaultProvider(),model="";
+        String provider=defaultProvider(),model="",effort=null;
         if(task.get("provider")!=null) {
             provider=Store.string(task,"provider");model=Store.string(task,"model_name");
+            effort=(String)task.get("reasoning_effort");
         } else if(task.get("novel_id")!=null) {
             var novel=store.novel((String)task.get("novel_id"));
             provider=Store.string(novel,"provider");model=Store.string(novel,"model_name");
+            effort=task.get("reasoning_effort")==null?Store.string(novel,"reasoning_effort"):Store.string(task,"reasoning_effort");
         }
-        return resolve(provider,model,Store.string(task,"kind"));
+        return resolve(provider,model,Store.string(task,"kind"),effort);
     }
     public Map<String,Object> publicProfiles() {
         List<Map<String,Object>> options=new ArrayList<>();
@@ -76,7 +90,11 @@ public class ModelCatalog {
         for(String id:ids) {
             var selection=resolve(id,"","PLAN");
             String label=id.equals("default")?"云端服务":Objects.toString(profiles().get(id).displayName(),id);
-            options.add(Map.of("id",id,"label",label,"defaultModel",selection.model(),"ready",selection.ready(),"billingMode",selection.billingMode()));
+            List<String> efforts=id.equals("default")?
+                    Binder.get(environment).bind("novel.model.reasoning-efforts",Bindable.listOf(String.class)).orElse(List.of()):
+                    Objects.requireNonNullElse(profiles().get(id).reasoningEfforts(),List.of());
+            options.add(Map.of("id",id,"label",label,"defaultModel",selection.model(),"ready",selection.ready(),"billingMode",selection.billingMode(),
+                    "reasoningEfforts",efforts,"defaultReasoningEffort",selection.reasoningEffort()));
         }
         return Map.of("defaultProvider",defaultProvider(),"providers",options);
     }

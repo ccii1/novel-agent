@@ -36,7 +36,7 @@ public class NovelController {
 
     @PostMapping("/novels/{id}/model")
     public ActionResponse selectModel(@PathVariable String id, @Valid @RequestBody ModelChoice request) {
-        projects.selectModel(id, request.provider(), request.model());
+        projects.selectModel(id, request.provider(), request.model(), request.reasoningEffort());
         return SUCCESS;
     }
 
@@ -73,7 +73,7 @@ public class NovelController {
     @PostMapping("/novels")
     public CreatedResponse create(@Valid @RequestBody CreateNovel request) {
         String id = projects.create(request.title(), request.premise(), request.bible(),
-                request.stageSize(), request.novelBudget(), request.chapterBudget(), request.provider(), request.model());
+                request.stageSize(), request.novelBudget(), request.chapterBudget(), request.provider(), request.model(), request.reasoningEffort());
         return new CreatedResponse(id);
     }
 
@@ -126,7 +126,7 @@ public class NovelController {
     @PostMapping("/tasks/{id}/retry")
     public CreatedResponse retry(@PathVariable String id, @Valid @RequestBody(required=false) RetryTask request) {
         return new CreatedResponse(projects.retry(id,
-                request == null ? null : request.provider(), request == null ? null : request.model()));
+                request == null ? null : request.provider(), request == null ? null : request.model(), request == null ? null : request.reasoningEffort()));
     }
 
     @GetMapping("/novels/{id}/chapters/{number}")

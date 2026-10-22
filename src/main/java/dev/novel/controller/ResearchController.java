@@ -37,7 +37,7 @@ public class ResearchController {
 
     @PostMapping
     public CreatedResponse create(@Valid @RequestBody ResearchRequest request) {
-        return new CreatedResponse(research.create(request.urls(), request.brief(), request.provider(), request.model()));
+        return new CreatedResponse(research.create(request.urls(), request.brief(), request.provider(), request.model(), request.reasoningEffort()));
     }
 
     @GetMapping("/{id}")
@@ -47,6 +47,6 @@ public class ResearchController {
 
     @PostMapping("/{id}/messages")
     public CreatedResponse message(@PathVariable String id, @Valid @RequestBody ResearchMessage request) {
-        return new CreatedResponse(research.chat(id, request.message(), request.provider(), request.model()));
+        return new CreatedResponse(research.chat(id, request.message(), request.provider(), request.model(), request.reasoningEffort()));
     }
 }

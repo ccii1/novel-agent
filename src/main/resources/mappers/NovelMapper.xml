@@ -14,6 +14,7 @@
   <select id="checking" resultType="map">SELECT * FROM novels WHERE status='CHECKING'</select>
   <insert id="create">INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name,user_id) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'PLANNING',#{args[4]},#{args[5]},#{args[6]},#{args[7]},#{args[8]},#{owner})</insert>
   <update id="model">UPDATE novels SET provider=#{args[0]},model_name=#{args[1]} WHERE id=#{args[2]}</update>
+  <update id="reasoning">UPDATE novels SET reasoning_effort=#{args[0]} WHERE id=#{args[1]}</update>
   <update id="approvePlan">UPDATE novels SET plan=#{args[0]},status='WRITING' WHERE id=#{args[1]}</update>
   <update id="nextStage">UPDATE novels SET stage_no=stage_no+1,status='PLANNING',plan=NULL WHERE id=#{args[0]}</update>
   <update id="pause">UPDATE novels SET resume_status=status,status='PAUSED' WHERE id=#{args[0]}</update>

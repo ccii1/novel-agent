@@ -5,9 +5,11 @@ import ModelSelect from './ModelSelect';
 import type {Choice, Row, SystemStatus, Task} from '../domain';
 
 export default function TaskRetry({task,call,done}: {task: Task; call: Row | null; done: () => void}) {
+  const previousRequest = call?.request_body ? JSON.parse(String(call.request_body)) as {reasoning_effort?: string} : null;
   const [choice,setChoice] = useState<Choice>({
     provider:task.provider || String(call?.provider ?? ''),
     model:task.model_name || String(call?.model ?? ''),
+    reasoningEffort:task.reasoning_effort ?? previousRequest?.reasoning_effort ?? '',
   });
   const [ready,setReady] = useState(false);
   const retry = useAction<{id: string}>(done);

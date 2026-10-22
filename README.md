@@ -62,6 +62,14 @@ flowchart LR
 
 失败任务卡片提供“选择模型并重新执行”入口。打开执行详情，在“选择本次重新执行的模型”中选择服务和模型，再点击“使用所选模型重新执行”。这次选择保存到新任务，原任务与调用费用继续保留，作品后续任务沿用作品设置。选题任务也使用相同入口。没有指定新选择的旧接口请求继续沿用原有选择。
 
+支持思考强度的服务会显示“思考强度”选择。创建作品、作品模型设置、选题研究、选题讨论和失败重试共用该入口；作品选择保存到 `novels.reasoning_effort`，选题与重试的独立选择保存到 `tasks.reasoning_effort`。普通章节任务沿用作品设置，重试选择只影响新任务。切换作品设置仍需符合原有暂停和审核状态，并等待已经运行的任务结束。
+
+本地服务已配置 `low、medium、high、xhigh、max` 五个等级。选择“服务默认”时使用服务配置的 `reasoning-effort`；该配置为空时省略请求参数，采用上游默认行为。其他服务仅在本地配置声明 `reasoning-efforts` 后显示选择，后端拒绝列表以外的值。列表需要根据所用服务和模型验证，等级并非所有模型通用。
+
+前端业务请求使用 `reasoningEffort`，例如模型设置请求为 `{"provider":"local","model":"gpt-5.6-terra","reasoningEffort":"high"}`。AgentScope 的 `GenerateOptions.reasoningEffort` 将其转换为 Chat Completions 顶层字段 `"reasoning_effort":"high"`，符合 [OpenAI reasoning 文档](https://developers.openai.com/api/docs/guides/reasoning?api-mode=chat)。日志显示实际强度，执行详情从保存的请求读取参数；完整请求、原始响应和用量继续保存在关系数据库。
+
+2026-10-22 对本地8317服务的 `gpt-5.6-terra` 分别发送五个等级的简短算术请求，均返回 HTTP 200，非法等级返回 HTTP 400。通过项目 AgentScope 再验证 low 和 high，检查实际请求字段、保存的逐次响应、token 和0元费用；验证资料保存在忽略目录 `.work`。这些检查验证参数兼容性，未评估小说质量与长期生成速度。MySQL 使用 Flyway V6 增加字段，H2 支持已有数据库幂等升级。
+
 上次调用处于费用待核对状态时，详情窗口同时提供费用核对：免费服务点击确认0元，计费服务填写供应商确认的金额；核对完成后才能重新执行。后端通过 `/api/status` 的 `retryModelSelection` 声明支持该功能，升级后需要在 IDEA 重新启动后端。
 
 章节列表每章提供“复制全文”按钮，点击后读取当前完整正文并复制到剪贴板，保留原文和段落换行，无需打开阅读窗口。按钮显示复制进度、成功提示和失败原因。

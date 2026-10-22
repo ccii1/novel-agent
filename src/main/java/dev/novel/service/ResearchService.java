@@ -27,15 +27,19 @@ public class ResearchService {
         return create(urls,brief,null,null);
     }
     public String create(List<String> urls,String brief,String provider,String chosenModel) {
+        return create(urls,brief,provider,chosenModel,null);
+    }
+    public String create(List<String> urls,String brief,String provider,String chosenModel,String reasoningEffort) {
         var links=urls==null?List.<String>of():List.copyOf(urls);
         String instruction=Objects.toString(brief,"").trim();
         if(links.size()>5 || instruction.length()>4000 || (links.isEmpty() && instruction.isBlank()))
             throw new IllegalArgumentException("请填写自己的想法或参考链接，想法最多4000字符，链接最多五个");
         links.forEach(this::validateUrl);
-        var selected=selection(provider,chosenModel,"RESEARCH");
+        var selected=selection(provider,chosenModel,"RESEARCH",reasoningEffort);
         return store.transaction(()-> {
             String task=store.enqueue(null,"RESEARCH",0,0,0,"research:"+UUID.randomUUID(),Map.of("urls",links,"brief",instruction));
             store.update("tasks.modelChoice",selected.provider(),selected.model(),task);
+            store.update("tasks.reasoning",Objects.toString(reasoningEffort,""),task);
             return task;
         });
     }
@@ -48,6 +52,9 @@ public class ResearchService {
         return chat(id,message,null,null);
     }
     public String chat(String id,String message,String provider,String chosenModel) {
+        return chat(id,message,provider,chosenModel,null);
+    }
+    public String chat(String id,String message,String provider,String chosenModel,String reasoningEffort) {
         if(message==null || message.isBlank() || message.length()>4000) throw new IllegalArgumentException("讨论内容需要为1至4000字符");
         return store.transaction(()-> {
             var report=store.one("research.lock",id);
@@ -56,7 +63,8 @@ public class ResearchService {
             var choice=reportChoice(id);
             boolean inherit=(provider==null || provider.isBlank()) && (chosenModel==null || chosenModel.isBlank());
             var selected=selection(provider==null || provider.isBlank()?choice.get("provider"):provider,
-                    inherit?choice.get("model"):chosenModel,"RESEARCH_CHAT");
+                    inherit?choice.get("model"):chosenModel,"RESEARCH_CHAT",
+                    inherit && reasoningEffort==null?choice.get("reasoningEffort"):reasoningEffort);
             var history=new ArrayList<>(store.list("research.recent",id));
             Collections.reverse(history);
             String task=store.enqueue(null,"RESEARCH_CHAT",0,0,0,"research-chat:"+UUID.randomUUID(),
@@ -64,14 +72,15 @@ public class ResearchService {
                             "evidence",json.read((String)report.get("sources")),"brief",Store.string(report,"brief")));
             store.update("tasks.linkResearch",id,task);
             store.update("tasks.modelChoice",selected.provider(),selected.model(),task);
+            store.update("tasks.reasoning",selected.reasoningEffort(),task);
             store.update("research.userMessage",id,message,task);
             return task;
         });
     }
-    private ModelCatalog.Selection selection(String provider,String chosenModel,String kind) {
+    private ModelCatalog.Selection selection(String provider,String chosenModel,String kind,String reasoningEffort) {
         if(provider!=null && provider.length()>80 || chosenModel!=null && chosenModel.length()>200)
             throw new IllegalArgumentException("模型服务或模型名称超出长度限制");
-        var selected=catalog.resolve(provider,chosenModel,kind);
+        var selected=catalog.resolve(provider,chosenModel,kind,reasoningEffort);
         if((provider!=null && !provider.isBlank() || chosenModel!=null && !chosenModel.isBlank()) && !selected.ready())
             throw new IllegalArgumentException("所选模型服务尚未配置完成");
         return selected;
@@ -79,8 +88,8 @@ public class ResearchService {
     private Map<String,String> reportChoice(String id) {
         var rows=store.list("tasks.researchModel",id);
         var selected=rows.isEmpty()?catalog.resolve(null,"","RESEARCH_CHAT"):
-                catalog.resolve(Store.string(rows.get(0),"provider"),Store.string(rows.get(0),"model_name"),"RESEARCH_CHAT");
-        return Map.of("provider",selected.provider(),"model",selected.model());
+                catalog.resolve(Store.string(rows.get(0),"provider"),Store.string(rows.get(0),"model_name"),"RESEARCH_CHAT",Store.string(rows.get(0),"reasoning_effort"));
+        return Map.of("provider",selected.provider(),"model",selected.model(),"reasoningEffort",selected.reasoningEffort());
     }
     public JsonNode execute(Map<String,Object> task,JsonNode payload,String system) throws Exception {
         JsonNode sources=payload.path("evidence");

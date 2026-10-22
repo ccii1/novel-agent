@@ -33,8 +33,9 @@
   <update id="linkResearch">UPDATE tasks SET research_id=#{args[0]} WHERE id=#{args[1]}</update>
   <update id="payload">UPDATE tasks SET payload=#{args[0]} WHERE id=#{args[1]}</update>
   <update id="modelChoice">UPDATE tasks SET provider=#{args[0]},model_name=#{args[1]} WHERE id=#{args[2]}</update>
+  <update id="reasoning">UPDATE tasks SET reasoning_effort=#{args[0]} WHERE id=#{args[1]}</update>
   <select id="researchModel" resultType="map">
-    SELECT COALESCE(t.provider,c.provider) AS provider,COALESCE(t.model_name,c.model) AS model_name
+    SELECT COALESCE(t.provider,c.provider) AS provider,COALESCE(t.model_name,c.model) AS model_name,t.reasoning_effort
     FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
     WHERE (t.research_id=#{args[0]} OR t.id=(SELECT task_id FROM research WHERE id=#{args[0]}))
       AND COALESCE(t.provider,c.provider) IS NOT NULL

@@ -42,9 +42,12 @@ public class AgentScopeExecutor {
     public String execute(Map<String,Object> task, ModelCatalog.Selection selected, String system, String prompt,
             int maxOutput, Consumer<String> beforeRequest, Consumer<HttpResponse> afterResponse) {
         URI endpoint = ModelEndpoint.resolve(selected.endpoint());
-        var options = GenerateOptions.builder().maxTokens(maxOutput).stream(false)
+        var optionsBuilder = GenerateOptions.builder().maxTokens(maxOutput).stream(false)
                 .responseFormat(ResponseFormat.jsonObject())
-                .executionConfig(ExecutionConfig.builder().timeout(timeout).maxAttempts(1).build()).build();
+                .executionConfig(ExecutionConfig.builder().timeout(timeout).maxAttempts(1).build());
+        // SDK 将此字段序列化为 Chat Completions 的 reasoning_effort，空值交给服务默认设置。
+        if (!selected.reasoningEffort().isEmpty()) optionsBuilder.reasoningEffort(selected.reasoningEffort());
+        var options = optionsBuilder.build();
         var delegate = JdkHttpTransport.builder().client(client).config(HttpTransportConfig.builder()
                 .connectTimeout(Duration.ofSeconds(20)).responseTimeout(timeout).readTimeout(timeout).build()).build();
         var transport = new AccountedTransport(delegate, endpoint, beforeRequest, afterResponse,runtimes.spec(Store.string(task,"kind")).maxRequests());

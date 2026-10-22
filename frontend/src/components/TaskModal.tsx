@@ -10,10 +10,13 @@ export default function TaskModal({id, close}: {id: string; close: () => void}) 
   const [note, setNote, clearNote] = useDraft(`feedback:${id}`);
   const action = useAction();
   const data = detail.data;
+  const sentRequest = data?.call?.request_body ? JSON.parse(String(data.call.request_body)) as {reasoning_effort?: string} : null;
+  const effort = sentRequest ? sentRequest.reasoning_effort || '服务默认' : data?.task.reasoning_effort || '沿用作品或服务设置';
   return <Modal title={data ? `${roles[data.task.kind]} · 第 ${data.task.chapter_no} 章` : '执行详情'} close={close} wide>
     <ErrorBox error={detail.error ?? action.error}/>
     {!data ? <Loading/> : <>
       <div className="split"><Status value={data.task.status}/><small className="muted">任务 {id.slice(0,8)} · 记忆版本 {data.task.memory_version}</small></div>
+      <p className="muted small">思考强度：{effort}；实际请求参数保存在模型调用信息中。</p>
       {data.task.error && <p className="error-text">{data.task.error}</p>}
       {data.task.status === 'ERROR' && <TaskRetry key={id} task={data.task} call={data.call} done={close}/>}
       <h3>执行过程</h3>

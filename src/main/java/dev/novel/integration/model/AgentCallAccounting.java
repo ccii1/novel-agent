@@ -48,7 +48,7 @@ final class AgentCallAccounting {
             budget.reserve(task,reserved,selected.model(),selected.inputPrice(),selected.outputPrice(),skill,body,
                     selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
             started=System.nanoTime();
-            event("MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),"reserved",reserved,"billingMode",selected.billingMode(),"callId",callId,"maxRequests",maxRequests));
+            event("MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),"reasoningEffort",selected.reasoningEffort(),"reserved",reserved,"billingMode",selected.billingMode(),"callId",callId,"maxRequests",maxRequests));
         }
         turns++;turnId=UUID.randomUUID().toString();turnStarted=System.nanoTime();
         try { budget.recordTurn(turnId,callId,Store.string(task,"id"),turns,body); }

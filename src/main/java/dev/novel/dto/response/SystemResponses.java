@@ -29,9 +29,10 @@ public final class SystemResponses {
             long waitingTasks, long cancelledTasks, long modelCalls, long inputTokens, long outputTokens,
             BigDecimal settledCost, BigDecimal pendingReservation, long uncertainCalls) {}
 
-    public record ProviderResponse(String id, String label, String defaultModel, boolean ready, String billingMode) {}
+    public record ProviderResponse(String id, String label, String defaultModel, boolean ready, String billingMode,
+            List<String> reasoningEfforts, String defaultReasoningEffort) {}
     public record ProviderCatalogueResponse(String defaultProvider, List<ProviderResponse> providers) {}
-    public record ModelChoiceResponse(String provider, String model) {}
+    public record ModelChoiceResponse(String provider, String model, String reasoningEffort) {}
     public record BudgetResponse(
             String month, BigDecimal limit, BigDecimal usedAndReserved,
             BigDecimal remaining, List<ModelCallResponse> calls) {}

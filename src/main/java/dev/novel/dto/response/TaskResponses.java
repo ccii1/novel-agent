@@ -16,7 +16,7 @@ public final class TaskResponses {
             String id, String novelId, String kind, String taskKey, String status,
             int chapterNo, int revision, long memoryVersion, String payload, String result,
             String error, Date availableAt, Date createdAt, Date updatedAt,
-            String researchId, String provider, String modelName, String userId, String novelTitle) {}
+            String researchId, String provider, String modelName, String userId, String novelTitle, String reasoningEffort) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ObservedTaskResponse(

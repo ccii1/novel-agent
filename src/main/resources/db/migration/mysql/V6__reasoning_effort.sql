@@ -1,0 +1,2 @@
+ALTER TABLE novels ADD COLUMN reasoning_effort VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN reasoning_effort VARCHAR(20) NULL;

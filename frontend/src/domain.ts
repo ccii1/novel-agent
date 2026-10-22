@@ -2,12 +2,12 @@ export type Row = Record<string, unknown>;
 export interface Novel {
   id: string; title: string; status: string; stage_no: number; chapter_no: number; memory_version: number;
   premise: string; bible: string; plan: string | null; reflection: string | null; error: string | null;
-  provider: string; model_name: string | null;
+  provider: string; model_name: string | null; reasoning_effort?: string;
 }
 export interface Task {
   id: string; novel_id: string | null; kind: string; status: string; chapter_no: number; revision: number;
   memory_version: number; created_at: string; error: string | null; payload: string; result: string | null;
-  provider?: string | null; model_name?: string | null;
+  provider?: string | null; model_name?: string | null; reasoning_effort?: string | null;
 }
 export interface Chapter {number: number; title: string; status: string; revision: number; published: boolean; body?: string; summary?: string}
 export interface Event {id: number; type: string; message: string; created_at: string}
@@ -16,9 +16,9 @@ export interface MemoryIssue {quote: string; reason: string; suggestion: string;
 export interface MemoryDelta {summary: string; facts: (Record<string, unknown> & {key: string; name: string; detail?: string; evidence: string})[]; relations: (Record<string, unknown> & {subject: string; predicate: string; object: string; detail?: string; evidence: string})[]}
 export interface MemoryReview {pending: boolean; taskId?: string; revision?: number; repairAttempt?: number; automaticLimit?: number; delta?: MemoryDelta; review?: {majorChange: boolean; issues: MemoryIssue[]}}
 export interface NovelDetail {novel: Novel; chapters: Chapter[]; tasks: Task[]; events: Event[]; edits: Edit[]; memoryReview?: MemoryReview}
-export interface Provider {id: string; label: string; ready: boolean; defaultModel: string; billingMode: string}
+export interface Provider {id: string; label: string; ready: boolean; defaultModel: string; billingMode: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string}
 export interface Catalog {defaultProvider: string; providers: Provider[]}
-export interface Choice {provider: string; model: string}
+export interface Choice {provider: string; model: string; reasoningEffort?: string}
 export interface Idea {title: string; premise: string; audience: string; genre: string; hook: string; longTermConflict: string; risks: string[]; sources: string[]}
 export interface Report {id: string; brief: string; ideas: string; sources: string; created_at: string}
 export interface ResearchDetail {report: Report; tasks: Task[]; modelChoice: Choice; messages: {id: number; role: string; content: string; created_at: string; ideas: string | null; task_id: string | null}[]}

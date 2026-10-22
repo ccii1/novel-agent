@@ -21,24 +21,24 @@ public final class ApiRequests {
             @NotNull @DecimalMin("0.01") @DecimalMax("300") BigDecimal novelBudget,
             @NotNull @DecimalMin("0.01") @DecimalMax("100") BigDecimal chapterBudget,
             @Size(max=80) String provider,
-            @Size(max=200) String model) {}
+            @Size(max=200) String model, @Size(max=20) String reasoningEffort) {}
 
     public record ModelChoice(
             @NotBlank @Size(max=80) String provider,
-            @Size(max=200) String model) {}
+            @Size(max=200) String model, @Size(max=20) String reasoningEffort) {}
 
-    public record RetryTask(@Size(max=80) String provider, @Size(max=200) String model) {}
+    public record RetryTask(@Size(max=80) String provider, @Size(max=200) String model, @Size(max=20) String reasoningEffort) {}
 
     public record ResearchRequest(
             @Size(max=5) List<@NotBlank @Size(max=1500) String> urls,
             @Size(max=4000) String brief,
             @Size(max=80) String provider,
-            @Size(max=200) String model) {}
+            @Size(max=200) String model, @Size(max=20) String reasoningEffort) {}
 
     public record ResearchMessage(
             @NotBlank @Size(max=4000) String message,
             @Size(max=80) String provider,
-            @Size(max=200) String model) {}
+            @Size(max=200) String model, @Size(max=20) String reasoningEffort) {}
 
     public record Revision(
             @NotBlank @Size(max=12000) String instructions,
