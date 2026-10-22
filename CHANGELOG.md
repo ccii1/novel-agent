@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-10-22 文档更新
+
+- 新增 `docs/multi-agent-workflow.md`，记录逐章创作、审核修改、记忆提交、协调委派、Agent 职责和人工处理位置，配套 Mermaid 流程图与代码入口；README 增加文档链接。
+
 ## 1.11.0 — 2026-10-22
 
 - 各角色独立声明 Agent 名称、职责、工具权限和推理轮数，由 AgentRuntimeFactory 构建独立 ReActAgent 与 Toolkit；创作、审核、记忆和协调角色使用限定范围的查询或委派工具。

@@ -2,6 +2,8 @@
 
 面向中文网文持续连载的个人创作工作台，前端使用 React、TypeScript、Vite 与 TanStack Query，后端使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
 
+整体流程、Agent 职责、人工处理位置与持久化机制见 [小说 Agent 流程与职责](docs/multi-agent-workflow.md)，包含逐章创作、协调委派、记忆处理及执行架构的 Mermaid 图。
+
 ## React 前端与 IDEA 运行
 
 使用 IDEA 打开整个项目目录，重新加载 Maven 项目。前端代码位于 `frontend/src`，按页面、通用组件和数据访问模块组织。Node.js 需要22.12或更高版本，本机使用24.15。首次安装前端依赖：
