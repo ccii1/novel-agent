@@ -84,7 +84,7 @@ flowchart TD
     Context --> Agent["AgentScope ReActAgent：每个任务独立实例"]
     Agent --> Middleware["MiddlewareBase：推理开始与完成事件"]
     Middleware --> Model["OpenAIChatModel：Msg、JSON object 与生成参数"]
-    Model --> Transport["AccountedTransport：单次请求限制与费用记录"]
+    Model --> Transport["AccountedTransport：请求次数限制与逐次费用记录"]
     Transport --> Redis["Redisson RRateLimiter：共享模型调用额度"]
     Redis --> Budget["数据库预算检查与请求持久化"]
     Budget --> Provider["真实模型服务"]
@@ -92,9 +92,9 @@ flowchart TD
     Result --> Business
 ```
 
-`AgentScopeExecutor` 创建 `ReActAgent`，通过 `UserMessage` 提交任务，用 `GenerateOptions` 指定 JSON object、输出上限及单次尝试。`MiddlewareBase.onReasoning` 保存任务级推理事件。每个任务都有独立的 Agent 上下文，业务模块提供相应版本的小说记忆；四个检查任务分别执行，可以并发调用不同角色。
+各角色通过 `NovelAgent.runtime()` 声明名称、职责、工具权限与推理轮数。`AgentRuntimeFactory` 按角色声明构建独立的 `ReActAgent` 和 Toolkit，`AgentScopeExecutor` 负责传输与 Middleware 事件。创作角色可以查询相关记忆与人物关系，审核角色可以查询记忆和正文段落，协调角色可以选择正文、大纲或记忆处理角色。工具绑定当前任务的作品与版本，不能指定其他作品，工具失败会使任务失败。
 
-`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文、取得限流许可并保存费用预留，在响应返回后保存 token、费用与原始结果。单个任务最多发送一次模型请求，框架重试次数设为1，内容修改由章节流程控制。服务中断、人工审核、已保存结果恢复和正文记忆事务由持久化业务流程管理。
+`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文并取得限流许可。带工具的角色最多2轮推理、3次模型请求、8次工具调用，未配置工具的角色最多1次请求，每次请求的框架尝试次数为1。`AgentCallAccounting` 按请求次数和上下文上限预留任务预算，逐次保存请求、响应、用量、耗时及估算费用到 `model_call_turns`，最终结果和合计费用保存到 `model_calls`。数据库与 Redis 限流都按真实请求次数计算。工具响应不会成为任务最终检查点；完整 Agent 最终输出才可复用，重启期间未确定的调用需要人工核对。服务中断、人工审核和正文记忆事务由持久化业务流程管理。
 
 MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处理任务认领与模型调用状态，`resources/mappers` 按小说、任务、章节、记忆、选题、费用、质量、修改申请和事件组织 SQL；`Store` 使用 `SqlSessionTemplate` 调用命名语句并提供事务入口。Mapper 参数通过 `#{...}` 绑定，业务服务通过命名操作访问数据。CLOB 转换和 Map 字段名称在 MyBatis 配置中统一处理，事务内部查询采用 `STATEMENT` 本地缓存范围。
 
@@ -112,7 +112,43 @@ MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处�
 
 启用 Redis 后，`ModelRateLimiter` 使用 Redisson `RRateLimiter` 共享每分钟调用额度，超限任务延后调度。连接中断会明确报告失败；费用与请求状态继续由数据库记录。数据库的60秒调用数量检查同时保留，Redis 清空后仍受已有调用记录约束。Redis 许可在数据库预留前取得，预留失败时许可仍计入当前一分钟，限流结果保持保守。应用当前采用单个进程；连接 MySQL 后，多实例部署仍需要补充执行所有权管理。
 
-框架学习入口：`AgentScopeExecutor` → `ModelClient` → `TaskEngine` → `TaskDispatchMapper` / `ModelCallMapper` → 对应 Mapper XML → `ModelRateLimiter` / `RedisConfiguration`。
+框架学习入口：角色的 `tools()` / `runtime()` → `AgentRuntimeFactory` → `AgentScopeExecutor` → `AgentCallAccounting` → `TaskEngine`。`ReviewOrchestrator` 声明审核参与者并进行持久化任务的并行调度与结果汇合；`TaskScheduler` 统一任务唯一键，`WorkflowService` 根据汇合结论推进业务状态。
+
+## 创作协调与多 Agent 协作
+
+在作品概况的“让协调 Agent 分析修改要求”中描述想调整的内容。`CoordinatorAgent` 必须通过 `delegate_draft`、`delegate_outline` 或 `delegate_memory` 工具选择一个处理角色，输出处理范围、修改要求和理由。工具调用仅记录委派建议；人工点击“确认交给所选 Agent”后，后端检查大纲、正文修订号、阶段与记忆版本，事务创建对应的持久化任务并保存父任务与委派任务的关联。重复确认不会创建重复任务，修改内容已经变化时需要重新分析。
+
+正文委派进入现有修改与复审流程；大纲委派生成待确认的局部修改建议；记忆委派仅在存在待处理记忆审核时进入记忆修正流程。各角色使用自己的 Toolkit 和任务上下文，正式正文、大纲和记忆由业务审批流程提交。Agent 看板可展开各角色的工具权限与推理轮数，执行详情展示每次模型请求，调用次数按 HTTP 请求统计，费用只汇总一次。
+
+```mermaid
+flowchart TD
+    User["用户修改要求"] --> Coordinator["CoordinatorAgent · 独立 Toolkit"]
+    Coordinator --> Proposal["选择处理角色 · 保存委派建议"]
+    Proposal --> Human["人工确认处理范围"]
+    Human --> Queue["版本校验 · 创建持久化子任务"]
+    Queue --> Outline["PlanChangeAgent"]
+    Queue --> Writer["RewriterAgent"]
+    Queue --> Memory["MemoryExtractionAgent · 修正记忆"]
+    Writer --> Review["ReviewOrchestrator"]
+    Review --> Character["CharacterCheckAgent"]
+    Review --> Plot["PlotCheckAgent"]
+    Review --> Pacing["PacingCheckAgent"]
+    Review --> Style["StyleCheckAgent"]
+    Character --> Gather["按正文修订号与记忆版本汇合"]
+    Plot --> Gather
+    Pacing --> Gather
+    Style --> Gather
+    Gather -->|未通过| Reflection["ReflectionAgent · 统一修改计划"]
+    Reflection --> Approval["自动修改预算或人工审核"]
+    Approval --> Writer
+    Gather -->|通过| Extract["MemoryExtractionAgent · 提取记忆"]
+    Extract --> CheckMemory["MemoryCheckAgent"]
+    CheckMemory --> Commit["正文与记忆事务提交"]
+```
+
+联合审核模式由 `ChapterReviewAgent` 替代四项并行审核，结果继续使用相同的汇合和后续审批规则。接口：`GET /api/novels/{id}/coordination` 查看协调记录，`POST` 同地址提交 `{instructions}`，`POST /api/novels/{id}/coordination/{taskId}/approve` 确认委派。MySQL 使用 Flyway V4 创建逐次请求记录，H2 启动时自动创建。
+
+协调入口按用户提交的修改要求执行，正常逐章连载继续由状态机推进。真实 `deepseek-flash` 验证中，协调 Agent 使用委派工具，经过2次请求形成建议；人工确认后，大纲修改 Agent 通过1次请求形成待审核建议。该成功链路估算费用0.090744元，模型请求的输入、输出 token 合计与任务汇总一致；复用完整检查点没有增加模型请求。120项检查和真实 Edge 页面操作通过，包括14项 MySQL 验证。实际平台账单仍按供应商记录核对。
 
 ## 固定加载写作技能
 
@@ -147,7 +183,7 @@ flowchart TD
 
 讨论输入包含最初想法、当前三个方案、已采集资料和最近12条交流；全部交流历史继续保存在数据库。网页定期更新任务进度，并保留尚未发送的输入。界面使用亮色主题，桌面采用想法输入与方案讨论的双栏布局，手机宽度下顺序展示。
 
-阶段大纲包含 `stageGoal`、`coreMilestones`，以及每章的编号、标题、目标、出场人物和关联伏笔。人工可以修改完整大纲，批准后开始正文生成。
+阶段大纲包含 `stageGoal`、`coreMilestones`，以及每章的编号、标题、目标、出场人物和关联伏笔。人工可以按字段生成局部修改建议并确认保存，批准已保存大纲后开始正文生成。
 
 ## 每章的 Plan–Execute–Check–Reflect 流程
 

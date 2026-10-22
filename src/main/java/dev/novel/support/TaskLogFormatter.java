@@ -64,6 +64,10 @@ public class TaskLogFormatter {
             case "PUBLICATION_MARKED" -> line(message);
             case "PLAN_APPROVED" -> "阶段大纲已批准，继续生成章节";
             case "PLAN_CHANGE_READY", "PLAN_CHANGE_APPLIED" -> line(message);
+            case "COORDINATION_APPROVED" -> "委派建议已确认，已创建对应 Agent 的持久化任务";
+            case "AGENT_TOOL_USED" -> "Agent 调用工具："+json.read(message).path("tool").asText();
+            case "AGENT_RUNTIME_BUILT" -> "已构建独立 Agent："+json.read(message).path("name").asText();
+            case "MODEL_TURN_STARTED" -> "开始第"+json.read(message).path("turn").asInt()+"次模型请求，上限"+json.read(message).path("limit").asInt()+"次";
             case "STAGE_APPROVED" -> "已批准进入下一阶段，开始规划";
             case "PAUSED" -> "作品已暂停，已发出的模型调用仍会结算并保存结果";
             case "RESUMED" -> "作品已恢复执行";
@@ -89,6 +93,7 @@ public class TaskLogFormatter {
         return switch(kind) {
             case "PLAN" -> "阶段大纲规划";
             case "PLAN_CHANGE" -> "局部大纲修改";
+            case "COORDINATE" -> "创作协调";
             case "WRITE" -> "正文创作";
             case "REWRITE" -> "正文修改";
             case "CHECK_CHARACTER" -> "人物一致性检查";

@@ -30,6 +30,7 @@ export default function TaskModal({id, close}: {id: string; close: () => void}) 
         <JsonView value={Object.fromEntries(Object.entries(data.call).filter(([key]) => key !== 'response'))} title="用量、费用与调用信息"/>
         {data.call.response ? <JsonView value={data.call.response} title="模型原始输出"/> : null}
       </> : <p className="muted">尚无模型调用。</p>}
+      {!!data.turns?.length && <><h3>Agent 逐次模型请求</h3><p className="muted">费用与用量已汇总到上方任务调用记录；各次请求独立保存。</p>{data.turns.map(turn=><article key={String(turn.id)}><strong>第 {Number(turn.turn_no)} 次 · {String(turn.status)}</strong><small> · {duration(turn.latency_ms)} · 输入 {Number(turn.input_tokens ?? 0)} / 输出 {Number(turn.output_tokens ?? 0)} token · {money(turn.cost)}</small><details className="json-view"><summary>本次模型响应</summary><pre>{String(turn.response_body ?? '尚无响应')}</pre></details></article>)}</>}
       <JsonView value={data.task.payload} title="任务输入"/>
       {data.task.result && <JsonView value={data.task.result} title="任务最终结果"/>}
       <details className="json-view"><summary>最近执行事件</summary>{data.events.map(event => <p key={event.id}><small>{time(event.created_at)} · {event.type}</small></p>)}</details>

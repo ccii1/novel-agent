@@ -11,6 +11,7 @@ import java.util.*;
 
 @Component
 public class PlanChangeAgent implements NovelAgent {
+    public Set<String> tools() { return Set.of("read_plan","read_memory"); }
     private final PlanChangeService changes;
     private final ModelClient model;
     private final MemoryService memory;

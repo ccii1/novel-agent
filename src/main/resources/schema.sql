@@ -59,6 +59,13 @@ ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS request_body CLOB;
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS provider VARCHAR(80) NOT NULL DEFAULT 'default';
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(30) NOT NULL DEFAULT 'metered';
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS agent_framework VARCHAR(60) NOT NULL DEFAULT 'direct-http';
+CREATE TABLE IF NOT EXISTS model_call_turns (
+ id VARCHAR(36) PRIMARY KEY,call_id VARCHAR(36) NOT NULL,task_id VARCHAR(36) NOT NULL,turn_no INT NOT NULL,
+ status VARCHAR(30) NOT NULL,request_body CLOB NOT NULL,response_body CLOB,
+ input_tokens BIGINT,output_tokens BIGINT,cached_tokens BIGINT,cost DECIMAL(14,6),latency_ms BIGINT,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,finished_at TIMESTAMP,
+ UNIQUE(task_id,turn_no)
+);
 CREATE TABLE IF NOT EXISTS chapter_metrics (
  novel_id VARCHAR(36) NOT NULL, chapter_no INT NOT NULL, revision INT NOT NULL,
  characters INT NOT NULL, total_lines INT NOT NULL, dialogue_lines INT NOT NULL,

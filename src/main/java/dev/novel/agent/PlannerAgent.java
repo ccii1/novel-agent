@@ -10,6 +10,7 @@ import java.util.*;
 
 @Component
 public class PlannerAgent implements NovelAgent {
+    public Set<String> tools() { return Set.of("read_plan","read_memory"); }
     private final AgentContextService context;
     private final Store store;
     private final MemoryService memory;

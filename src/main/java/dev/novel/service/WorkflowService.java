@@ -6,7 +6,6 @@ import dev.novel.support.Json;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 import java.util.*;
-import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class WorkflowService {
@@ -16,16 +15,13 @@ public class WorkflowService {
     private final ChapterQualityService quality;
     private final ResearchService research;
     private final PlanChangeService planChanges;
-    @Value("${novel.review-mode:parallel}") private String reviewMode;
+    private final dev.novel.agent.orchestration.ReviewOrchestrator reviews;
+    private final TaskScheduler scheduler;
     public static final int MEMORY_REPAIR_LIMIT=3;
-    @jakarta.annotation.PostConstruct void validateConfiguration() {
-        if(!Set.of("combined","parallel").contains(reviewMode)) throw new IllegalArgumentException("review-mode 必须为 combined 或 parallel");
-    }
-    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ResearchService research,PlanChangeService planChanges) { this.store=store;this.json=json;this.memory=memory;this.quality=quality;this.research=research;this.planChanges=planChanges; }
+    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ResearchService research,PlanChangeService planChanges,
+            dev.novel.agent.orchestration.ReviewOrchestrator reviews,TaskScheduler scheduler) { this.store=store;this.json=json;this.memory=memory;this.quality=quality;this.research=research;this.planChanges=planChanges;this.reviews=reviews;this.scheduler=scheduler; }
     public String schedule(Map<String,Object> novel,String kind,int chapter,int revision,Object payload) {
-        String id=(String)novel.get("id");long version=Store.number(novel,"memory_version");
-        String key=id+":"+novel.get("stage_no")+":"+chapter+":"+revision+":"+version+":"+kind;
-        return store.enqueue(id,kind,chapter,revision,version,key,payload);
+        return scheduler.schedule(novel,kind,chapter,revision,payload);
     }
     public void finished(Map<String,Object> task,JsonNode result) {
         store.transaction(() -> {
@@ -33,8 +29,8 @@ public class WorkflowService {
             Map<String,Object> novel=novelId==null?null:store.lockNovel(novelId);
             var persisted=store.one("tasks.lock",taskId);
             if(!"RUNNING".equals(persisted.get("status"))) return null;
-            if(kind.equals("PLAN_CHANGE")) {
-                planChanges.finished(task,result);
+            if(kind.equals("PLAN_CHANGE") || kind.equals("COORDINATE")) {
+                if(kind.equals("PLAN_CHANGE")) planChanges.finished(task,result);
                 store.update("tasks.done",json.write(result),taskId);
                 store.event(novelId,taskId,"DONE",kind);
                 return null;
@@ -73,16 +69,14 @@ public class WorkflowService {
                             result.path("approved").asBoolean()?"正文审核通过":"正文审核未通过："+result.path("issues").size()+"项问题");
                     if(kind.equals("CHECK_PACING") || kind.equals("CHECK_CHAPTER")) store.update("quality.pacing",
                             json.write(result.path("narrative")),novelId,chapter,revision);
-                    var checks=reviews(novelId,chapter,revision,Store.number(task,"memory_version"));
-                    if(kind.equals("CHECK_CHAPTER") || checks.size()==AgentRoles.CHAPTER_CHECKS.size()) {
-                        boolean approved=checks.stream().allMatch(row->json.read((String)row.get("result")).path("approved").asBoolean());
-                        if(approved) { state(novelId,"EXTRACTING");schedule(novel,"MEMORY",chapter,revision,Map.of()); }
+                    var round=reviews.collect(novel,chapter,revision);
+                    if(round.ready()) {
+                        if(round.approved()) { state(novelId,"EXTRACTING");schedule(novel,"MEMORY",chapter,revision,Map.of()); }
                         else { state(novelId,"REFLECTING");schedule(novel,"REFLECT",chapter,revision,Map.of()); }
                     }
                 }
                 case "REFLECT" -> {
-                    boolean major=result.path("majorChange").asBoolean() || reviews(novelId,chapter,revision,Store.number(task,"memory_version")).stream()
-                            .anyMatch(row->json.read((String)row.get("result")).path("majorChange").asBoolean());
+                    boolean major=result.path("majorChange").asBoolean() || reviews.collect(novel,chapter,revision).majorChange();
                     store.update("novels.reflection",json.write(result),novelId);
                     if(major) state(novelId,"AWAITING_CHANGE");
                     else if(revision>=3) state(novelId,"AWAITING_HELP");
@@ -128,11 +122,7 @@ public class WorkflowService {
         });
     }
     public void ensureReviewTasks(Map<String,Object> novel,int chapter,int revision) {
-        var existing=store.list("tasks.chapterChecks",novel.get("id"),chapter,revision,novel.get("memory_version"));
-        boolean legacy=existing.stream().anyMatch(row->AgentRoles.CHAPTER_CHECKS.contains(row.get("kind")));
-        boolean combined=existing.stream().anyMatch(row->"CHECK_CHAPTER".equals(row.get("kind")));
-        for(String check:combined || !legacy && reviewMode.equals("combined")?List.of("CHECK_CHAPTER"):AgentRoles.CHAPTER_CHECKS)
-            schedule(novel,check,chapter,revision,Map.of());
+        reviews.start(novel,chapter,revision);
     }
     public static JsonNode memoryDelta(JsonNode payload) { return payload.has("delta")?payload.get("delta"):payload; }
     public String repairMemory(Map<String,Object> novel,Map<String,Object> source,JsonNode delta,JsonNode review,String instructions,int attempt) {
@@ -149,7 +139,4 @@ public class WorkflowService {
                         "humanApproved",json.read(Store.string(source,"payload")).path("humanApproved").asBoolean(false)));
     }
     private void state(String id,String state) { store.update("novels.state",state,id); }
-    private List<Map<String,Object>> reviews(String id,int chapter,int revision,long version) {
-        return store.list("tasks.reviews",id,chapter,revision,version);
-    }
 }

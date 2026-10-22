@@ -53,7 +53,7 @@
       SUM(CASE WHEN t.status='DONE' THEN 1 ELSE 0 END) AS completed_tasks,
       SUM(CASE WHEN t.status='ERROR' THEN 1 ELSE 0 END) AS failed_tasks,
       SUM(CASE WHEN t.status='RUNNING' THEN 1 ELSE 0 END) AS running_tasks,
-      COUNT(c.id) AS model_calls,COALESCE(SUM(c.input_tokens),0) AS input_tokens,
+      COALESCE(SUM(CASE WHEN c.id IS NULL THEN 0 ELSE GREATEST(1,(SELECT COUNT(*) FROM model_call_turns r WHERE r.call_id=c.id)) END),0) AS model_calls,COALESCE(SUM(c.input_tokens),0) AS input_tokens,
       COALESCE(SUM(c.output_tokens),0) AS output_tokens,SUM(c.cached_input_tokens) AS cached_input_tokens,
       COUNT(c.cached_input_tokens) AS cache_reported_calls,
       COALESCE(SUM(c.actual),0) AS settled_cost,

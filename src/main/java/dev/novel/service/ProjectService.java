@@ -102,9 +102,9 @@ public class ProjectService {
     public void revise(String id,String instructions,JsonNode plan) {
         revise(id,instructions,plan,false);
     }
-    public void revise(String id,String instructions,JsonNode plan,boolean useCurrentPlan) {
+    public String revise(String id,String instructions,JsonNode plan,boolean useCurrentPlan) {
         if(instructions==null || instructions.isBlank() || instructions.length()>12000) throw new IllegalArgumentException("请提供有效修改要求，最多12000字符");
-        store.transaction(() -> {
+        return store.transaction(() -> {
             var novel=store.lockNovel(id);require(novel,"AWAITING_CHANGE","AWAITING_HELP");
             JsonNode approvedPlan=useCurrentPlan?json.read(Store.string(novel,"plan")):plan;
             if(memoryPending(novel)!=null) throw new IllegalStateException("当前需要修正记忆，请使用记忆修正入口");
@@ -117,8 +117,8 @@ public class ProjectService {
             int chapter=Store.integer(novel,"chapter_no");
             int revision=Store.integer(store.one("chapters.find",id,chapter),"revision")+1;
             store.update("novels.rewrite",json.write(Map.of("instructions",instructions,"humanApproved",true)),id);
-            workflow.schedule(store.novel(id),"REWRITE",chapter,revision,Map.of());
-            store.event(id,null,"REVISION_APPROVED",instructions);return null;
+            String next=workflow.schedule(store.novel(id),"REWRITE",chapter,revision,Map.of());
+            store.event(id,null,"REVISION_APPROVED",instructions);return next;
         });
     }
     private Map<String,Object> memoryPending(Map<String,Object> novel) {
@@ -187,10 +187,10 @@ public class ProjectService {
             if(task.get("research_id")!=null) store.update("tasks.linkResearch",task.get("research_id"),next);
             if(choice!=null) store.update("tasks.modelChoice",choice.provider(),choice.model(),next);
             else if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);
-            if("PLAN_CHANGE".equals(task.get("kind"))) {
+            if(Set.of("PLAN_CHANGE","COORDINATE").contains(task.get("kind"))) {
                 require(novel,"PAUSED","AWAITING_PLAN","AWAITING_STAGE_REVIEW","AWAITING_CHANGE","AWAITING_HELP");
-                store.update("planChanges.task",next,json.read(Store.string(task,"payload")).path("changeId").asText());
-                store.event(novelId,next,"RETRY_APPROVED","重新生成局部大纲建议，可能产生新的调用费用");
+                if("PLAN_CHANGE".equals(task.get("kind"))) store.update("planChanges.task",next,json.read(Store.string(task,"payload")).path("changeId").asText());
+                store.event(novelId,next,"RETRY_APPROVED","重新执行所选 Agent 任务，可能产生新的调用费用");
                 return next;
             }
             if(novel!=null) {

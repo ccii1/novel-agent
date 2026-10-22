@@ -6,6 +6,7 @@ import dev.novel.support.Json;
 import java.util.*;
 
 public abstract class ReviewAgent implements NovelAgent {
+    public Set<String> tools() { return Set.of("read_memory","read_paragraph"); }
     protected final AgentContextService context;
     protected final ModelClient model;
     protected final Json json;

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="modelTurns">
+  <insert id="create">INSERT INTO model_call_turns(id,call_id,task_id,turn_no,status,request_body) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'IN_FLIGHT',#{args[4]})</insert>
+  <update id="finish">UPDATE model_call_turns SET status=#{args[0]},response_body=#{args[1]},input_tokens=#{args[2]},output_tokens=#{args[3]},cached_tokens=#{args[4],jdbcType=BIGINT},cost=#{args[5]},latency_ms=#{args[6]},finished_at=CURRENT_TIMESTAMP WHERE id=#{args[7]}</update>
+  <select id="list" resultType="map">SELECT * FROM model_call_turns WHERE task_id=#{args[0]} ORDER BY turn_no</select>
+  <update id="recover">UPDATE model_call_turns SET status='UNCERTAIN' WHERE status='IN_FLIGHT'</update>
+  <update id="uncertain">UPDATE model_call_turns SET status='UNCERTAIN',finished_at=CURRENT_TIMESTAMP WHERE id=#{args[0]} AND status='IN_FLIGHT'</update>
+</mapper>

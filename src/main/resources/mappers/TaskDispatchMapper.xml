@@ -5,7 +5,7 @@
     SELECT t.*,GREATEST(t.created_at,t.updated_at,t.available_at) AS queued_at FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id
     WHERE t.status IN ('WAITING','READY') AND t.available_at&lt;=CURRENT_TIMESTAMP
       AND (t.novel_id IS NULL OR n.status IN ('PLANNING','WRITING','CHECKING','REFLECTING','EXTRACTING','CHECKING_MEMORY')
-        OR (t.kind='PLAN_CHANGE' AND n.status IN ('PAUSED','AWAITING_PLAN','AWAITING_CHANGE','AWAITING_HELP','AWAITING_STAGE_REVIEW')))
+        OR (t.kind IN ('PLAN_CHANGE','COORDINATE') AND n.status IN ('PAUSED','AWAITING_PLAN','AWAITING_CHANGE','AWAITING_HELP','AWAITING_STAGE_REVIEW')))
     ORDER BY (SELECT COUNT(*) FROM tasks r WHERE r.status='RUNNING'
       AND (r.novel_id=t.novel_id OR (r.novel_id IS NULL AND t.novel_id IS NULL))),t.updated_at,t.created_at LIMIT 1
   </select>

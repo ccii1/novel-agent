@@ -11,6 +11,7 @@ import java.util.*;
 
 @Component
 public class MemoryExtractionAgent implements NovelAgent {
+    public Set<String> tools() { return Set.of("read_memory","read_paragraph"); }
     private final AgentContextService context;
     private final ModelClient model;
     private final MemoryService memory;

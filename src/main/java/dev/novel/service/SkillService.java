@@ -40,7 +40,7 @@ public class SkillService {
         files.add("SKILL.md");
         switch (role) {
             case "RESEARCH", "RESEARCH_CHAT" -> references(files, "commercial-review.md", "fanqie-platform-rules.md");
-            case "PLAN", "PLAN_CHANGE" -> references(files, "commercial-review.md", "pattern-detection.md");
+            case "PLAN", "PLAN_CHANGE", "COORDINATE" -> references(files, "commercial-review.md", "pattern-detection.md");
             case "WRITE", "REWRITE" -> references(files, "ai-detox-guide.md", "battle-scene-guide.md", "dialogue-monitor.md");
             case "CHECK_PACING" -> references(files, "battle-scene-guide.md", "dialogue-monitor.md", "pattern-detection.md");
             case "CHECK_STYLE" -> references(files, "ai-detox-guide.md", "commercial-review.md");

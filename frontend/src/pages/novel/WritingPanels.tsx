@@ -7,6 +7,7 @@ import TaskProgress from '../../components/TaskProgress';
 import MemoryRepairPanel from '../../components/MemoryRepairPanel';
 import CopyChapterButton from '../../components/CopyChapterButton';
 import PlanChangePanel from '../../components/PlanChangePanel';
+import CoordinationPanel from '../../components/CoordinationPanel';
 import type {Chapter, Choice, Novel, NovelDetail} from '../../domain';
 
 export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: string) => void}) {
@@ -18,6 +19,7 @@ export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: strin
   return <>
     <Stats items={[{label:'已接受章节',value:data.chapters.filter(chapter => chapter.status === 'ACCEPTED').length},{label:'待处理任务',value:active.length},{label:'当前记忆版本',value:novel.memory_version}]}/>
     <div className="workspace-columns"><div>
+      {['AWAITING_CHANGE','AWAITING_HELP','AWAITING_PLAN','AWAITING_STAGE_REVIEW','PAUSED'].includes(novel.status) && <CoordinationPanel novel={novel}/>}
       <Panel title="创作设定"><p className="prose">{novel.premise}</p>{novel.bible && <div className="setting-text">{novel.bible}</div>}</Panel>
       {awaiting && <div id="intervention">{pending?.pending ? <MemoryRepairPanel key={pending.taskId} novel={novel} pending={pending}/> : <RevisionForm novel={novel}/>}</div>}
       <Panel title="当前执行"><div className="task-grid">{active.map(task => <TaskProgress key={task.id} task={task} inspect={inspect}/>)}</div>{active.length === 0 && <p className="muted">当前没有执行中的任务。<Link to={`/books/${novel.id}/plan`}>查看阶段大纲</Link></p>}</Panel>

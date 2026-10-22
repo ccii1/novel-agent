@@ -8,7 +8,7 @@
       SUM(CASE WHEN t.status='RUNNING' THEN 1 ELSE 0 END) AS running_tasks,
       SUM(CASE WHEN t.status IN ('WAITING','READY') THEN 1 ELSE 0 END) AS waiting_tasks,
       SUM(CASE WHEN t.status='CANCELLED' THEN 1 ELSE 0 END) AS cancelled_tasks,
-      COUNT(c.id) AS model_calls,
+      COALESCE(SUM(CASE WHEN c.id IS NULL THEN 0 ELSE GREATEST(1,(SELECT COUNT(*) FROM model_call_turns r WHERE r.call_id=c.id)) END),0) AS model_calls,
       COALESCE(SUM(c.input_tokens),0) AS input_tokens,
       COALESCE(SUM(c.output_tokens),0) AS output_tokens,
       COALESCE(SUM(c.actual),0) AS settled_cost,

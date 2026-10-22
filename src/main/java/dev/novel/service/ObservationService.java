@@ -61,6 +61,7 @@ public class ObservationService {
         result.put("task",task);result.put("executions",observations.executions(id));
         result.put("events",observations.events(id));result.put("feedback",observations.feedback(id));
         result.put("call",observations.call(id));
+        result.put("turns",store.list("modelTurns.list",id));
         return result;
     }
     @Transactional

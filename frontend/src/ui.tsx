@@ -9,7 +9,7 @@ export const labels: Record<string, string> = {
   READY:'结果待处理', RUNNING:'执行中', DONE:'已完成', CANCELLED:'已取消', DRAFT:'草稿', ACCEPTED:'检查通过', INVALIDATED:'等待重新生成',
   IN_FLIGHT:'调用中', COMPLETE:'已结算', UNCERTAIN:'费用待核对', RECONCILED:'已人工核对', PENDING:'等待审批', APPROVED:'已批准',
 };
-export const roles: Record<string, string> = {PLAN:'阶段规划', PLAN_CHANGE:'局部大纲修改', WRITE:'正文创作', REWRITE:'正文修改', CHECK_CHAPTER:'正文联合审核', CHECK_CHARACTER:'人物检查', CHECK_PLOT:'剧情检查', CHECK_PACING:'节奏检查', CHECK_STYLE:'文风检查', REFLECT:'修改分析', MEMORY:'记忆提取', MEMORY_REPAIR:'记忆修正', CHECK_MEMORY:'记忆审核', RESEARCH:'选题研究', RESEARCH_CHAT:'选题讨论'};
+export const roles: Record<string, string> = {PLAN:'阶段规划', PLAN_CHANGE:'局部大纲修改', COORDINATE:'创作协调', WRITE:'正文创作', REWRITE:'正文修改', CHECK_CHAPTER:'正文联合审核', CHECK_CHARACTER:'人物检查', CHECK_PLOT:'剧情检查', CHECK_PACING:'节奏检查', CHECK_STYLE:'文风检查', REFLECT:'修改分析', MEMORY:'记忆提取', MEMORY_REPAIR:'记忆修正', CHECK_MEMORY:'记忆审核', RESEARCH:'选题研究', RESEARCH_CHAT:'选题讨论'};
 export const activeStates = new Set(['PLANNING','WRITING','CHECKING','REFLECTING','EXTRACTING','CHECKING_MEMORY']);
 export const money = (value: unknown) => value == null ? '未结算' : `¥${Number(value).toFixed(4)}`;
 export const duration = (value: unknown) => value == null ? '未记录' : `${(Number(value) / 1000).toFixed(1)} 秒`;

@@ -26,8 +26,8 @@ export interface Progress {task: Row; stage: string; events: Event[]}
 export interface Quality {totals: {chapters: number; stored_characters: number}; dialogueRising: boolean; recent: {chapter_no: number; characters: number; dialogue_lines: number; total_lines: number; dialogue_ratio: number; pacing_data: string | null}[]}
 export interface Graph {version: number; nodes: {id: string; name: string}[]; edges: {subject: string; predicate: string; object: string; chapter: number; evidence: string; detail: string}[]}
 export interface Memory {id: string; memory_key: string; kind: string; chapter_no: number; content: string}
-export interface Agent {kind: string; agent: string; purpose: string}
+export interface Agent {kind: string; agent: string; purpose: string; runtime?: {name: string; description: string; tools: string[]; maxIterations: number}}
 export interface Observation {summary: Row[]; tasks: (Task & Row)[]; total: number; page: number; pageSize: number; storage: string; historicalTiming: string}
-export interface TaskDetail {task: Task; executions: Row[]; call: Row | null; events: Event[]; feedback: {id: number; rating: number; note: string; created_at: string}[]}
+export interface TaskDetail {task: Task; executions: Row[]; call: Row | null; turns?: Row[]; events: Event[]; feedback: {id: number; rating: number; note: string; created_at: string}[]}
 export interface Budget {month: string; limit: number; usedAndReserved: number; remaining: number; calls: Row[]}
 export interface SystemStatus {engine: {active: number; workers: number; ready: boolean}; database?: string; rateLimiter: string; modelConfigured: boolean; researchModelSelection: boolean; retryModelSelection?: boolean}

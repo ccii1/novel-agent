@@ -63,7 +63,7 @@ public class BudgetService {
         String novelId=(String)task.get("novel_id");
         if(novelId!=null) {
             var novel=store.lockNovel(novelId);
-            boolean outlineRequest="PLAN_CHANGE".equals(task.get("kind")) && PlanChangeService.allowedStatus(novel.get("status"));
+            boolean outlineRequest=Set.of("PLAN_CHANGE","COORDINATE").contains(task.get("kind")) && PlanChangeService.allowedStatus(novel.get("status"));
             if(!outlineRequest && !Set.of("PLANNING","WRITING","CHECKING","REFLECTING","EXTRACTING","CHECKING_MEMORY").contains(novel.get("status")))
                 throw new IllegalStateException("小说已暂停或正在等待审核");
             if(metered && calls.novelMonthlyUsed(novelId,billingMonth).add(amount).compareTo((BigDecimal)novel.get("novel_budget"))>0)
@@ -88,6 +88,13 @@ public class BudgetService {
         int updated=calls.reconcile(actual,id);
         if(updated!=1) throw new IllegalStateException("仅可核对结果不确定的调用");
         store.event(null,null,"BILLING_RECONCILED",id+" 费用="+actual);
+    }
+    @Transactional
+    public void recordTurn(String id,String callId,String task,int turn,String body) {
+        if(calls.lockBudget()==null) throw new IllegalStateException("费用锁记录不存在");
+        long recent=calls.recentCount();
+        if(turn==1?recent>requestsPerMinute:recent>=requestsPerMinute) throw new RateLimited();
+        store.update("modelTurns.create",id,callId,task,turn,body);
     }
     public static class BudgetExceeded extends IllegalStateException {
         public BudgetExceeded(String message) { super(message); }

@@ -7,6 +7,7 @@ import dev.novel.dto.AgentOutputs;
 import java.util.*;
 
 public abstract class ChapterAuthorAgent implements NovelAgent {
+    public Set<String> tools() { return Set.of("read_memory","read_relations"); }
     protected final AgentContextService context;
     protected final ModelClient model;
     protected final Json json;
