@@ -49,8 +49,8 @@ export default function AuthGate({children}: {children: ReactNode}) {
   return <main className="auth-screen"><form className="auth-card" onSubmit={event => {void submit(event);}}>
     <div className="brand-icon"><BookOpen size={24}/></div><h1>{registering ? '创建创作账号' : '登录创作工作台'}</h1>
     <p className="muted">每个账号独立管理作品、选题、记忆与执行记录。</p>
-    <label>用户名<input name="username" autoComplete="username" required minLength={3} maxLength={32} pattern="[a-z][a-z0-9_]{2,31}" value={username} onChange={event => setUsername(event.target.value)} placeholder="小写字母开头，支持数字与下划线"/></label>
-    <label>密码<input name="password" type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={10} maxLength={64} value={password} onChange={event => setPassword(event.target.value)}/></label>
+    <label>用户名<input name="username" autoComplete="username" required minLength={2} maxLength={32} pattern="[a-z][a-z0-9_]{1,31}" title="2至32个字符，以小写字母开头，支持数字与下划线" value={username} onChange={event => setUsername(event.target.value)} placeholder="2至32个字符，小写字母开头"/></label>
+    <label>密码<input name="password" type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={4} maxLength={64} title="4至64个字符" placeholder="至少4个字符" value={password} onChange={event => setPassword(event.target.value)}/></label>
     {error && <p className="error-box" role="alert">{error}</p>}
     <button className="button primary" disabled={busy} type="submit">{busy ? '正在处理…' : registering ? '注册并登录' : '登录'}</button>
     <button className="button" disabled={busy} type="button" onClick={() => {setRegistering(!registering); setError('');}}>{registering ? '已有账号，返回登录' : '注册新账号'}</button>

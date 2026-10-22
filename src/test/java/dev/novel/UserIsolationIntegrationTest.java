@@ -53,6 +53,15 @@ class UserIsolationIntegrationTest {
         assertThat(http.request("/api/auth/logout","{}").statusCode()).isEqualTo(200);
         assertThat(http.request("/api/auth/me",null).statusCode()).isEqualTo(401);
     }
+    @Test void registrationAcceptsTwoCharacterNameAndFourCharacterPassword() throws Exception {
+        var http = new AuthHttp(port);
+        assertThat(http.request("/api/auth/register", "{\"username\":\"c\",\"password\":\"1234\"}").statusCode()).isEqualTo(400);
+        assertThat(http.request("/api/auth/register", "{\"username\":\"cc\",\"password\":\"123\"}").statusCode()).isEqualTo(400);
+        assertThat(http.request("/api/auth/register", "{\"username\":\"cc\",\"password\":\"1234\"}").statusCode()).isEqualTo(200);
+        http.login("cc", "1234");
+        assertThat(json.read(http.request("/api/auth/me", null).body()).path("username").asText()).isEqualTo("cc");
+    }
+
     @Test void usersCannotReadOrMutateOtherNovelsTasksCallsResearchAndEdits() throws Exception {
         var first=account();var second=account();String novel=create(first);String other=create(second);
         String task=Store.string(store.one("tasks.byNovel",novel),"id");

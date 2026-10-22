@@ -47,10 +47,10 @@ public class UserService implements UserDetailsService {
         catch(DuplicateKeyException duplicate) { throw new IllegalArgumentException("该用户名已注册"); }
     }
     private void validate(String username,String password) {
-        if(username==null || !username.matches("[a-z][a-z0-9_]{2,31}"))
-            throw new IllegalArgumentException("用户名需要3至32个小写字母、数字或下划线，并以字母开头");
-        if(password==null || password.length()<10 || password.length()>64 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72)
-            throw new IllegalArgumentException("密码需要10至64个字符，UTF-8 长度最多72字节");
+        if(username==null || !username.matches("[a-z][a-z0-9_]{1,31}"))
+            throw new IllegalArgumentException("用户名需要2至32个小写字母、数字或下划线，并以字母开头");
+        if(password==null || password.length()<4 || password.length()>64 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>72)
+            throw new IllegalArgumentException("密码需要4至64个字符，UTF-8 长度最多72字节");
     }
     @Override public UserDetails loadUserByUsername(String username) {
         var user=users.find(username);
