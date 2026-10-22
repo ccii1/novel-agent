@@ -1,146 +1,228 @@
 package dev.novel.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import dev.novel.agent.orchestration.ReviewOrchestrator;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class WorkflowService {
+    public static final int MEMORY_REPAIR_LIMIT = 3;
+    private static final int REVISION_LIMIT = 3;
+    private static final Set<String> SUSPENDED = Set.of("PAUSED", "ERROR", "BUDGET_PAUSED");
+
     private final Store store;
     private final Json json;
     private final MemoryService memory;
     private final ChapterQualityService quality;
     private final ResearchService research;
     private final PlanChangeService planChanges;
-    private final dev.novel.agent.orchestration.ReviewOrchestrator reviews;
+    private final ReviewOrchestrator reviews;
     private final TaskScheduler scheduler;
-    public static final int MEMORY_REPAIR_LIMIT=3;
-    public WorkflowService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ResearchService research,PlanChangeService planChanges,
-            dev.novel.agent.orchestration.ReviewOrchestrator reviews,TaskScheduler scheduler) { this.store=store;this.json=json;this.memory=memory;this.quality=quality;this.research=research;this.planChanges=planChanges;this.reviews=reviews;this.scheduler=scheduler; }
-    public String schedule(Map<String,Object> novel,String kind,int chapter,int revision,Object payload) {
-        return scheduler.schedule(novel,kind,chapter,revision,payload);
+
+    public WorkflowService(Store store, Json json, MemoryService memory, ChapterQualityService quality,
+            ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler) {
+        this.store = store;
+        this.json = json;
+        this.memory = memory;
+        this.quality = quality;
+        this.research = research;
+        this.planChanges = planChanges;
+        this.reviews = reviews;
+        this.scheduler = scheduler;
     }
-    public void finished(Map<String,Object> task,JsonNode result) {
+
+    public String schedule(Map<String, Object> novel, String kind, int chapter, int revision, Object payload) {
+        return scheduler.schedule(novel, kind, chapter, revision, payload);
+    }
+
+    public void finished(Map<String, Object> task, JsonNode result) {
         store.transaction(() -> {
-            // 作品行与任务行按固定顺序加锁，串行决定同一作品的状态变化。
-            String taskId=(String)task.get("id"), novelId=(String)task.get("novel_id"), kind=(String)task.get("kind");
-            Map<String,Object> novel=novelId==null?null:store.lockNovel(novelId);
-            var persisted=store.one("tasks.lock",taskId);
-            if(!"RUNNING".equals(persisted.get("status"))) return null;
-            if(kind.equals("PLAN_CHANGE") || kind.equals("COORDINATE")) {
-                if(kind.equals("PLAN_CHANGE")) planChanges.finished(task,result);
-                store.update("tasks.done",json.write(result),taskId);
-                store.event(novelId,taskId,"DONE",kind);
-                return null;
-            }
-            if(novel!=null && (Set.of("PAUSED","ERROR","BUDGET_PAUSED").contains(novel.get("status")))) {
-                store.update("tasks.ready",json.write(result),taskId);
-                return null;
-            }
-            if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) {
-                // 已失效的结果保留记录，不允许推进当前版本的创作流程。
-                store.update("tasks.stale",taskId);
-                return null;
-            }
-            store.update("tasks.done",json.write(result),taskId);
-            store.event(novelId,taskId,"DONE",kind);
-            if(kind.equals("RESEARCH") || kind.equals("RESEARCH_CHAT")) {
-                research.finished(task,result);
-                return null;
-            }
-            int chapter=Store.integer(task,"chapter_no"), revision=Store.integer(task,"revision");
-            switch(kind) {
-                case "PLAN" -> store.update("novels.awaitPlan",json.write(result),novelId);
-                case "WRITE", "REWRITE" -> {
-                    var old=store.list("chapters.find",novelId,chapter);
-                    if(!old.isEmpty()) {
-                        var previous=old.get(0);
-                        store.update("chapters.history",UUID.randomUUID().toString(),novelId,chapter,previous.get("revision"),previous.get("title"),previous.get("body"));
-                    }
-                    store.update("chapters.draft",
-                            novelId,chapter,novel.get("stage_no"),revision,json.text(result,"title"),json.text(result,"body"),novel.get("memory_version"));
-                    store.update("novels.state","CHECKING",novelId);
-                    quality.record(novelId,chapter,revision,json.text(result,"body"));
-                    ensureReviewTasks(novel,chapter,revision);
-                }
-                case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE", "CHECK_CHAPTER" -> {
-                    store.event(novelId,taskId,result.path("approved").asBoolean()?"REVIEW_APPROVED":"REVIEW_REJECTED",
-                            result.path("approved").asBoolean()?"正文审核通过":"正文审核未通过："+result.path("issues").size()+"项问题");
-                    if(kind.equals("CHECK_PACING") || kind.equals("CHECK_CHAPTER")) store.update("quality.pacing",
-                            json.write(result.path("narrative")),novelId,chapter,revision);
-                    var round=reviews.collect(novel,chapter,revision);
-                    // 等待本轮全部审核结果；单个 Agent 完成不会提前启动写作或记忆提取。
-                    if(round.ready()) {
-                        if(round.approved()) { state(novelId,"EXTRACTING");schedule(novel,"MEMORY",chapter,revision,Map.of()); }
-                        else { state(novelId,"REFLECTING");schedule(novel,"REFLECT",chapter,revision,Map.of()); }
-                    }
-                }
-                case "REFLECT" -> {
-                    boolean major=result.path("majorChange").asBoolean() || reviews.collect(novel,chapter,revision).majorChange();
-                    store.update("novels.reflection",json.write(result),novelId);
-                    if(major) state(novelId,"AWAITING_CHANGE");
-                    else if(revision>=3) state(novelId,"AWAITING_HELP");
-                    else { state(novelId,"WRITING");schedule(novel,"REWRITE",chapter,revision+1,Map.of()); }
-                }
-                case "MEMORY", "MEMORY_REPAIR" -> {
-                    var payload=json.read(Store.string(task,"payload"));
-                    scheduleMemoryCheck(novel,task,result,payload.path("repairAttempt").asInt(0));
-                }
-                case "CHECK_MEMORY" -> {
-                    var checkPayload=json.read(Store.string(task,"payload"));
-                    if(!result.path("approved").asBoolean() || result.path("majorChange").asBoolean() && !checkPayload.path("humanApproved").asBoolean()) {
-                        var payload=json.read(Store.string(task,"payload"));
-                        int attempt=payload.path("repairAttempt").asInt(0);
-                        store.event(novelId,taskId,"REVIEW_REJECTED","记忆审核未通过："+result.path("issues").size()+"项问题");
-                        if(!result.path("majorChange").asBoolean() && attempt<MEMORY_REPAIR_LIMIT) {
-                            repairMemory(novel,task,memoryDelta(payload),result,"按审核意见修正记忆，保持正文和大纲。",attempt+1);
-                        } else {
-                            store.update("novels.help",json.write(Map.of("type","MEMORY_REVIEW","sourceTaskId",taskId,
-                                    "repairAttempt",attempt,"majorChange",result.path("majorChange").asBoolean(),
-                                    "instructions",result.path("majorChange").asBoolean()?"记忆变更需要人工确认。":"记忆自动修正已达到三次，请查看问题并提供记忆修改要求。",
-                                    "issues",result.get("issues"))),novelId);
-                        }
-                    } else {
-                        var draft=store.one("chapters.find",novelId,chapter);
-                        if(Store.integer(draft,"revision")!=revision || Store.integer(novel,"chapter_no")!=chapter)
-                            throw new IllegalStateException("记忆审核对应的正文版本已经变化");
-                        var delta=memory.validateDelta(memoryDelta(json.read(Store.string(task,"payload"))),Store.string(draft,"body"));
-                        long nextVersion=Store.number(novel,"memory_version")+1;
-                        // 正式记忆、章节确认、进度及下一任务在当前事务内共同提交。
-                        memory.commit(novelId,chapter,nextVersion,delta);
-                        store.update("chapters.accept",json.text(delta,"summary"),nextVersion,novelId,chapter);
-                        var plan=json.read((String)novel.get("plan"));
-                        int last=plan.get("chapters").get(plan.get("chapters").size()-1).path("number").asInt();
-                        store.update("novels.advance",nextVersion,chapter+1,chapter>=last?"AWAITING_STAGE_REVIEW":"WRITING",novelId);
-                        if(chapter<last) schedule(store.novel(novelId),"WRITE",chapter+1,0,Map.of());
-                        store.event(novelId,taskId,"CHAPTER_ACCEPTED","第"+chapter+"章，记忆版本="+nextVersion);
-                        store.event(novelId,taskId,"REVIEW_APPROVED","记忆审核通过，正式记忆已保存");
-                    }
-                }
-                default -> throw new IllegalArgumentException("未知流程步骤："+kind);
-            }
+            finishWithinTransaction(task, result);
             return null;
         });
     }
-    public void ensureReviewTasks(Map<String,Object> novel,int chapter,int revision) {
-        reviews.start(novel,chapter,revision);
+
+    private void finishWithinTransaction(Map<String, Object> task, JsonNode result) {
+        String taskId = Store.string(task, "id");
+        String novelId = (String) task.get("novel_id");
+        String kind = Store.string(task, "kind");
+        // 固定加锁顺序，同一作品的完成结果在这里串行决定后续步骤。
+        var novel = novelId == null ? null : store.lockNovel(novelId);
+        var persisted = store.one("tasks.lock", taskId);
+        if (!"RUNNING".equals(persisted.get("status"))) return;
+
+        // 修改建议独立保存，正式变更在人工确认时再次检查来源版本。
+        if (kind.equals("PLAN_CHANGE") || kind.equals("COORDINATE")) {
+            if (kind.equals("PLAN_CHANGE")) planChanges.finished(task, result);
+            markDone(task, result);
+            return;
+        }
+        if (novel != null && SUSPENDED.contains(novel.get("status"))) {
+            store.update("tasks.ready", json.write(result), taskId);
+            return;
+        }
+        if (novel != null && Store.number(novel, "memory_version") != Store.number(task, "memory_version")) {
+            store.update("tasks.stale", taskId);
+            return;
+        }
+
+        markDone(task, result);
+        switch (kind) {
+            case "RESEARCH", "RESEARCH_CHAT" -> research.finished(task, result);
+            case "PLAN" -> store.update("novels.awaitPlan", json.write(result), novelId);
+            case "WRITE", "REWRITE" -> saveDraft(novel, task, result);
+            case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE", "CHECK_CHAPTER" ->
+                    finishChapterReview(novel, task, result);
+            case "REFLECT" -> finishReflection(novel, task, result);
+            case "MEMORY", "MEMORY_REPAIR" -> scheduleMemoryCheck(novel, task, result,
+                    json.read(Store.string(task, "payload")).path("repairAttempt").asInt(0));
+            case "CHECK_MEMORY" -> finishMemoryReview(novel, task, result);
+            default -> throw new IllegalArgumentException("未知流程步骤：" + kind);
+        }
     }
-    public static JsonNode memoryDelta(JsonNode payload) { return payload.has("delta")?payload.get("delta"):payload; }
-    public String repairMemory(Map<String,Object> novel,Map<String,Object> source,JsonNode delta,JsonNode review,String instructions,int attempt) {
-        state(Store.string(novel,"id"),"EXTRACTING");
-        String id=store.enqueue(Store.string(novel,"id"),"MEMORY_REPAIR",Store.integer(source,"chapter_no"),Store.integer(source,"revision"),
-                Store.number(source,"memory_version"),novel.get("id")+":memory-repair:"+source.get("id"),Map.of("delta",delta,"review",review,"instructions",instructions,"repairAttempt",attempt));
-        store.event(Store.string(novel,"id"),id,"MEMORY_REPAIR_STARTED","开始修正记忆，第"+attempt+"次；正文和大纲保持当前版本");
+
+    private void markDone(Map<String, Object> task, JsonNode result) {
+        store.update("tasks.done", json.write(result), task.get("id"));
+        store.event((String) task.get("novel_id"), Store.string(task, "id"), "DONE", Store.string(task, "kind"));
+    }
+
+    private void saveDraft(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+        String novelId = Store.string(novel, "id");
+        int chapter = Store.integer(task, "chapter_no");
+        int revision = Store.integer(task, "revision");
+        var old = store.list("chapters.find", novelId, chapter);
+        if (!old.isEmpty()) {
+            var previous = old.get(0);
+            store.update("chapters.history", UUID.randomUUID().toString(), novelId, chapter,
+                    previous.get("revision"), previous.get("title"), previous.get("body"));
+        }
+        String body = json.text(result, "body");
+        store.update("chapters.draft", novelId, chapter, novel.get("stage_no"), revision,
+                json.text(result, "title"), body, novel.get("memory_version"));
+        state(novelId, "CHECKING");
+        quality.record(novelId, chapter, revision, body);
+        ensureReviewTasks(novel, chapter, revision);
+    }
+
+    private void finishChapterReview(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+        String novelId = Store.string(novel, "id");
+        String kind = Store.string(task, "kind");
+        int chapter = Store.integer(task, "chapter_no");
+        int revision = Store.integer(task, "revision");
+        boolean approved = result.path("approved").asBoolean();
+        store.event(novelId, Store.string(task, "id"), approved ? "REVIEW_APPROVED" : "REVIEW_REJECTED",
+                approved ? "正文审核通过" : "正文审核未通过：" + result.path("issues").size() + "项问题");
+        if (kind.equals("CHECK_PACING") || kind.equals("CHECK_CHAPTER")) {
+            store.update("quality.pacing", json.write(result.path("narrative")), novelId, chapter, revision);
+        }
+        var round = reviews.collect(novel, chapter, revision);
+        // 等待同一版本的全部审核结果，单个 Agent 完成不会提前推进章节。
+        if (!round.ready()) return;
+        state(novelId, round.approved() ? "EXTRACTING" : "REFLECTING");
+        schedule(novel, round.approved() ? "MEMORY" : "REFLECT", chapter, revision, Map.of());
+    }
+
+    private void finishReflection(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+        String novelId = Store.string(novel, "id");
+        int chapter = Store.integer(task, "chapter_no");
+        int revision = Store.integer(task, "revision");
+        boolean major = result.path("majorChange").asBoolean() || reviews.collect(novel, chapter, revision).majorChange();
+        store.update("novels.reflection", json.write(result), novelId);
+        if (major) {
+            state(novelId, "AWAITING_CHANGE");
+        } else if (revision >= REVISION_LIMIT) {
+            state(novelId, "AWAITING_HELP");
+        } else {
+            state(novelId, "WRITING");
+            schedule(novel, "REWRITE", chapter, revision + 1, Map.of());
+        }
+    }
+
+    private void finishMemoryReview(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+        var payload = json.read(Store.string(task, "payload"));
+        boolean major = result.path("majorChange").asBoolean();
+        boolean authorized = !major || payload.path("humanApproved").asBoolean();
+        if (result.path("approved").asBoolean() && authorized) {
+            commitApprovedChapter(novel, task, memoryDelta(payload));
+            return;
+        }
+
+        int attempt = payload.path("repairAttempt").asInt(0);
+        store.event(Store.string(novel, "id"), Store.string(task, "id"), "REVIEW_REJECTED",
+                "记忆审核未通过：" + result.path("issues").size() + "项问题");
+        if (!major && attempt < MEMORY_REPAIR_LIMIT) {
+            repairMemory(novel, task, memoryDelta(payload), result, "按审核意见修正记忆，保持正文和大纲。", attempt + 1);
+            return;
+        }
+        String instructions = major ? "记忆变更需要人工确认。" : "记忆自动修正已达到三次，请查看问题并提供记忆修改要求。";
+        store.update("novels.help", json.write(Map.of(
+                "type", "MEMORY_REVIEW", "sourceTaskId", task.get("id"), "repairAttempt", attempt,
+                "majorChange", major, "instructions", instructions, "issues", result.get("issues"))), novel.get("id"));
+    }
+
+    private void commitApprovedChapter(Map<String, Object> novel, Map<String, Object> task, JsonNode pending) {
+        String novelId = Store.string(novel, "id");
+        int chapter = Store.integer(task, "chapter_no");
+        var draft = store.one("chapters.find", novelId, chapter);
+        if (Store.integer(draft, "revision") != Store.integer(task, "revision")
+                || Store.integer(novel, "chapter_no") != chapter) {
+            throw new IllegalStateException("记忆审核对应的正文版本已经变化");
+        }
+        var delta = memory.validateDelta(pending, Store.string(draft, "body"));
+        long nextVersion = Store.number(novel, "memory_version") + 1;
+        // 本方法仍处于 finished 的事务内，记忆、章节、进度及下一任务共同提交。
+        memory.commit(novelId, chapter, nextVersion, delta);
+        store.update("chapters.accept", json.text(delta, "summary"), nextVersion, novelId, chapter);
+        var chapters = json.read(Store.string(novel, "plan")).path("chapters");
+        int last = chapters.get(chapters.size() - 1).path("number").asInt();
+        stateAfterChapter(novelId, chapter, last, nextVersion);
+        store.event(novelId, Store.string(task, "id"), "CHAPTER_ACCEPTED", "第" + chapter + "章，记忆版本=" + nextVersion);
+        store.event(novelId, Store.string(task, "id"), "REVIEW_APPROVED", "记忆审核通过，正式记忆已保存");
+    }
+
+    private void stateAfterChapter(String novelId, int chapter, int last, long nextVersion) {
+        boolean stageComplete = chapter >= last;
+        store.update("novels.advance", nextVersion, chapter + 1,
+                stageComplete ? "AWAITING_STAGE_REVIEW" : "WRITING", novelId);
+        if (!stageComplete) schedule(store.novel(novelId), "WRITE", chapter + 1, 0, Map.of());
+    }
+
+    public void ensureReviewTasks(Map<String, Object> novel, int chapter, int revision) {
+        reviews.start(novel, chapter, revision);
+    }
+
+    public static JsonNode memoryDelta(JsonNode payload) {
+        return payload.has("delta") ? payload.get("delta") : payload;
+    }
+
+    public String repairMemory(Map<String, Object> novel, Map<String, Object> source, JsonNode delta,
+            JsonNode review, String instructions, int attempt) {
+        String novelId = Store.string(novel, "id");
+        state(novelId, "EXTRACTING");
+        String id = store.enqueue(novelId, "MEMORY_REPAIR", Store.integer(source, "chapter_no"),
+                Store.integer(source, "revision"), Store.number(source, "memory_version"),
+                novelId + ":memory-repair:" + source.get("id"),
+                Map.of("delta", delta, "review", review, "instructions", instructions, "repairAttempt", attempt));
+        store.event(novelId, id, "MEMORY_REPAIR_STARTED", "开始修正记忆，第" + attempt + "次；正文和大纲保持当前版本");
         return id;
     }
-    public String scheduleMemoryCheck(Map<String,Object> novel,Map<String,Object> source,JsonNode delta,int attempt) {
-        state(Store.string(novel,"id"),"CHECKING_MEMORY");
-        return store.enqueue(Store.string(novel,"id"),"CHECK_MEMORY",Store.integer(source,"chapter_no"),Store.integer(source,"revision"),
-                Store.number(source,"memory_version"),novel.get("id")+":memory-check:"+source.get("id"),Map.of("delta",delta,"repairAttempt",attempt,
-                        "humanApproved",json.read(Store.string(source,"payload")).path("humanApproved").asBoolean(false)));
+
+    public String scheduleMemoryCheck(Map<String, Object> novel, Map<String, Object> source, JsonNode delta, int attempt) {
+        String novelId = Store.string(novel, "id");
+        state(novelId, "CHECKING_MEMORY");
+        boolean humanApproved = json.read(Store.string(source, "payload")).path("humanApproved").asBoolean(false);
+        return store.enqueue(novelId, "CHECK_MEMORY", Store.integer(source, "chapter_no"),
+                Store.integer(source, "revision"), Store.number(source, "memory_version"),
+                novelId + ":memory-check:" + source.get("id"),
+                Map.of("delta", delta, "repairAttempt", attempt, "humanApproved", humanApproved));
     }
-    private void state(String id,String state) { store.update("novels.state",state,id); }
+
+    private void state(String id, String state) {
+        store.update("novels.state", state, id);
+    }
 }

@@ -32,10 +32,10 @@ public class WorkspaceService {
             return null;
         });
     }
-    public Object graph(String id,List<String> characters,int depth) {
+    public Map<String,Object> graph(String id,List<String> characters,int depth) {
         return memory.graph(id,Store.number(store.novel(id),"memory_version"),characters.stream().filter(s->!s.isBlank()).toList(),depth);
     }
-    public Object memories(String id) { return memory.snapshot(id,Store.number(store.novel(id),"memory_version")); }
+    public List<Map<String,Object>> memories(String id) { return memory.snapshot(id,Store.number(store.novel(id),"memory_version")); }
     public Manuscript manuscript(String id) {
         String title=Store.string(store.novel(id),"title");StringBuilder text=new StringBuilder(title).append("\n\n");
         store.list("chapters.accepted",id)

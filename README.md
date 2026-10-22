@@ -6,6 +6,8 @@
 
 代码目录职责、主要类与验证入口见 [项目结构与代码导航](docs/project-structure.md)。本机学习指南保存在 `C:/Users/cc/Documents/Obsidian Vault/小说agent/学习路线与代码阅读指南.md`，按业务状态、持久化调度、多 Agent、审核、记忆、费用恢复和用户隔离组织阅读顺序与完成标准。
 
+后端接口返回类型按业务集中在 `dto/response`，Controller 使用明确的 record。`ResponseMapper` 将内部查询数据转换为声明字段，保留现有 JSON 命名、金额精度及未知用量的空值。费用、供应商和 Agent 查询分别由 `BudgetController`、`ProviderController`、`AgentController` 提供；主流程按草稿保存、审核汇集、反思处理和记忆提交组织独立方法。事务、任务认领、服务恢复和线程身份清理位置附有设计说明，代码入口见项目结构文档。
+
 ## 登录与用户隔离
 
 启动后进入登录页面。已有作品、选题、任务及历史费用归入本地 `owner` 账号；首次启动自动生成随机密码，登录信息仅保存在已被 Git 忽略的 `config/auth-local.json`。普通用户通过页面注册，用户名为3至32个小写字母、数字或下划线，以字母开头；密码至少10个字符。`owner` 名称保留，注册用户无法认领已有数据。

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 1.13.0 — 2026-10-22
+
+- Controller 响应改用按业务分组的 record，统一创建、操作、登录及错误响应；Jackson 映射仅输出声明字段，保持原有 JSON 命名、BigDecimal 金额与未知用量空值。
+- Agent、供应商和费用接口分别由独立 Controller 管理，请求类型集中到 ApiRequests；字段校验失败返回简明的字段说明。
+- WorkflowService 按草稿保存、审核汇集、反思、记忆审核与正式提交组织方法；TaskEngine 分离执行与限流处理，补充事务、并发认领、恢复和用户身份清理的中文注释。
+- README、项目结构文档及本地 Obsidian 学习指南同步更新响应类型与流程阅读入口。
+- 全量验证135项通过，包含16项真实 MySQL 与2项 Redis 验证；13项需显式启用的真实模型检查未运行。前端构建与 Java 打包通过；Edge 验证看板、任务详情、费用页面、双账号隔离、登录退出、草稿和手机宽度，浏览器无运行错误。本次未调用模型。
+
 ## 1.12.1 — 2026-10-22
 
 - 按职责整理目录：Agent 输出检查集中到 agent/validation，审核角色集合归入 agent/orchestration，Redis 缓存与数据库类型识别归入 integration；人物图查询由 StoryGraph 管理并关闭查询资源。

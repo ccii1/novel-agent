@@ -30,6 +30,20 @@ class MySqlIntegrationTest extends DomainIntegrationTest {
     @Autowired TaskProgressService progress;
     @Autowired ChapterQualityService quality;
     @Autowired dev.novel.service.PlanChangeService planChanges;
+    @Autowired dev.novel.support.ResponseMapper responses;
+
+    @Test void mysqlQueryValuesMapToDeclaredResponseTypes() {
+        String id = projects.create("响应类型验证", "调查失踪信件", "保持人物状态", 1,
+                new BigDecimal("10.123456"), BigDecimal.ONE);
+        var response = responses.to(repository.novel(id), dev.novel.dto.response.NovelResponses.NovelResponse.class);
+        assertThat(response.id()).isEqualTo(id);
+        assertThat(response.novelBudget()).isEqualByComparingTo("10.123456");
+        assertThat(response.createdAt()).isNotNull();
+        var tasks = responses.list(repository.list("tasks.byNovel", id), dev.novel.dto.response.TaskResponses.TaskResponse.class);
+        assertThat(tasks).hasSize(1);
+        assertThat(tasks.get(0).novelId()).isEqualTo(id);
+        assertThat(tasks.get(0).status()).isEqualTo("WAITING");
+    }
 
     @Test void mysqlOwnershipMigrationScopesListsMetricsAndMemoryAccess() {
         dev.novel.security.UserScope.enter("mysql_user_one");

@@ -8,6 +8,7 @@ import dev.novel.service.WorkflowService;
 import dev.novel.service.BudgetService;
 import dev.novel.service.ObservationService;
 import dev.novel.service.TaskProgressService;
+import dev.novel.security.UserScope;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,18 +33,24 @@ public class TaskEngine {
     private final TaskProgressService progress;
     private final AsyncTaskExecutor workers;
     private final int limit;
-    private final AtomicInteger active=new AtomicInteger();
+    private final AtomicInteger active = new AtomicInteger();
     private volatile boolean ready;
-    @Value("${novel.engine-enabled:true}") private boolean enabled;
-    public TaskEngine(Store store,TaskDispatchMapper dispatchMapper,ModelCallMapper calls,AgentService agents,WorkflowService workflow,ObservationService observations,TaskProgressService progress,
-            @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers,@Value("${novel.workers}") int limit) {
-        if(limit<1 || limit>32) throw new IllegalArgumentException("workers 应为1至32");
-        this.store=store;this.agents=agents;this.workflow=workflow;this.limit=limit;
-        this.dispatchMapper=dispatchMapper;
-        this.calls=calls;
-        this.workers=workers;
-        this.observations=observations;
-        this.progress=progress;
+    @Value("${novel.engine-enabled:true}")
+    private boolean enabled;
+
+    public TaskEngine(Store store, TaskDispatchMapper dispatchMapper, ModelCallMapper calls,
+            AgentService agents, WorkflowService workflow, ObservationService observations, TaskProgressService progress,
+            @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers, @Value("${novel.workers}") int limit) {
+        if (limit < 1 || limit > 32) throw new IllegalArgumentException("workers 应为1至32");
+        this.store = store;
+        this.agents = agents;
+        this.workflow = workflow;
+        this.limit = limit;
+        this.dispatchMapper = dispatchMapper;
+        this.calls = calls;
+        this.workers = workers;
+        this.observations = observations;
+        this.progress = progress;
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
@@ -52,100 +59,126 @@ public class TaskEngine {
             observations.recover();
             calls.recoverInterrupted();
             store.update("modelTurns.recover");
-            for(var task:store.list("tasks.running")) {
-                if(calls.uncertainTaskCount(Store.string(task,"id"))==0) store.update("tasks.wait",task.get("id"));
-                else fail(task,new IllegalStateException("服务中断期间调用结果不确定，请核对费用"));
+            for (var task : store.list("tasks.running")) {
+                if (calls.uncertainTaskCount(Store.string(task, "id")) == 0) {
+                    store.update("tasks.wait", task.get("id"));
+                } else {
+                    fail(task, new IllegalStateException("服务中断期间调用结果不确定，请核对费用"));
+                }
             }
-            for(var novel:store.list("novels.checking")) {
-                var chapter=store.one("chapters.find",novel.get("id"),novel.get("chapter_no"));
-                workflow.ensureReviewTasks(novel,Store.integer(novel,"chapter_no"),Store.integer(chapter,"revision"));
+            for (var novel : store.list("novels.checking")) {
+                var chapter = store.one("chapters.find", novel.get("id"), novel.get("chapter_no"));
+                workflow.ensureReviewTasks(novel, Store.integer(novel, "chapter_no"), Store.integer(chapter, "revision"));
             }
-            store.event(null,null,"RECOVERY","已恢复持久化任务，结果不确定的调用等待人工核对");
+            store.event(null, null, "RECOVERY", "已恢复持久化任务，结果不确定的调用等待人工核对");
             return null;
         });
-        ready=true;
+        ready = true;
     }
+
     @Scheduled(fixedDelay=500)
     public void dispatch() {
-        if(!ready || !enabled) return;
-        while(active.get()<limit) {
-            var task=claim(); if(task==null) return;
+        if (!ready || !enabled) return;
+        while (active.get() < limit) {
+            var task = claim();
+            if (task == null) return;
             active.incrementAndGet();
-            try { workers.execute(()-> {
-                try {
-                    // HTTP 请求已经结束，用户范围必须从持久化任务恢复。
-                    dev.novel.security.UserScope.enter(Store.string(task,"user_id"));
-                    var result=agents.execute(task);
-                    store.transaction(() -> {
-                        workflow.finished(task,result);
-                        observations.finish(task,Store.string(store.one("tasks.find",task.get("id")),"status"),result,null);
-                        return null;
-                    });
-                }
-                catch(BudgetService.RateLimited e) {
-                    store.transaction(() -> {
-                        store.update("tasks.defer",task.get("id"));
-                        observations.finish(task,"RATE_WAIT",null,e.getMessage());
-                        store.event((String)task.get("novel_id"),(String)task.get("id"),"RATE_WAIT",e.getMessage());
-                        return null;
-                    });
-                }
-                catch(Exception e) { fail(task,e); }
-                finally {
-                    // 工作线程会被其他用户复用，任何成功或失败路径都需要清理身份。
-                    dev.novel.security.UserScope.clear();
-                    active.decrementAndGet();
-                }
-            }); } catch(TaskRejectedException rejected) {
+            try {
+                workers.execute(() -> executeTask(task));
+            } catch (TaskRejectedException rejected) {
                 active.decrementAndGet();
                 store.transaction(() -> {
-                    store.update("tasks.wait",task.get("id"));
-                    observations.finish(task,"REJECTED",null,"工作线程未接受任务");
+                    store.update("tasks.wait", task.get("id"));
+                    observations.finish(task, "REJECTED", null, "工作线程未接受任务");
                     return null;
                 });
                 throw rejected;
             }
         }
     }
-    private Map<String,Object> claim() {
-        return store.transaction(() -> {
-            var task=dispatchMapper.nextCandidate();
-            if(task==null) return null;
-            // 候选查询不代表已经认领，条件更新成功后才能创建执行记录。
-            int count=dispatchMapper.claim((String)task.get("id"));
-            if(count!=1) return null;
-            observations.start(task);
-            store.event((String)task.get("novel_id"),(String)task.get("id"),"RUNNING",(String)task.get("kind"),(String)task.get("execution_id"));
-            return task;
-        });
+
+    private void executeTask(Map<String, Object> task) {
+        try {
+            // HTTP 请求已经结束，用户范围必须从持久化任务恢复。
+            UserScope.enter(Store.string(task, "user_id"));
+            var result = agents.execute(task);
+            store.transaction(() -> {
+                workflow.finished(task, result);
+                String status = Store.string(store.one("tasks.find", task.get("id")), "status");
+                observations.finish(task, status, result, null);
+                return null;
+            });
+        } catch (BudgetService.RateLimited limited) {
+            deferTask(task, limited.getMessage());
+        } catch (Exception failure) {
+            fail(task, failure);
+        } finally {
+            // 线程会被其他用户复用，任何成功或失败路径都需要清理身份。
+            UserScope.clear();
+            active.decrementAndGet();
+        }
     }
-    private void fail(Map<String,Object> task,Exception error) {
+
+    private void deferTask(Map<String, Object> task, String message) {
         store.transaction(() -> {
-            String novelId=(String)task.get("novel_id");
-            if(novelId!=null) store.lockNovel(novelId);
-            if(!"RUNNING".equals(store.one("tasks.find",task.get("id")).get("status"))) return null;
-            String message=Objects.toString(error.getMessage(),error.getClass().getSimpleName());
-            observations.finish(task,"ERROR",null,message);
-            store.update("tasks.fail",message,task.get("id"));
-            if(novelId!=null && !Set.of("PLAN_CHANGE","COORDINATE").contains(task.get("kind"))) store.update("novels.fail",
-                    error instanceof BudgetService.BudgetExceeded?"BUDGET_PAUSED":"ERROR",message,novelId);
-            store.event(novelId,(String)task.get("id"),"ERROR",message);
+            store.update("tasks.defer", task.get("id"));
+            observations.finish(task, "RATE_WAIT", null, message);
+            store.event((String) task.get("novel_id"), Store.string(task, "id"), "RATE_WAIT", message);
             return null;
         });
     }
-    public Map<String,Object> status() {
-        long visible=dev.novel.security.UserScope.current()==null?active.get():Store.number(store.one("tasks.activeCount"),"active");
-        return Map.of("workers",limit,"active",visible,"ready",ready);
+    private Map<String, Object> claim() {
+        return store.transaction(() -> {
+            var task = dispatchMapper.nextCandidate();
+            if (task == null) return null;
+            // 候选查询不代表已经认领，条件更新成功后才能创建执行记录。
+            String taskId = Store.string(task, "id");
+            if (dispatchMapper.claim(taskId) != 1) return null;
+            observations.start(task);
+            store.event((String) task.get("novel_id"), taskId, "RUNNING",
+                    Store.string(task, "kind"), (String) task.get("execution_id"));
+            return task;
+        });
     }
-    @Scheduled(fixedDelay=15000,initialDelay=15000)
+
+    private void fail(Map<String, Object> task, Exception error) {
+        store.transaction(() -> {
+            String novelId = (String) task.get("novel_id");
+            String taskId = Store.string(task, "id");
+            if (novelId != null) store.lockNovel(novelId);
+            if (!"RUNNING".equals(store.one("tasks.find", taskId).get("status"))) return null;
+
+            String message = Objects.toString(error.getMessage(), error.getClass().getSimpleName());
+            observations.finish(task, "ERROR", null, message);
+            store.update("tasks.fail", message, taskId);
+            // 独立建议任务失败时，作品当前的创作流程继续保留自己的状态。
+            if (novelId != null && !Set.of("PLAN_CHANGE", "COORDINATE").contains(task.get("kind"))) {
+                String status = error instanceof BudgetService.BudgetExceeded ? "BUDGET_PAUSED" : "ERROR";
+                store.update("novels.fail", status, message, novelId);
+            }
+            store.event(novelId, taskId, "ERROR", message);
+            return null;
+        });
+    }
+
+    public Map<String, Object> status() {
+        long visible = UserScope.current() == null ? active.get() : Store.number(store.one("tasks.activeCount"), "active");
+        return Map.of("workers", limit, "active", visible, "ready", ready);
+    }
+    @Scheduled(fixedDelay=15000, initialDelay=15000)
     public void logRunning() {
-        if(!ready || !enabled) return;
-        for(var running:store.list("tasks.running")) {
-            var snapshot=progress.progress(Store.string(running,"id"));
-            var task=(Map<?,?>)snapshot.get("task");
-            if(!"RUNNING".equals(task.get("status"))) continue;
-            store.logProgress(Store.string(running,"id"),snapshot.get("stage").toString(),task.get("elapsed_ms"),task.get("model_elapsed_ms"));
+        if (!ready || !enabled) return;
+        for (var running : store.list("tasks.running")) {
+            var snapshot = progress.progress(Store.string(running, "id"));
+            var task = (Map<?, ?>) snapshot.get("task");
+            if (!"RUNNING".equals(task.get("status"))) continue;
+            store.logProgress(Store.string(running, "id"), snapshot.get("stage").toString(),
+                    task.get("elapsed_ms"), task.get("model_elapsed_ms"));
         }
     }
-    @PreDestroy public void close() { ready=false; }
+
+    @PreDestroy
+    public void close() {
+        ready = false;
+    }
 }

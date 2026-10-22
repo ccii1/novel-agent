@@ -1,6 +1,6 @@
 # 项目结构与代码导航
 
-核查版本：1.12.1；日期：2026-10-22。
+核查版本：1.13.0；日期：2026-10-22。
 
 ## 执行关系
 
@@ -27,7 +27,7 @@ flowchart TD
 | 目录，均相对于 `src/main/java/dev/novel` | 职责 | 阅读入口 |
 | --- | --- | --- |
 | `controller` | HTTP 请求、输入校验与错误响应 | `NovelController`、`AuthController` |
-| `dto` | 请求字段及 Agent 输出类型 | `ApiRequests`、`AgentOutputs` |
+| `dto`、`dto/response` | 请求、Agent 输出及按业务分组的响应 record | `ApiRequests`、`AgentOutputs`、`TaskResponses` |
 | `security` | 登录安全配置、资源权限及线程用户范围 | `SecurityConfiguration`、`OwnershipInterceptor`、`UserScope` |
 | `service` | 作品、选题、审核、记忆、费用及审批业务 | `ProjectService`、`WorkflowService`、`MemoryService` |
 | `engine` | 认领任务、线程执行、恢复及错误处理 | `TaskEngine` |
@@ -42,7 +42,7 @@ flowchart TD
 | `repository/mapper`、`repository/model` | 类型化 MyBatis 接口与持久化数据 | `TaskDispatchMapper`、`ModelCallMapper`、`MemoryMapper` |
 | `repository` | 命名 SQL 调用、事务入口、事件及任务创建 | `Store` |
 | `config` | MyBatis、Redis 与任务线程配置 | `MyBatisConfiguration`、`TaskExecutionConfiguration` |
-| `support` | JSON、原文证据匹配与日志格式 | `Json`、`EvidenceMatcher` |
+| `support` | JSON、响应字段映射、原文证据匹配与日志格式 | `Json`、`ResponseMapper`、`EvidenceMatcher` |
 | `tools` | 需要主动运行的维护程序 | `MigrateH2ToMySql` |
 
 `src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 是固定版本的上游技能资料，应用适配规则在 `SkillService` 中维护。
@@ -50,6 +50,12 @@ flowchart TD
 `StoryGraph` 只返回普通数据，查询结束后关闭本次图实例。正式关系与证据由数据库中的版本化记忆保存，Redis 保存可重新生成的查询结果。
 
 ## 前端与运行文件
+
+Controller 按作品、选题、大纲修改、协调、执行观测、Agent、供应商和费用分别提供接口。`SystemController` 只提供运行状态与技能信息。请求共用 `ApiRequests`，响应使用 `dto/response` 中的业务 record；错误与登录响应也使用明确类型。
+
+`ResponseMapper` 使用 Jackson 将内部查询结果映射到响应字段，HTTP 仅输出 record 声明的字段。数据库记录沿用 snake_case，组合响应沿用 camelCase；金额使用 `BigDecimal`，尚未获得的用量保留 `null`。记忆增量与大纲目标值保留 `JsonNode`，承载各自允许的结构。
+
+阅读主流程时从 `WorkflowService.finished` 进入，按任务类型查看 `saveDraft`、`finishChapterReview`、`finishReflection`、`finishMemoryReview` 与 `commitApprovedChapter`。这些方法共享完成事务；正式记忆、章节进度和下一任务共同提交。`TaskEngine` 分别负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
 
 | 位置 | 用途 |
 | --- | --- |
@@ -74,6 +80,7 @@ flowchart TD
 | 正文引用证据 | `ReviewEvidenceIntegrationTest` |
 | 中断执行与持久化恢复 | `ObservationIntegrationTest` |
 | 双账号权限与接口隔离 | `UserIsolationIntegrationTest` |
+| 响应字段、金额精度、空值及认证错误 | `ResponseContractIntegrationTest` |
 | 局部大纲及人工确认 | `PlanChangeIntegrationTest` |
 | 迁移完整性、非空目标拒绝及失败撤销 | `DatabaseMigrationTest` |
 | 真实 MySQL 与 Redis | `MySqlIntegrationTest`、`RedisIntegrationTest`、`MemoryCacheIntegrationTest` |
