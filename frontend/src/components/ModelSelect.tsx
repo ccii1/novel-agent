@@ -5,7 +5,8 @@ import type {Catalog, Choice} from '../domain';
 
 export default function ModelSelect({value, change, ready, disabled = false}: {value: Choice; change: (choice: Choice) => void; ready: (value: boolean) => void; disabled?: boolean}) {
   const id = useId();
-  const catalog = useApi<Catalog>(['providers'], '/providers', false, true, 300000);
+  // 能力配置随服务更新，打开选择器时重新读取，并持续同步已打开的页面。
+  const catalog = useApi<Catalog>(['providers'], '/providers', 15000, true, 0);
   const provider = value.provider || catalog.data?.defaultProvider || '';
   const profile = catalog.data?.providers.find(item => item.id === provider);
   const efforts = profile?.reasoningEfforts ?? [];
@@ -31,15 +32,20 @@ export default function ModelSelect({value, change, ready, disabled = false}: {v
           {names.data?.map(name => <option key={name}>{name}</option>)}
         </select>
       </div>
-      {efforts.length > 0 && <div><label htmlFor={`${id}-effort`}>思考强度</label>
-        <select id={`${id}-effort`} value={value.reasoningEffort ?? ''} disabled={disabled}
+      <div><label htmlFor={`${id}-effort`}>思考强度</label>
+        <select id={`${id}-effort`} value={value.reasoningEffort ?? ''} disabled={disabled || efforts.length === 0}
           onChange={event => change({...value, provider, reasoningEffort:event.target.value})}>
-          <option value="">服务默认{profile?.defaultReasoningEffort ? ` · ${profile.defaultReasoningEffort}` : ''}</option>
+          <option value="">{efforts.length > 0 ? `服务默认${profile?.defaultReasoningEffort ? ` · ${profile.defaultReasoningEffort}` : ''}` :
+            catalog.isFetching ? '正在同步配置…' : profile?.reasoningEfforts ? '该服务未配置可选等级' : '未获取到可用等级，请同步配置'}</option>
           {efforts.map(effort => <option value={effort} key={effort}>{effort}</option>)}
         </select>
-        <small className="muted">强度越高，通常需要更多时间和推理 token。</small>
-      </div>}
+        {efforts.length > 0 && <small className="muted">强度越高，通常需要更多时间和推理 token。</small>}
+      </div>
     </div>
+    <button type="button" className="subtle" disabled={disabled || catalog.isFetching} onClick={() => {
+      void catalog.refetch();
+      if (profile?.ready) void names.refetch();
+    }}>同步模型配置</button>
     {!effortValid && <p role="alert" className="error-text">当前服务不支持保存的思考强度，请重新选择。</p>}
     <ErrorBox error={catalog.error ?? names.error} retry={() => {void (catalog.error ? catalog.refetch() : names.refetch());}}/>
     {profile && <small className="muted">{profile.billingMode === 'unmetered' ? '免费服务，仍记录 token 用量与执行时间。' : '按已配置单价估算费用，沿用作品与月度预算。'}</small>}

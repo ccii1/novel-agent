@@ -62,9 +62,9 @@ flowchart LR
 
 失败任务卡片提供“选择模型并重新执行”入口。打开执行详情，在“选择本次重新执行的模型”中选择服务和模型，再点击“使用所选模型重新执行”。这次选择保存到新任务，原任务与调用费用继续保留，作品后续任务沿用作品设置。选题任务也使用相同入口。没有指定新选择的旧接口请求继续沿用原有选择。
 
-支持思考强度的服务会显示“思考强度”选择。创建作品、作品模型设置、选题研究、选题讨论和失败重试共用该入口；作品选择保存到 `novels.reasoning_effort`，选题与重试的独立选择保存到 `tasks.reasoning_effort`。普通章节任务沿用作品设置，重试选择只影响新任务。切换作品设置仍需符合原有暂停和审核状态，并等待已经运行的任务结束。
+模型选择区始终显示“思考强度”，没有可选等级时禁用控件并显示配置状态。能力配置在打开选择区时重新读取，每15秒自动同步；“同步模型配置”按钮可以立即读取服务配置与模型列表。创建作品、作品模型设置、选题研究、选题讨论和失败重试共用该入口；作品选择保存到 `novels.reasoning_effort`，选题与重试的独立选择保存到 `tasks.reasoning_effort`。普通章节任务沿用作品设置，重试选择只影响新任务。切换作品设置仍需符合原有暂停和审核状态，并等待已经运行的任务结束。
 
-本地服务已配置 `low、medium、high、xhigh、max` 五个等级。选择“服务默认”时使用服务配置的 `reasoning-effort`；该配置为空时省略请求参数，采用上游默认行为。其他服务仅在本地配置声明 `reasoning-efforts` 后显示选择，后端拒绝列表以外的值。列表需要根据所用服务和模型验证，等级并非所有模型通用。
+本地服务已配置 `low、medium、high、xhigh、max` 五个等级。选择“服务默认”时使用服务配置的 `reasoning-effort`；该配置为空时省略请求参数，采用上游默认行为。其他服务仅在本地配置声明 `reasoning-efforts` 后启用选择，后端拒绝列表以外的值。列表需要根据所用服务和模型验证，等级并非所有模型通用。
 
 前端业务请求使用 `reasoningEffort`，例如模型设置请求为 `{"provider":"local","model":"gpt-5.6-terra","reasoningEffort":"high"}`。AgentScope 的 `GenerateOptions.reasoningEffort` 将其转换为 Chat Completions 顶层字段 `"reasoning_effort":"high"`，符合 [OpenAI reasoning 文档](https://developers.openai.com/api/docs/guides/reasoning?api-mode=chat)。日志显示实际强度，执行详情从保存的请求读取参数；完整请求、原始响应和用量继续保存在关系数据库。
 

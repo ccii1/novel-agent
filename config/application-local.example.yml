@@ -23,7 +23,7 @@ novel:
 # 服务地址和凭据仅填写在被 Git 忽略的 application-local.yml 中。
 # 支持思考强度的服务配置 reasoning-efforts: [low, medium, high, xhigh, max]。
 # reasoning-effort 设置服务默认等级；留空时不发送 reasoning_effort，采用上游默认设置。
-# 按服务验证支持的等级后填写列表；未配置列表的服务不显示思考强度选择。
+# 按服务验证支持的等级后填写列表；未配置列表的服务禁用思考强度选择。
 # 可以在 novel.agents 下按角色配置 name 与对应 token 单价。
 # 角色：plan、write、rewrite、check-character、check-plot、check-pacing、check-style、reflect、memory、check-memory、research。
 # 未单独配置的字段使用 novel.model 中的值。
