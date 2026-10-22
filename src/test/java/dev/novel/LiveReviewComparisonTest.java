@@ -1,7 +1,7 @@
 package dev.novel;
 
 import dev.novel.repository.Store;
-import dev.novel.service.AgentRoles;
+import dev.novel.agent.orchestration.AgentRoles;
 import dev.novel.service.AgentService;
 import dev.novel.service.ProjectService;
 import dev.novel.integration.model.ModelCatalog;

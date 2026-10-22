@@ -4,7 +4,7 @@ import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelClient;
 import dev.novel.integration.model.ModelCatalog;
-import dev.novel.agent.AgentOutputReader;
+import dev.novel.agent.validation.AgentOutputReader;
 import dev.novel.dto.AgentOutputs;
 
 import com.fasterxml.jackson.databind.JsonNode;

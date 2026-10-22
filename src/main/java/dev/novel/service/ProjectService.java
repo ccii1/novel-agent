@@ -1,7 +1,7 @@
 package dev.novel.service;
 
 import dev.novel.repository.Store;
-import dev.novel.agent.PlanValidator;
+import dev.novel.agent.validation.PlanValidator;
 import dev.novel.repository.mapper.ModelCallMapper;
 import dev.novel.repository.mapper.MemoryMapper;
 import dev.novel.repository.model.MemoryEntry;

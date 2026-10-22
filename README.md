@@ -4,6 +4,8 @@
 
 整体流程、Agent 职责、人工处理位置与持久化机制见 [小说 Agent 流程与职责](docs/multi-agent-workflow.md)，包含逐章创作、协调委派、记忆处理及执行架构的 Mermaid 图。
 
+代码目录职责、主要类与验证入口见 [项目结构与代码导航](docs/project-structure.md)。本机学习指南保存在 `C:/Users/cc/Documents/Obsidian Vault/小说agent/学习路线与代码阅读指南.md`，按业务状态、持久化调度、多 Agent、审核、记忆、费用恢复和用户隔离组织阅读顺序与完成标准。
+
 ## 登录与用户隔离
 
 启动后进入登录页面。已有作品、选题、任务及历史费用归入本地 `owner` 账号；首次启动自动生成随机密码，登录信息仅保存在已被 Git 忽略的 `config/auth-local.json`。普通用户通过页面注册，用户名为3至32个小写字母、数字或下划线，以字母开头；密码至少10个字符。`owner` 名称保留，注册用户无法认领已有数据。
@@ -524,13 +526,13 @@ Browser 地址为 [Neo4j Browser](http://127.0.0.1:7474/browser/)，Bolt 为 `bo
 
 MySQL 账户与连接地址保存在忽略文件 `config/mysql-local.properties`，样例为 `config/mysql-local.example.properties`。业务数据库使用独立的 `novel_agent`，字符集为 utf8mb4，文本比较区分大小写。连接使用 `connectionTimeZone=%2B08:00` 并同步设置 session 时区，对应北京时间；该配置不依赖服务器的命名时区表。`mysql` profile 使用 Connector/J、HikariCP 和 Flyway，MyBatis 根据 JDBC 数据库类型选择对应 SQL；H2 SQL 初始化继续适用于已有运行方式。数据库类型也通过 `/api/status` 和观测看板返回。[MyBatis databaseIdProvider 说明](https://mybatis.org/mybatis-3/configuration.html#databaseIdProvider)描述了同名 SQL 按数据库选择的机制。
 
-迁移需要结束应用写入，保留关闭后的 `data/novel.mv.db` 备份。以下命令为迁移操作说明，本次开发未执行：
+迁移前需要让 H2 源数据库通过当前版本启动完成 schema 升级，随后结束应用写入，保留关闭后的 `data/novel.mv.db` 备份。目标 MySQL 业务表需要为空，包括账号表；迁移前不要使用该目标启动应用。以下命令为迁移操作说明，实际作品迁移尚未执行：
 
 ```powershell
 .\migrate-mysql.ps1
 ```
 
-脚本发现应用端口仍在监听时直接终止。工具使用只读 H2 连接，源文件被其他进程占用时终止；使用 Flyway 创建 MySQL 表，目标业务表已有数据时终止。工具逐表复制13张业务表，保留任务、章节、记忆版本、费用、事件与评价编号，核对每张表的记录数量后在同一 MySQL 事务中提交数据。预算锁由建表迁移初始化。源文件保持只读，工具不切换或重启应用。数量核对覆盖记录数量，完整内容和实际运行效果尚未验证。
+脚本发现应用端口仍在监听时直接终止。编译后调用 `dev.novel.tools.MigrateH2ToMySql`，工具使用只读 H2 连接，源文件被其他进程占用时终止；使用 Flyway 创建 MySQL 表，目标业务表已有数据时终止。工具逐表复制16张业务表，包括账号归属、逐次模型请求与大纲修改记录，保留任务、章节、记忆版本、费用、事件与评价编号，核对每张表的记录数量后在同一事务中提交数据。预算锁由建表迁移初始化。源文件保持只读，工具不切换或重启应用。独立数据库验证覆盖新增业务表、账号内容、非空目标拒绝及连接关闭后的失败撤销；实际作品的完整迁移尚未执行。
 
 完成迁移后的启动方式为 `.\start.ps1 -Database mysql`；IDEA 配置启用 `local,mysql` profiles，工作目录设置为项目目录。默认启动方式继续读取 H2，防止已有数据尚未迁移时进入空数据库。切换 MySQL 后不应继续向 H2 写入新业务数据。
 
@@ -612,9 +614,11 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 | [NovelAgent.java](src/main/java/dev/novel/agent/NovelAgent.java) | 角色任务类型、职责与上下文清单 |
 | [AgentContextService.java](src/main/java/dev/novel/agent/AgentContextService.java) | 按角色提供资料、检查记忆与正文版本 |
 | [AgentOutputs.java](src/main/java/dev/novel/dto/AgentOutputs.java) | Agent 输出 DTO 与 Bean Validation 约束 |
-| [AgentOutputReader.java](src/main/java/dev/novel/agent/AgentOutputReader.java) | Jackson 类型映射与嵌套字段验证 |
+| [AgentOutputReader.java](src/main/java/dev/novel/agent/validation/AgentOutputReader.java) | Jackson 类型映射与嵌套字段验证 |
 | [TaskExecutionConfiguration.java](src/main/java/dev/novel/config/TaskExecutionConfiguration.java) | Spring 任务线程池与关闭流程 |
-| [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、graph 查询和上下文组装 |
+| [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、上下文组装及记忆增量校验 |
+| [StoryGraph.java](src/main/java/dev/novel/integration/graph/StoryGraph.java) | TinkerGraph 关系构建、限定深度查询与资源关闭 |
+| [MemoryProjectionCache.java](src/main/java/dev/novel/integration/cache/MemoryProjectionCache.java) | 用户和版本范围内的 Redis 查询缓存 |
 | [ProjectService.java](src/main/java/dev/novel/service/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
 | [ModelClient.java](src/main/java/dev/novel/integration/model/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |
 | [AgentScopeExecutor.java](src/main/java/dev/novel/integration/model/AgentScopeExecutor.java) | ReActAgent、OpenAIChatModel、MiddlewareBase 与请求费用扩展 |

@@ -43,6 +43,7 @@ final class AgentCallAccounting {
             throw new IllegalStateException("Agent 后续请求达到调用频率限制，已有用量已保存，请稍后审核并重新执行");
         }
         if(started==0) {
+            // 按允许的请求次数预留最坏费用，后续各轮真实用量统一结算。
             reserved=cost((maxContext+1024L)*maxRequests,(long)maxOutput*maxRequests);
             budget.reserve(task,reserved,selected.model(),selected.inputPrice(),selected.outputPrice(),skill,body,
                     selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
@@ -91,6 +92,7 @@ final class AgentCallAccounting {
     void failed(Exception failure) {
         if(started==0) return;
         if(answered || !requestOpen) {
+            // 已取得明确用量的失败保留实际费用，未知网络调用另外标记为 UNCERTAIN。
             calls.observation(callId,latency,json.write(Map.of("prompt_tokens",input,"completion_tokens",output,"requests",turns)),allCached?cached:null);
             calls.complete("INVALID",cost(input,output),input,output,lastContent,callId);
             return;

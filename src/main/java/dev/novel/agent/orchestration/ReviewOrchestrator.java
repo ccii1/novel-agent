@@ -2,7 +2,6 @@ package dev.novel.agent.orchestration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import dev.novel.repository.Store;
-import dev.novel.service.AgentRoles;
 import dev.novel.service.TaskScheduler;
 import dev.novel.support.Json;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +20,7 @@ public class ReviewOrchestrator {
     }
     public record Round(List<String> expected,List<String> completed,boolean ready,boolean approved,boolean majorChange) {}
     private List<String> expected(Map<String,Object> novel,int chapter,int revision) {
+        // 已创建轮次沿用原审核模式，重启或修改配置不会改变正在等待的角色集合。
         var existing=store.list("tasks.chapterChecks",novel.get("id"),chapter,revision,novel.get("memory_version"));
         boolean combined=existing.stream().anyMatch(row->"CHECK_CHAPTER".equals(row.get("kind")));
         boolean parallel=existing.stream().anyMatch(row->AgentRoles.CHAPTER_CHECKS.contains(row.get("kind")));

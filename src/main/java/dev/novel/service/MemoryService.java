@@ -3,16 +3,15 @@ package dev.novel.service;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.support.EvidenceMatcher;
-import dev.novel.agent.AgentOutputReader;
+import dev.novel.agent.validation.AgentOutputReader;
+import dev.novel.integration.cache.MemoryProjectionCache;
+import dev.novel.integration.graph.StoryGraph;
 import dev.novel.dto.AgentOutputs;
 import dev.novel.repository.mapper.MemoryMapper;
 import dev.novel.repository.model.MemoryEntry;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.tinkerpop.gremlin.structure.*;
-import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
-import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.springframework.stereotype.Service;
 import java.util.*;
 
@@ -24,8 +23,9 @@ public class MemoryService {
     private final AgentOutputReader outputs;
     private final MemoryProjectionCache cache;
     private final EvidenceMatcher evidence;
-    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs,MemoryProjectionCache cache,EvidenceMatcher evidence) {
-        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;this.cache=cache;this.evidence=evidence;
+    private final StoryGraph relationships;
+    public MemoryService(Store store,Json json,MemoryMapper memories,AgentOutputReader outputs,MemoryProjectionCache cache,EvidenceMatcher evidence,StoryGraph relationships) {
+        this.store=store;this.json=json;this.memories=memories;this.outputs=outputs;this.cache=cache;this.evidence=evidence;this.relationships=relationships;
     }
     public List<Map<String,Object>> snapshot(String novel, long version) {
         return cache.snapshot(novel,version,()->memories.snapshot(novel,version));
@@ -34,42 +34,7 @@ public class MemoryService {
         if(depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
         var selected=characters.stream().distinct().sorted().toList();
         return cache.graph(novel,version,json.write(Map.of("characters",selected,"depth",depth)),
-                ()->graph(snapshot(novel,version),version,selected,depth));
-    }
-    private Map<String,Object> graph(List<Map<String,Object>> facts,long version,List<String> characters,int depth) {
-        if (depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
-        TinkerGraph graph = TinkerGraph.open();
-        Map<String,Vertex> vertices = new LinkedHashMap<>();
-        for (var row : facts) {
-            if (!"RELATION".equals(row.get("kind"))) continue;
-            var data = json.read((String)row.get("content"));
-            if (data.path("deleted").asBoolean(false)) continue;
-            String from=json.text(data,"subject"), to=json.text(data,"object"), predicate=json.text(data,"predicate");
-            Vertex source=vertices.computeIfAbsent(from,n->graph.addVertex(T.id,n,"name",n));
-            Vertex target=vertices.computeIfAbsent(to,n->graph.addVertex(T.id,n,"name",n));
-            source.addEdge(predicate,target,"chapter",row.get("chapter_no"),"evidence",data.path("evidence").asText(),"detail",data.path("detail").asText());
-        }
-        Set<Object> selected = new LinkedHashSet<>();
-        if (characters.isEmpty()) selected.addAll(vertices.keySet());
-        else {
-            var traversal=graph.traversal();
-            for (String character : characters) {
-                if (!vertices.containsKey(character)) continue;
-                selected.add(character);
-                selected.addAll(traversal.V(character).repeat(__.both().simplePath()).emit().times(depth).dedup().id().toList());
-            }
-        }
-        List<Map<String,Object>> nodes=new ArrayList<>(), edges=new ArrayList<>();
-        for (Object id : selected) nodes.add(Map.of("id",id,"name",id));
-        graph.edges().forEachRemaining(edge -> {
-            if (selected.contains(edge.outVertex().id()) && selected.contains(edge.inVertex().id())) edges.add(Map.of(
-                    "subject",edge.outVertex().id(),"predicate",edge.label(),"object",edge.inVertex().id(),
-                    "chapter",edge.value("chapter"),"detail",edge.value("detail"),"evidence",edge.value("evidence")));
-        });
-        return Map.of("version",version,"nodes",nodes,"edges",edges);
-    }
-    public String context(Map<String,Object> novel, int chapter) {
-        return json.write(contextData(novel,chapter));
+                ()->relationships.query(snapshot(novel,version),version,selected,depth));
     }
     public Map<String,Object> contextData(Map<String,Object> novel,int chapter) {
         String id=(String)novel.get("id"); long version=Store.number(novel,"memory_version");
@@ -81,11 +46,12 @@ public class MemoryService {
         List<Map<String,Object>> relevant=new ArrayList<>();
         var snapshot=snapshot(id,version);
         var relatedGraph=cache.graph(id,version,json.write(Map.of("characters",characters.stream().distinct().sorted().toList(),"depth",2)),
-                ()->graph(snapshot,version,characters,2));
+                ()->relationships.query(snapshot,version,characters,2));
         String terms=json.write(relatedGraph.get("nodes"));
         Set<String> requestedKeys=new HashSet<>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) item.path("foreshadowIds").forEach(key->requestedKeys.add(key.asText()));});
         List<Map.Entry<Integer,Map<String,Object>>> ranked=new ArrayList<>();
+        // 评分依据当前人物、伏笔安排和近期章节；最多保留50条事实供本章使用。
         for (var row : snapshot) {
             var data=json.read((String)row.get("content"));
             if (data.path("deleted").asBoolean(false) || "RELATION".equals(row.get("kind"))) continue;

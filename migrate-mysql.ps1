@@ -14,5 +14,5 @@ if (-not (Test-Path -LiteralPath "$PSScriptRoot\data\novel.mv.db")) {
 $env:JAVA_HOME = $migrationJava
 & "$PSScriptRoot\mvnw.cmd" -B -ntp compile dependency:copy-dependencies -DincludeScope=runtime -DskipTests
 if ($LASTEXITCODE -ne 0) { throw '迁移工具依赖准备失败' }
-& "$migrationJava\bin\java.exe" --class-path 'target/classes;target/dependency/*' tools/MigrateH2ToMySql.java
+& "$migrationJava\bin\java.exe" --class-path 'target/classes;target/dependency/*' dev.novel.tools.MigrateH2ToMySql
 if ($LASTEXITCODE -ne 0) { throw '数据迁移失败，请查看具体错误；源文件保持只读' }

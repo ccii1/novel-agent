@@ -1,4 +1,4 @@
-package dev.novel.agent;
+package dev.novel.agent.validation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.core.JsonPointer;

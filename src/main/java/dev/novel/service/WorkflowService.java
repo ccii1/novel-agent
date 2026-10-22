@@ -25,6 +25,7 @@ public class WorkflowService {
     }
     public void finished(Map<String,Object> task,JsonNode result) {
         store.transaction(() -> {
+            // 作品行与任务行按固定顺序加锁，串行决定同一作品的状态变化。
             String taskId=(String)task.get("id"), novelId=(String)task.get("novel_id"), kind=(String)task.get("kind");
             Map<String,Object> novel=novelId==null?null:store.lockNovel(novelId);
             var persisted=store.one("tasks.lock",taskId);
@@ -40,6 +41,7 @@ public class WorkflowService {
                 return null;
             }
             if(novel!=null && Store.number(novel,"memory_version")!=Store.number(task,"memory_version")) {
+                // 已失效的结果保留记录，不允许推进当前版本的创作流程。
                 store.update("tasks.stale",taskId);
                 return null;
             }
@@ -70,6 +72,7 @@ public class WorkflowService {
                     if(kind.equals("CHECK_PACING") || kind.equals("CHECK_CHAPTER")) store.update("quality.pacing",
                             json.write(result.path("narrative")),novelId,chapter,revision);
                     var round=reviews.collect(novel,chapter,revision);
+                    // 等待本轮全部审核结果；单个 Agent 完成不会提前启动写作或记忆提取。
                     if(round.ready()) {
                         if(round.approved()) { state(novelId,"EXTRACTING");schedule(novel,"MEMORY",chapter,revision,Map.of()); }
                         else { state(novelId,"REFLECTING");schedule(novel,"REFLECT",chapter,revision,Map.of()); }
@@ -106,6 +109,7 @@ public class WorkflowService {
                             throw new IllegalStateException("记忆审核对应的正文版本已经变化");
                         var delta=memory.validateDelta(memoryDelta(json.read(Store.string(task,"payload"))),Store.string(draft,"body"));
                         long nextVersion=Store.number(novel,"memory_version")+1;
+                        // 正式记忆、章节确认、进度及下一任务在当前事务内共同提交。
                         memory.commit(novelId,chapter,nextVersion,delta);
                         store.update("chapters.accept",json.text(delta,"summary"),nextVersion,novelId,chapter);
                         var plan=json.read((String)novel.get("plan"));

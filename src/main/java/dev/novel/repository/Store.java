@@ -58,6 +58,7 @@ public class Store {
             };
         }
         if(TransactionSynchronizationManager.isSynchronizationActive()) {
+            // 事务成功后输出业务日志，数据库提交失败不会显示任务已经完成。
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { output.run(); }
             });

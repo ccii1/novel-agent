@@ -1,3 +1,5 @@
+package dev.novel.tools;
+
 import org.flywaydb.core.Flyway;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -5,9 +7,10 @@ import java.sql.*;
 import java.util.*;
 
 public class MigrateH2ToMySql {
-    private static final List<String> TABLES=List.of("novels","tasks","chapters","chapter_history","memories",
-            "model_calls","chapter_metrics","research","research_messages","edit_requests","events",
-            "agent_executions","agent_feedback");
+    // 迁移业务数据；budget_lock 是目标 schema 初始化的互斥记录。
+    private static final List<String> TABLES=List.of("app_users","novels","tasks","chapters","chapter_history","memories",
+            "model_calls","model_call_turns","chapter_metrics","research","research_messages","edit_requests","events",
+            "agent_executions","agent_feedback","plan_changes");
 
     public static void main(String[] args) throws Exception {
         var configuration=new Properties();
@@ -22,21 +25,26 @@ public class MigrateH2ToMySql {
                 if(!"novel_agent".equals(target.getCatalog())) throw new IllegalStateException("目标数据库必须为 novel_agent");
                 Flyway.configure().dataSource(url,username,password).locations("filesystem:src/main/resources/db/migration/mysql")
                         .cleanDisabled(true).load().migrate();
-                for(String table:TABLES) {
-                    if(count(target,table)!=0) throw new IllegalStateException("目标表已有数据，迁移终止："+table);
-                }
-                target.setAutoCommit(false);
-                // 任意步骤失败时关闭连接，未提交的数据由数据库撤销。
-                for(String table:TABLES) {
-                    long rows=copy(source,target,table);
-                    if(rows!=count(source,table) || rows!=count(target,table))
-                        throw new IllegalStateException("迁移数量校验失败："+table);
-                    System.out.println(table+"：已复制并核对 "+rows+" 条记录");
-                }
-                target.commit();
+                copyBusinessData(source,target);
                 System.out.println("全部业务数据已提交到 MySQL，H2 源文件保持只读。");
             }
         }
+    }
+
+    // 调用方独占并关闭目标连接；失败时未提交的数据由数据库撤销。
+    public static void copyBusinessData(Connection source,Connection target) throws SQLException {
+        if(!target.getAutoCommit()) throw new IllegalStateException("迁移需要独立的目标数据库连接");
+        for(String table:TABLES) {
+            if(count(target,table)!=0) throw new IllegalStateException("目标表已有数据，迁移终止："+table);
+        }
+        target.setAutoCommit(false);
+        for(String table:TABLES) {
+            long rows=copy(source,target,table);
+            if(rows!=count(source,table) || rows!=count(target,table))
+                throw new IllegalStateException("迁移数量校验失败："+table);
+            System.out.println(table+"：已复制并核对 "+rows+" 条记录");
+        }
+        target.commit();
     }
 
     private static long count(Connection connection,String table) throws SQLException {

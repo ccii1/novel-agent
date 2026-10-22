@@ -1,4 +1,4 @@
-package dev.novel.service;
+package dev.novel.integration.storage;
 
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;

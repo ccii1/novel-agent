@@ -1,5 +1,7 @@
 package dev.novel.service;
 
+import dev.novel.integration.storage.DatabaseStorage;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import dev.novel.repository.Store;
 import dev.novel.repository.mapper.ObservationMapper;

@@ -55,6 +55,7 @@ public class CoordinationService {
             if(!id.equals(task.get("novel_id")) || !"COORDINATE".equals(task.get("kind")) || !"DONE".equals(task.get("status"))) throw new IllegalStateException("协调建议尚未生成或不属于当前作品");
             var payload=(ObjectNode)json.read(Store.string(task,"payload"));
             if(payload.has("delegatedTaskId")) throw new IllegalStateException("该委派建议已经确认");
+            // 人工阅读建议期间资料可能变化，确认时重新检查生成建议所用的版本。
             if(Store.number(task,"memory_version")!=Store.number(novel,"memory_version") || Store.integer(task,"chapter_no")!=Store.integer(novel,"chapter_no")
                     || payload.path("stage").asInt()!=Store.integer(novel,"stage_no") || payload.path("draftRevision").asInt()!=revision(novel)
                     || !payload.path("basePlan").equals(json.read(Store.string(novel,"plan")))) throw new IllegalStateException("大纲、正文或记忆已经变化，请重新分析修改要求");

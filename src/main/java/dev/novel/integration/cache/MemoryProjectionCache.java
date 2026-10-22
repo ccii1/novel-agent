@@ -1,4 +1,4 @@
-package dev.novel.service;
+package dev.novel.integration.cache;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +30,7 @@ public class MemoryProjectionCache {
 
     public Map<String,Object> graph(String novel,long version,String query,Supplier<Map<String,Object>> loader) {
         String fingerprint=DigestUtils.md5DigestAsHex(query.getBytes(StandardCharsets.UTF_8));
+        // 命中缓存之前也要核对作品访问范围，权限检查不能由缓存命中绕过。
         String owner=dev.novel.repository.Store.string(store.novel(novel),"user_id");
         return read(prefix+":graph:v2:"+owner+":"+novel+":"+version+":"+fingerprint,new TypeReference<Map<String,Object>>() {},loader);
     }

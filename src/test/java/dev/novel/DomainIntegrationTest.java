@@ -4,7 +4,7 @@ import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.service.*;
 import dev.novel.engine.TaskEngine;
-import dev.novel.agent.PlanValidator;
+import dev.novel.agent.validation.PlanValidator;
 
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;

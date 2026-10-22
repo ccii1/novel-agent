@@ -1,6 +1,6 @@
 package dev.novel;
 
-import dev.novel.agent.AgentOutputReader;
+import dev.novel.agent.validation.AgentOutputReader;
 import dev.novel.dto.AgentOutputs;
 import dev.novel.repository.Store;
 import dev.novel.repository.mapper.TaskDispatchMapper;

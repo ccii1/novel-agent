@@ -40,6 +40,7 @@ public class ModelClient {
         var skill=skills.load(Store.string(task,"kind"),Store.integer(task,"chapter_no"));
         var previous=calls.checkpoint(Store.string(task,"id"));
         if(previous!=null) {
+            // 只复用完整最终响应，并核对技能指纹；中间工具响应不能成为任务结果。
             validateCheckpoint(task);
             if(previous.actual().compareTo(previous.reserved())>0) throw new IllegalStateException("已保存调用超过预留费用，请核对后重新执行");
             return json.read(previous.response());

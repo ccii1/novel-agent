@@ -47,6 +47,7 @@ public class TaskEngine {
     }
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
+        // 当前恢复逻辑面向单实例，未知调用先核对费用，不能直接发送新的模型请求。
         store.transaction(() -> {
             observations.recover();
             calls.recoverInterrupted();
@@ -72,6 +73,7 @@ public class TaskEngine {
             active.incrementAndGet();
             try { workers.execute(()-> {
                 try {
+                    // HTTP 请求已经结束，用户范围必须从持久化任务恢复。
                     dev.novel.security.UserScope.enter(Store.string(task,"user_id"));
                     var result=agents.execute(task);
                     store.transaction(() -> {
@@ -89,7 +91,11 @@ public class TaskEngine {
                     });
                 }
                 catch(Exception e) { fail(task,e); }
-                finally { dev.novel.security.UserScope.clear();active.decrementAndGet(); }
+                finally {
+                    // 工作线程会被其他用户复用，任何成功或失败路径都需要清理身份。
+                    dev.novel.security.UserScope.clear();
+                    active.decrementAndGet();
+                }
             }); } catch(TaskRejectedException rejected) {
                 active.decrementAndGet();
                 store.transaction(() -> {
@@ -105,6 +111,7 @@ public class TaskEngine {
         return store.transaction(() -> {
             var task=dispatchMapper.nextCandidate();
             if(task==null) return null;
+            // 候选查询不代表已经认领，条件更新成功后才能创建执行记录。
             int count=dispatchMapper.claim((String)task.get("id"));
             if(count!=1) return null;
             observations.start(task);

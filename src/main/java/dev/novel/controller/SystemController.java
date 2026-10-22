@@ -10,7 +10,7 @@ import dev.novel.service.BudgetService;
 import dev.novel.service.SkillService;
 import dev.novel.service.WorkspaceService;
 import dev.novel.service.AgentService;
-import dev.novel.service.DatabaseStorage;
+import dev.novel.integration.storage.DatabaseStorage;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;

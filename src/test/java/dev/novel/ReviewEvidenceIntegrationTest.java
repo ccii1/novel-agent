@@ -1,6 +1,6 @@
 package dev.novel;
 
-import dev.novel.agent.ReviewValidator;
+import dev.novel.agent.validation.ReviewValidator;
 import dev.novel.support.Json;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;

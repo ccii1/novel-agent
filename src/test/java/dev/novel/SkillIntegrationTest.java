@@ -1,5 +1,7 @@
 package dev.novel;
 
+import dev.novel.agent.orchestration.AgentRoles;
+
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import dev.novel.service.*;
