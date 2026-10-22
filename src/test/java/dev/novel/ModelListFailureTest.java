@@ -26,18 +26,18 @@ class ModelListFailureTest {
         try(var socket=new ServerSocket(0)) { return socket.getLocalPort(); }
         catch(IOException error) { throw new UncheckedIOException(error); }
     }
-    @Autowired TestRestTemplate http;
+    @org.springframework.boot.test.web.server.LocalServerPort int port;
     @Autowired Json json;
-    @Test void closedServiceReturnsActionableErrorWithoutCredentials() {
-        var response=http.getForEntity("/api/providers/unavailable/models",String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
-        var body=json.read(response.getBody());
+    @Test void closedServiceReturnsActionableErrorWithoutCredentials() throws Exception {
+        var response=AuthHttp.owner(port).request("/api/providers/unavailable/models",null);
+        assertThat(response.statusCode()).isEqualTo(502);
+        var body=json.read(response.body());
         assertThat(body.path("provider").asText()).isEqualTo("unavailable");
         assertThat(body.path("errorCode").asText()).isEqualTo("MODEL_SERVICE_CONNECT");
         assertThat(body.path("error").asText()).contains("无法连接模型服务","127.0.0.1:"+CLOSED_PORT,"服务已启动");
-        assertThat(response.getBody()).doesNotContain("configuration-for-network-validation","Authorization","Bearer","ClosedChannelException");
+        assertThat(response.body()).doesNotContain("configuration-for-network-validation","Authorization","Bearer","ClosedChannelException");
     }
-    @Test void unknownProviderRemainsInputError() {
-        assertThat(http.getForEntity("/api/providers/missing/models",String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    @Test void unknownProviderRemainsInputError() throws Exception {
+        assertThat(AuthHttp.owner(port).request("/api/providers/missing/models",null).statusCode()).isEqualTo(400);
     }
 }

@@ -21,19 +21,22 @@ public class MemoryProjectionCache {
     private final Json json;
     private final ObjectMapper mapper;
     private final String prefix;
+    private final dev.novel.repository.Store store;
 
     public MemoryProjectionCache(ObjectProvider<RedissonClient> redis,Json json,ObjectMapper mapper,
-            @Value("${novel.redis.key-prefix:novel-agent}") String prefix) {
-        this.redis=redis.getIfAvailable();this.json=json;this.mapper=mapper;this.prefix=prefix;
+            @Value("${novel.redis.key-prefix:novel-agent}") String prefix,dev.novel.repository.Store store) {
+        this.redis=redis.getIfAvailable();this.json=json;this.mapper=mapper;this.prefix=prefix;this.store=store;
     }
 
     public Map<String,Object> graph(String novel,long version,String query,Supplier<Map<String,Object>> loader) {
         String fingerprint=DigestUtils.md5DigestAsHex(query.getBytes(StandardCharsets.UTF_8));
-        return read(prefix+":graph:v1:"+novel+":"+version+":"+fingerprint,new TypeReference<Map<String,Object>>() {},loader);
+        String owner=dev.novel.repository.Store.string(store.novel(novel),"user_id");
+        return read(prefix+":graph:v2:"+owner+":"+novel+":"+version+":"+fingerprint,new TypeReference<Map<String,Object>>() {},loader);
     }
 
     public List<Map<String,Object>> snapshot(String novel,long version,Supplier<List<Map<String,Object>>> loader) {
-        return read(prefix+":memory:v1:"+novel+":"+version,new TypeReference<List<Map<String,Object>>>() {},loader);
+        String owner=dev.novel.repository.Store.string(store.novel(novel),"user_id");
+        return read(prefix+":memory:v2:"+owner+":"+novel+":"+version,new TypeReference<List<Map<String,Object>>>() {},loader);
     }
 
     private <T> T read(String key,TypeReference<T> type,Supplier<T> loader) {

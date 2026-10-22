@@ -63,12 +63,11 @@ class LiveWorkflowTest {
             assertThat(Store.number(completed,"memory_version")).isEqualTo(1);
             assertThat(store.one("chapters.find",novel,1).get("status")).isEqualTo("ACCEPTED");
         }
-        var requests=HttpClient.newHttpClient();
+        var requests=AuthHttp.owner(port);
         for(String path:new String[]{"/novels/"+novel,"/novels/"+novel+"/chapters/1",
                 "/novels/"+novel+"/memories","/novels/"+novel+"/graph","/novels/"+novel+"/quality",
                 "/novels/"+novel+"/truth-files","/novels/"+novel+"/truth-files/export","/observability?novelId="+novel}) {
-            var response=requests.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api"+path)).build(),
-                    HttpResponse.BodyHandlers.discarding());
+            var response=requests.request("/api"+path,null);
             assertThat(response.statusCode()).as(path).isEqualTo(200);
         }
     }

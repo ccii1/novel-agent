@@ -14,11 +14,10 @@ import static org.assertj.core.api.Assertions.*;
 class HttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired Json json;
-    final HttpClient http=HttpClient.newHttpClient();
+    AuthHttp http;
     private HttpResponse<String> request(String path,String body) throws Exception {
-        var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path));
-        if(body!=null) builder.header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body));
-        return http.send(builder.build(),HttpResponse.BodyHandlers.ofString());
+        if(http==null) http=AuthHttp.owner(port);
+        return http.request(path,body);
     }
     @Test void servesWorkspaceAndPublicStatusWithoutExposingSecrets() throws Exception {
         var document = org.jsoup.Jsoup.parse(request("/",null).body());
@@ -70,7 +69,7 @@ class HttpIntegrationTest {
         assertThat(request("/api/research","{\"urls\":[]}").statusCode()).isEqualTo(400);
         assertThat(request("/api/research","{\"brief\":\"职业悬疑\",\"provider\":\"missing\",\"model\":\"any-model\"}").statusCode()).isEqualTo(400);
         assertThat(request("/api/research/missing",null).statusCode()).isEqualTo(404);
-        assertThat(request("/api/research/missing/messages","{\"message\":\" \"}").statusCode()).isEqualTo(400);
+        assertThat(request("/api/research/missing/messages","{\"message\":\" \"}").statusCode()).isEqualTo(404);
         assertThat(request("/api/research","{\"brief\":\"职业悬疑，希望主角依靠修理技能调查旧案\"}").statusCode()).isEqualTo(200);
     }
     @Test void exposesPersistentObservationDashboardAndValidatesFeedback() throws Exception {
@@ -80,6 +79,6 @@ class HttpIntegrationTest {
         assertThat(request("/api/observability?page=-1",null).statusCode()).isEqualTo(400);
         assertThat(request("/api/observability/tasks/missing",null).statusCode()).isEqualTo(404);
         assertThat(request("/api/observability/tasks/missing/progress",null).statusCode()).isEqualTo(404);
-        assertThat(request("/api/observability/tasks/missing/feedback","{\"rating\":6,\"note\":\"评分无效\"}").statusCode()).isEqualTo(400);
+        assertThat(request("/api/observability/tasks/missing/feedback","{\"rating\":6,\"note\":\"评分无效\"}").statusCode()).isEqualTo(404);
     }
 }

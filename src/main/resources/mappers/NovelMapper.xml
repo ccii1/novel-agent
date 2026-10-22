@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="novels">
-  <select id="find" resultType="map">SELECT * FROM novels WHERE id=#{args[0]}</select>
-  <select id="lock" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} FOR UPDATE</select>
-  <select id="all" resultType="map">SELECT * FROM novels ORDER BY created_at DESC</select>
-  <select id="summaries" resultType="map">SELECT id,title,status,stage_no,chapter_no,memory_version FROM novels ORDER BY created_at DESC</select>
+  <sql id="scope"><if test="userId != null">AND user_id=#{userId}</if></sql>
+  <select id="find" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} <include refid="scope"/></select>
+  <select id="lock" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} <include refid="scope"/> FOR UPDATE</select>
+  <select id="all" resultType="map">SELECT * FROM novels WHERE 1=1 <include refid="scope"/> ORDER BY created_at DESC</select>
+  <select id="summaries" resultType="map">SELECT id,title,status,stage_no,chapter_no,memory_version FROM novels WHERE 1=1 <include refid="scope"/> ORDER BY created_at DESC</select>
   <select id="snapshot" resultType="map">
     SELECT n.id,n.status,n.stage_no,n.chapter_no,n.memory_version,
       (SELECT COALESCE(MAX(e.id),0) FROM events e WHERE e.novel_id=n.id) AS event_cursor
-    FROM novels n WHERE n.id=#{args[0]}
+    FROM novels n WHERE n.id=#{args[0]} <include refid="scope"/>
   </select>
   <select id="checking" resultType="map">SELECT * FROM novels WHERE status='CHECKING'</select>
-  <insert id="create">INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'PLANNING',#{args[4]},#{args[5]},#{args[6]},#{args[7]},#{args[8]})</insert>
+  <insert id="create">INSERT INTO novels(id,title,premise,bible,status,stage_size,novel_budget,chapter_budget,provider,model_name,user_id) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'PLANNING',#{args[4]},#{args[5]},#{args[6]},#{args[7]},#{args[8]},#{owner})</insert>
   <update id="model">UPDATE novels SET provider=#{args[0]},model_name=#{args[1]} WHERE id=#{args[2]}</update>
   <update id="approvePlan">UPDATE novels SET plan=#{args[0]},status='WRITING' WHERE id=#{args[1]}</update>
   <update id="nextStage">UPDATE novels SET stage_no=stage_no+1,status='PLANNING',plan=NULL WHERE id=#{args[0]}</update>

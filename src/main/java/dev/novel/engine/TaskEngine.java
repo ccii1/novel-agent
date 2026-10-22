@@ -72,6 +72,7 @@ public class TaskEngine {
             active.incrementAndGet();
             try { workers.execute(()-> {
                 try {
+                    dev.novel.security.UserScope.enter(Store.string(task,"user_id"));
                     var result=agents.execute(task);
                     store.transaction(() -> {
                         workflow.finished(task,result);
@@ -88,7 +89,7 @@ public class TaskEngine {
                     });
                 }
                 catch(Exception e) { fail(task,e); }
-                finally { active.decrementAndGet(); }
+                finally { dev.novel.security.UserScope.clear();active.decrementAndGet(); }
             }); } catch(TaskRejectedException rejected) {
                 active.decrementAndGet();
                 store.transaction(() -> {
@@ -125,7 +126,10 @@ public class TaskEngine {
             return null;
         });
     }
-    public Map<String,Object> status() { return Map.of("workers",limit,"active",active.get(),"ready",ready); }
+    public Map<String,Object> status() {
+        long visible=dev.novel.security.UserScope.current()==null?active.get():Store.number(store.one("tasks.activeCount"),"active");
+        return Map.of("workers",limit,"active",visible,"ready",ready);
+    }
     @Scheduled(fixedDelay=15000,initialDelay=15000)
     public void logRunning() {
         if(!ready || !enabled) return;

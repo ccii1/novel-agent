@@ -15,7 +15,8 @@
       COALESCE(SUM(CASE WHEN c.actual IS NULL AND c.status&lt;&gt;'REJECTED' THEN c.reserved ELSE 0 END),0) AS pending_reservation,
       SUM(CASE WHEN c.status='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain_calls
     FROM tasks t LEFT JOIN model_calls c ON c.task_id=t.id
-    <where><if test="novelId != null">t.novel_id=#{novelId}</if></where>
+    <bind name="scopeUser" value="@dev.novel.security.UserScope@current()"/>
+    <where><if test="novelId != null">t.novel_id=#{novelId}</if><if test="scopeUser != null">AND t.user_id=#{scopeUser}</if></where>
     GROUP BY t.kind ORDER BY t.kind
   </select>
 </mapper>

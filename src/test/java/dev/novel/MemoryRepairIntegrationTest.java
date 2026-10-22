@@ -79,9 +79,7 @@ class MemoryRepairIntegrationTest {
         String id=novel();var task=check(id,3);workflow.finished(task,rejected(false));
         var original=store.novel(id);
         var edited=delta().deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)edited).put("summary","陆禾判断出口条件是在防止人逃跑。");
-        var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/novels/"+id+"/memory-repair"))
-                .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(json.write(Map.of("taskId",task.get("id"),"instructions","按意见修改摘要","delta",edited)))).build();
-        var response=HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofString());
+        var response=AuthHttp.owner(port).request("/api/novels/"+id+"/memory-repair",json.write(Map.of("taskId",task.get("id"),"instructions","按意见修改摘要","delta",edited)));
         assertThat(response.statusCode()).isEqualTo(200);
         String next=json.read(response.body()).path("id").asText();
         assertThat(store.one("tasks.find",next).get("kind")).isEqualTo("CHECK_MEMORY");

@@ -31,6 +31,25 @@ class MySqlIntegrationTest extends DomainIntegrationTest {
     @Autowired ChapterQualityService quality;
     @Autowired dev.novel.service.PlanChangeService planChanges;
 
+    @Test void mysqlOwnershipMigrationScopesListsMetricsAndMemoryAccess() {
+        dev.novel.security.UserScope.enter("mysql_user_one");
+        String first;
+        try {
+            first=projects.create("用户一作品","调查失踪信件","保持人物状态",1,BigDecimal.TEN,BigDecimal.ONE);
+            assertThat(repository.novel(first).get("user_id")).isEqualTo("mysql_user_one");
+            assertThat(repository.one("tasks.byNovel",first).get("user_id")).isEqualTo("mysql_user_one");
+        } finally { dev.novel.security.UserScope.clear(); }
+        dev.novel.security.UserScope.enter("mysql_user_two");
+        try {
+            String second=projects.create("用户二作品","调查失踪信件","保持人物状态",1,BigDecimal.TEN,BigDecimal.ONE);
+            assertThat(repository.list("novels.all")).extracting(row->row.get("id")).containsExactly(second);
+            assertThatThrownBy(()->repository.novel(first)).isInstanceOf(java.util.NoSuchElementException.class);
+            var dashboard=observations.dashboard(null,null,null,null,0);
+            assertThat(((Number)dashboard.get("total")).longValue()).isEqualTo(1);
+            assertThat((java.util.List<?>)dashboard.get("tasks")).hasSize(1);
+        } finally { dev.novel.security.UserScope.clear(); }
+    }
+
     @Test void mysqlPersistsPartialOutlineRequestAndOriginalVersion() {
         String novel=projects.create("大纲版本验证","调查城门封条","保留人物判断",1,BigDecimal.TEN,BigDecimal.ONE);
         repository.update("tasks.cancelNovel",novel);

@@ -35,9 +35,7 @@ class PlanChangeIntegrationTest {
     }
     @Test void realHttpQueuesPersistedSuggestionWithoutChangingOutline() throws Exception {
         String id=novel();String before=Store.string(store.novel(id),"plan");
-        var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/novels/"+id+"/plan-changes"))
-                .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(json.write(Map.of("path","/chapters/1/goal","instructions","延迟人物信任变化，保留名单线索")))).build();
-        var response=HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofString());
+        var response=AuthHttp.owner(port).request("/api/novels/"+id+"/plan-changes",json.write(Map.of("path","/chapters/1/goal","instructions","延迟人物信任变化，保留名单线索")));
         assertThat(response.statusCode()).isEqualTo(200);
         var change=store.one("planChanges.find",json.read(response.body()).path("id").asText());
         assertThat(change).containsEntry("base_plan",before).containsEntry("status","GENERATING");
@@ -93,9 +91,7 @@ class PlanChangeIntegrationTest {
     }
     @Test void stageApprovalUsesSavedOutlineWithoutSendingFullDocument() throws Exception {
         String id=novel();String before=Store.string(store.novel(id),"plan");
-        var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/novels/"+id+"/approve-plan?useCurrentPlan=true"))
-                .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString("{}")).build();
-        var response=HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofString());
+        var response=AuthHttp.owner(port).request("/api/novels/"+id+"/approve-plan?useCurrentPlan=true","{}");
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(store.novel(id)).containsEntry("plan",before).containsEntry("status","WRITING");
         assertThat(store.one("tasks.byNovel",id)).containsEntry("kind","WRITE");

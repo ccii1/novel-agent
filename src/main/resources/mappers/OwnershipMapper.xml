@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="ownership">
+  <select id="novel" resultType="map">SELECT user_id FROM novels WHERE id=#{args[0]}</select>
+  <select id="task" resultType="map">SELECT user_id FROM tasks WHERE id=#{args[0]}</select>
+  <select id="research" resultType="map">SELECT user_id FROM research WHERE id=#{args[0]}</select>
+  <select id="call" resultType="map">SELECT t.user_id FROM model_calls c JOIN tasks t ON t.id=c.task_id WHERE c.id=#{args[0]}</select>
+  <select id="edit" resultType="map">SELECT n.user_id FROM edit_requests e JOIN novels n ON n.id=e.novel_id WHERE e.id=#{args[0]}</select>
+</mapper>

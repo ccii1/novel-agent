@@ -29,7 +29,8 @@ public class BudgetService {
     public BigDecimal novelUsed(String novelId) { return calls.novelTotal(novelId); }
     public Map<String,Object> overview() {
         String billingMonth=month();
-        var used = monthlyUsed(billingMonth);
+        String user=dev.novel.security.UserScope.current();
+        var used = user==null?monthlyUsed(billingMonth):calls.userMonthlyUsed(billingMonth,user);
         return Map.of("month", billingMonth, "limit", monthlyLimit, "usedAndReserved", used, "remaining", monthlyLimit.subtract(used),
                 "calls", calls.overview());
     }

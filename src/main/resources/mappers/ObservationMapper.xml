@@ -31,9 +31,11 @@
     WHERE id=#{id} AND status='RUNNING'
   </update>
   <sql id="filter">
+    <bind name="scopeUser" value="@dev.novel.security.UserScope@current()"/>
     <where>
       <if test="taskId != null">t.id=#{taskId}</if>
-      <if test="novelId != null">t.novel_id=#{novelId}</if>
+      <if test="novelId != null">AND t.novel_id=#{novelId}</if>
+      <if test="scopeUser != null">AND t.user_id=#{scopeUser}</if>
       <if test="chapter != null">AND t.chapter_no=#{chapter}</if>
       <if test="kind != null">AND t.kind=#{kind}</if>
       <if test="status != null">AND t.status=#{status}</if>

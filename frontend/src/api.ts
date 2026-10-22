@@ -5,14 +5,28 @@ import type {QueryKey} from '@tanstack/react-query';
 export async function api<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     signal, method: body === undefined ? 'GET' : 'POST',
-    headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
+    headers: body === undefined ? undefined : {'Content-Type': 'application/json', 'X-XSRF-TOKEN': await csrfToken()},
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event('novel-auth-expired'));
     const failure = await response.json() as {error?: string};
     throw new Error(failure.error ?? `请求失败：HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+export async function csrfToken(): Promise<string> {
+  const response = await fetch('/api/auth/csrf');
+  if (!response.ok) throw new Error('无法验证请求，请刷新页面');
+  return ((await response.json()) as {token: string}).token;
+}
+
+export async function login(username: string, password: string) {
+  const response = await fetch('/api/auth/login', {method: 'POST', headers: {
+    'Content-Type': 'application/x-www-form-urlencoded', 'X-XSRF-TOKEN': await csrfToken(),
+  }, body: new URLSearchParams({username, password})});
+  if (!response.ok) throw new Error(((await response.json()) as {error: string}).error);
 }
 
 export function useApi<T>(key: QueryKey, path: string, interval: number | false = false, enabled = true, staleTime = 10000) {
@@ -44,7 +58,7 @@ export function useNovelSync(id: string) {
 }
 
 export function useDraft(key: string, initial = ''): [string, (value: string) => void, () => void] {
-  const storageKey = `novel-agent:draft:v1:${key}`;
+  const storageKey = `novel-agent:draft:v2:${sessionStorage.getItem('novel-agent:user') ?? 'anonymous'}:${key}`;
   const [value, setValue] = useState(() => sessionStorage.getItem(storageKey) ?? initial);
   const update = (next: string) => {setValue(next); sessionStorage.setItem(storageKey, next);};
   const clear = () => {setValue(''); sessionStorage.removeItem(storageKey);};

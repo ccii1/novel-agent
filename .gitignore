@@ -6,6 +6,7 @@
 /config/application-local.yml
 /config/mysql-local.properties
 /config/neo4j-local.json
+/config/auth-local.json
 .env
 .env.*
 /frontend/node_modules/

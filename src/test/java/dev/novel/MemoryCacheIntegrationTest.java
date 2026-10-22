@@ -48,7 +48,7 @@ class MemoryCacheIntegrationTest {
             assertThat((List<?>)memory.graph(first,2,List.of("林舟"),2).get("edges")).isEmpty();
             assertThat((List<?>)memory.graph(first,1,List.of("林舟"),2).get("edges")).hasSize(2);
             assertThat(memory.snapshot(first,1)).hasSize(2);
-            assertThat(redis.getKeys().countExists(PREFIX+":memory:v1:"+first+":1")).isEqualTo(1);
+            assertThat(redis.getKeys().countExists(PREFIX+":memory:v2:owner:"+first+":1")).isEqualTo(1);
         } finally { redis.getKeys().deleteByPattern(PREFIX+":*"); }
     }
 }

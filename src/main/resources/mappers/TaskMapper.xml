@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="tasks">
-  <select id="find" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]}</select>
+  <sql id="scope"><if test="userId != null">AND user_id=#{userId}</if></sql>
+  <select id="activeCount" resultType="map">SELECT COUNT(*) AS active FROM tasks WHERE status='RUNNING' <include refid="scope"/></select>
+  <select id="find" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]} <include refid="scope"/></select>
   <select id="coordination" resultType="map">SELECT * FROM tasks WHERE novel_id=#{args[0]} AND kind='COORDINATE' ORDER BY created_at DESC LIMIT 30</select>
   <select id="coordinationActive" resultType="map">SELECT id FROM tasks WHERE novel_id=#{args[0]} AND (status IN ('RUNNING','READY') OR (kind IN ('COORDINATE','PLAN_CHANGE') AND status='WAITING'))</select>
   <select id="logContext" resultType="map">
     SELECT t.kind,t.chapter_no,n.title FROM tasks t LEFT JOIN novels n ON n.id=t.novel_id WHERE t.id=#{args[0]}
   </select>
-  <select id="lock" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]} FOR UPDATE</select>
+  <select id="lock" resultType="map">SELECT * FROM tasks WHERE id=#{args[0]} <include refid="scope"/> FOR UPDATE</select>
   <select id="byKey" resultType="map">SELECT id FROM tasks WHERE task_key=#{args[0]}</select>
   <select id="running" resultType="map">SELECT * FROM tasks WHERE status='RUNNING'</select>
   <select id="runningNovel" resultType="map">SELECT id FROM tasks WHERE novel_id=#{args[0]} AND status='RUNNING'</select>
   <select id="byNovel" resultType="map">SELECT * FROM tasks WHERE novel_id=#{args[0]} ORDER BY created_at DESC LIMIT 100</select>
-  <select id="research" resultType="map">SELECT * FROM tasks WHERE kind IN ('RESEARCH','RESEARCH_CHAT') ORDER BY created_at DESC LIMIT 60</select>
+  <select id="research" resultType="map">SELECT * FROM tasks WHERE kind IN ('RESEARCH','RESEARCH_CHAT') <include refid="scope"/> ORDER BY created_at DESC LIMIT 60</select>
   <select id="byResearch" resultType="map">SELECT * FROM tasks WHERE research_id=#{args[0]} ORDER BY created_at DESC</select>
   <select id="activeResearch" resultType="map">SELECT id FROM tasks WHERE research_id=#{args[0]} AND status IN ('WAITING','RUNNING','READY','ERROR')</select>
   <select id="reviews" resultType="map">SELECT kind,result FROM tasks WHERE novel_id=#{args[0]} AND chapter_no=#{args[1]} AND revision=#{args[2]} AND memory_version=#{args[3]} AND kind IN ('CHECK_CHARACTER','CHECK_PLOT','CHECK_PACING','CHECK_STYLE','CHECK_CHAPTER') AND status='DONE'</select>
   <select id="chapterChecks" resultType="map">SELECT kind FROM tasks WHERE novel_id=#{args[0]} AND chapter_no=#{args[1]} AND revision=#{args[2]} AND memory_version=#{args[3]} AND kind IN ('CHECK_CHARACTER','CHECK_PLOT','CHECK_PACING','CHECK_STYLE','CHECK_CHAPTER')</select>
   <select id="memoryReviews" resultType="map">SELECT * FROM tasks WHERE novel_id=#{args[0]} AND chapter_no=#{args[1]} AND revision=#{args[2]} AND memory_version=#{args[3]} AND kind='CHECK_MEMORY' AND status='DONE' ORDER BY updated_at DESC,id DESC</select>
-  <insert id="create">INSERT INTO tasks(id,novel_id,kind,task_key,status,chapter_no,revision,memory_version,payload) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'WAITING',#{args[4]},#{args[5]},#{args[6]},#{args[7]})</insert>
+  <insert id="create">INSERT INTO tasks(id,novel_id,kind,task_key,status,chapter_no,revision,memory_version,payload,user_id) VALUES(#{args[0]},#{args[1]},#{args[2]},#{args[3]},'WAITING',#{args[4]},#{args[5]},#{args[6]},#{args[7]},#{args[8]})</insert>
   <update id="wait">UPDATE tasks SET status='WAITING',updated_at=CURRENT_TIMESTAMP WHERE id=#{args[0]}</update>
   <update id="defer">UPDATE tasks SET status='WAITING',available_at=DATEADD('SECOND',5,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=#{args[0]} AND status='RUNNING'</update>
   <update id="defer" databaseId="mysql">UPDATE tasks SET status='WAITING',available_at=DATE_ADD(CURRENT_TIMESTAMP(3),INTERVAL 5 SECOND),updated_at=CURRENT_TIMESTAMP(3) WHERE id=#{args[0]} AND status='RUNNING'</update>

@@ -14,6 +14,8 @@ public class AgentContextService {
     public AgentContextService(Store store,TruthDocumentService truth,Json json) { this.store=store;this.truth=truth;this.json=json; }
     public Map<String,Object> novel(Map<String,Object> task) {
         var novel=store.novel(Store.string(task,"novel_id"));
+        if(task.get("user_id")!=null && !Objects.equals(task.get("user_id"),novel.get("user_id")))
+            throw new IllegalStateException("Agent 任务与作品的所属用户不一致");
         if(Store.number(task,"memory_version")!=Store.number(novel,"memory_version"))
             throw new IllegalStateException("Agent 任务的记忆版本已变化");
         return novel;

@@ -1,6 +1,12 @@
 server:
   address: 127.0.0.1
   port: ${PORT:8096}
+  servlet:
+    session:
+      timeout: 12h
+      cookie:
+        http-only: true
+        same-site: lax
 logging:
   pattern:
     console: "%d{HH:mm:ss} %-5level %msg%n%wEx"

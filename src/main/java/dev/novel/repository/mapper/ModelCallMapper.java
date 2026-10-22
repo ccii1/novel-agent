@@ -16,6 +16,7 @@ public interface ModelCallMapper {
     Integer lockBudget();
     long recentCount();
     BigDecimal monthlyUsed(@Param("month") String month);
+    BigDecimal userMonthlyUsed(@Param("month") String month,@Param("user") String user);
     BigDecimal novelMonthlyUsed(@Param("novelId") String novelId,@Param("month") String month);
     BigDecimal chapterUsed(@Param("novelId") String novelId,@Param("chapterNo") int chapterNo);
     BigDecimal novelTotal(@Param("novelId") String novelId);
