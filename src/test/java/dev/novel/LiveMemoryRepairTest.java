@@ -41,8 +41,8 @@ class LiveMemoryRepairTest {
         String original=store.enqueue(id,"CHECK_MEMORY",chapter,0,0,"memory-live:"+UUID.randomUUID(),recorded.path("delta"));
         db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",original);
         workflow.finished(store.one("tasks.find",original),recorded.path("review"));
-        for(int attempt=0;attempt<WorkflowService.MEMORY_REPAIR_LIMIT && "EXTRACTING".equals(store.novel(id).get("status"));attempt++) {
-            execute(id,"MEMORY_REPAIR");execute(id,"CHECK_MEMORY");
+        for(int step=0;step<32 && java.util.Set.of("EXTRACTING","CHECKING_MEMORY").contains(store.novel(id).get("status"));step++) {
+            execute(id,"EXTRACTING".equals(store.novel(id).get("status"))?"MEMORY_REPAIR":"CHECK_MEMORY");
         }
         var novel=store.novel(id);
         assertThat(novel.get("status")).isIn("WRITING","AWAITING_STAGE_REVIEW","AWAITING_HELP");

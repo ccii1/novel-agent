@@ -83,7 +83,7 @@ class SkillIntegrationTest {
     @Test void truthFilesAreReadableBeforeInitialPlanExists() {
         String id=novel();var files=truth.files(id);
         assertThat(files).containsKeys("current_state.md","pending_hooks.md","handoff_current.md","outline.md","progress_tracker.md","dialogue-monitor.md","pattern-detection.md");
-        assertThat(files.get("handoff_current.md")).contains("\"completedChapter\":0","\"nextChapter\":1");
+        assertThat(files.get("handoff_current.md")).contains("下一章：1","章节交接");
         assertThat(files.get("story_bible.md")).contains("围绕密信展开悬疑故事");
     }
     @Test void exportedArchiveContainsRealStateDocuments() throws Exception {
@@ -92,11 +92,11 @@ class SkillIntegrationTest {
             java.util.zip.ZipEntry entry;
             while((entry=zip.getNextEntry())!=null) {
                 names.add(entry.getName());String text=new String(zip.readAllBytes(),StandardCharsets.UTF_8);
-                assertThat(text).startsWith("# "+entry.getName());
+                assertThat(text).satisfiesAnyOf(value->assertThat(value).startsWith("---\n"),value->assertThat(value).startsWith("# "));
                 if(entry.getName().equals("story_bible.md")) assertThat(text).contains("密信");
             }
         }
-        assertThat(names).hasSize(13).contains("handoff_current.md","character_knowledge.md");
+        assertThat(names).contains("MEMORY.md","characters/INDEX.md","hooks/INDEX.md","handoff_current.md","character_knowledge.md");
     }
     @Test void checkTaskRegistrationIsIdempotentAndRecoversStyleCheck() {
         String id=novel();

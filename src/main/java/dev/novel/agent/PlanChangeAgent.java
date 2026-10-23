@@ -17,8 +17,10 @@ public class PlanChangeAgent implements NovelAgent {
     private final MemoryService memory;
     private final Store store;
     private final Json json;
-    public PlanChangeAgent(PlanChangeService changes,ModelClient model,MemoryService memory,Store store,Json json) {
+    private final AgentContextService context;
+    public PlanChangeAgent(PlanChangeService changes,ModelClient model,MemoryService memory,Store store,Json json,AgentContextService context) {
         this.changes=changes;this.model=model;this.memory=memory;this.store=store;this.json=json;
+        this.context=context;
     }
     public Set<String> kinds() { return Set.of("PLAN_CHANGE"); }
     public String purpose() { return "生成局部大纲修改建议与关联影响，等待人工确认"; }
@@ -31,8 +33,8 @@ public class PlanChangeAgent implements NovelAgent {
                 "输出 {replacement:指定字段的新值,reason:string,coreChange:boolean,impacts:[{chapter:正整数,reason:string}]}。"+
                 "reason 解释具体变化；impacts 说明相关章节的人物动机、因果关系、伏笔铺垫与答案、结局影响。"+
                 "重要人物转变、关键伏笔答案、核心剧情和阶段结局变化须标记 coreChange=true。已完成正文只分析影响，不声称已经修改。"+
-                "修改申请="+json.write(change)+"；创作设定="+Store.string(novel,"bible")+"；当前记忆="+json.write(memory.planningContext(novel))+
-                "；已写章节="+json.write(store.list("chapters.recent",novel.get("id"))));
+                "修改资料="+context.pack(task,Map.of("change",change,"story_bible.md",Store.string(novel,"bible"),
+                        "memory",memory.planningContext(novel),"recentSummaries",store.list("chapters.recent",novel.get("id"))),""));
         changes.validate(change,result);
         return result;
     }

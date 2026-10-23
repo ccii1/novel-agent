@@ -66,9 +66,22 @@ public class TaskLogFormatter {
             case "PLAN_APPROVED" -> "阶段大纲已批准，继续生成章节";
             case "PLAN_CHANGE_READY", "PLAN_CHANGE_APPLIED" -> line(message);
             case "COORDINATION_APPROVED" -> "委派建议已确认，已创建对应 Agent 的持久化任务";
-            case "AGENT_TOOL_USED" -> "Agent 调用工具："+json.read(message).path("tool").asText();
+            case "CONTEXT_PACKED" -> {
+                var data=json.read(message);
+                yield "已整理角色资料："+data.path("contextBytes").asInt()+" / "+data.path("limitBytes").asInt()+
+                        " 字节，省略检索记录 "+data.path("omittedRecords").asInt()+" 条，可按需查询";
+            }
+            case "AGENT_TOOL_USED" -> {
+                var data=json.read(message);
+                yield "Agent 调用工具："+data.path("tool").asText()+(data.has("responseBytes")?
+                        "，返回 "+data.path("responseBytes").asInt()+" 字节，剩余工具预算 "+data.path("remainingToolBytes").asInt()+" 字节":"");
+            }
             case "AGENT_RUNTIME_BUILT" -> "已构建独立 Agent："+json.read(message).path("name").asText();
-            case "MODEL_TURN_STARTED" -> "开始第"+json.read(message).path("turn").asInt()+"次模型请求，上限"+json.read(message).path("limit").asInt()+"次";
+            case "MODEL_TURN_STARTED" -> {
+                var data=json.read(message);
+                yield "开始第"+data.path("turn").asInt()+"次模型请求，上限"+data.path("limit").asInt()+"次"+
+                        (data.has("contextBytes")?"；上下文 "+data.path("contextBytes").asInt()+" / "+data.path("contextLimitBytes").asInt()+" 字节":"");
+            }
             case "STAGE_APPROVED" -> "已批准进入下一阶段，开始规划";
             case "PAUSED" -> "作品已暂停，已发出的模型调用仍会结算并保存结果";
             case "RESUMED" -> "作品已恢复执行";

@@ -17,6 +17,12 @@ public final class MemoryResponses {
     public record GraphResponse(
             long version, List<GraphNodeResponse> nodes, List<GraphEdgeResponse> edges) {}
 
+    public record MemoryFileDescriptor(String path,String title,String description,String hash,int bytes,boolean legacy) {}
+    public record MemoryFileList(long memoryVersion,List<MemoryFileDescriptor> files,int total,int nextOffset,boolean hasMore) {}
+    public record MemoryFileContent(String path,long memoryVersion,String hash,String content,int offset,int nextOffset,int totalCharacters,boolean hasMore) {}
+    public record MemorySearchMatch(String path,int line,String text,String hash) {}
+    public record MemorySearch(long memoryVersion,List<MemorySearchMatch> matches,int total,int nextOffset,boolean hasMore) {}
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record MemoryResponse(
             String id, String novelId, String memoryKey, String kind, int chapterNo,

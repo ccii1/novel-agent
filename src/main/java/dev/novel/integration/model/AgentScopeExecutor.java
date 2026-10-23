@@ -29,14 +29,17 @@ public class AgentScopeExecutor {
     public static final String FRAMEWORK = "agentscope-java-2.0.4";
     private final Store store;
     private final Duration timeout;
+    private final int maxContext;
     private final dev.novel.agent.runtime.AgentRuntimeFactory runtimes;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20))
             .followRedirects(HttpClient.Redirect.NEVER).build();
 
-    public AgentScopeExecutor(Store store, @Value("${novel.model.timeout-seconds}") int timeout,dev.novel.agent.runtime.AgentRuntimeFactory runtimes) {
+    public AgentScopeExecutor(Store store, @Value("${novel.model.timeout-seconds}") int timeout,dev.novel.agent.runtime.AgentRuntimeFactory runtimes,
+            @Value("${novel.max-context-bytes}") int maxContext) {
         this.store = store;
         this.timeout = Duration.ofSeconds(timeout);
         this.runtimes=runtimes;
+        this.maxContext=maxContext;
     }
 
     public String execute(Map<String,Object> task, ModelCatalog.Selection selected, String system, String prompt,
@@ -66,6 +69,7 @@ public class AgentScopeExecutor {
         };
         // 每个任务独立创建 Agent，长期故事记忆由业务模块按版本提供。
         try (var handle=runtimes.build(task,model,system,options,audit)) {
+            transport.contextBudget=body->handle.tools().reserveRequestSpace(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,maxContext);
             var reply = handle.agent().call(List.of(new UserMessage(prompt))).block(timeout.multipliedBy(runtimes.spec(Store.string(task,"kind")).maxRequests()).plusSeconds(5));
             handle.tools().check();
             if (reply == null || reply.getTextContent().isBlank()) throw new IllegalStateException("AgentScope 未返回文本");
@@ -83,6 +87,7 @@ public class AgentScopeExecutor {
         private final Consumer<HttpResponse> afterResponse;
         private final java.util.concurrent.atomic.AtomicInteger sent = new java.util.concurrent.atomic.AtomicInteger();
         private final int maxRequests;
+        private Consumer<String> contextBudget=body->{};
 
         AccountedTransport(HttpTransport delegate, URI endpoint, Consumer<String> beforeRequest, Consumer<HttpResponse> afterResponse,int maxRequests) {
             this.delegate=delegate; this.endpoint=endpoint; this.beforeRequest=beforeRequest; this.afterResponse=afterResponse;
@@ -90,6 +95,7 @@ public class AgentScopeExecutor {
         }
         @Override public HttpResponse execute(HttpRequest request) {
             if (sent.incrementAndGet()>maxRequests) throw new IllegalStateException("Agent 模型请求达到次数上限，请审核后重新执行");
+            contextBudget.accept(request.getBody());
             beforeRequest.accept(request.getBody());
             // 使用已校验的完整地址，保留供应商配置中的查询参数。
             var actual = HttpRequest.builder().url(endpoint.toString()).method(request.getMethod())

@@ -23,6 +23,15 @@ export default function MemoryRepairPanel({novel, pending}: {novel: Novel; pendi
       <button disabled={action.isPending}>按要求修正记忆并重新审核</button>
       <details><summary>直接编辑待审核记忆</summary>
         <label>章节摘要<textarea aria-label="章节摘要" rows={5} value={draft.summary} onChange={event => setDraft({...draft,summary:event.target.value})}/></label>
+        {draft.files?.map((file,index) => <div key={file.path}>
+          <h4>{file.path}</h4>
+          <p className="muted">{file.description}</p>
+          <label>Markdown 记忆内容<textarea aria-label={`记忆文件 ${file.path}`} rows={14} value={file.content} onChange={event => {
+            const content = event.target.value;
+            setDraft(current => ({...current,files:current.files!.map((item,position) => position === index ? {...item,content} : item)}));
+          }}/></label>
+          <small>正文来源：{file.evidencePaths.join('、')}</small>
+        </div>)}
         {draft.facts.map((fact,index) => <div key={fact.key}>
           <label>{fact.name} · {fact.key}<textarea rows={3} value={fact.detail ?? ''} onChange={event => setDraft({...draft,facts:draft.facts.map((item,current) => current === index ? {...item,detail:event.target.value} : item)})}/></label>
           <label>正文证据<textarea rows={2} value={fact.evidence} onChange={event => setDraft({...draft,facts:draft.facts.map((item,current) => current === index ? {...item,evidence:event.target.value} : item)})}/></label>

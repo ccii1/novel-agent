@@ -42,6 +42,9 @@ spring:
       pool:
         size: 1
 novel:
+  memory-directory: ${NOVEL_MEMORY_DIRECTORY:./data/books}
+  memory-file-bytes: 16000
+  memory-entry-bytes: 6000
   review-mode: ${NOVEL_REVIEW_MODE:parallel}
   redis:
     enabled: ${NOVEL_REDIS_ENABLED:false}
@@ -51,6 +54,7 @@ novel:
   workers: 4
   monthly-budget: 300
   max-context-bytes: 120000
+  agent-tool-result-bytes: ${NOVEL_TOOL_RESULT_BYTES:12000}
   model:
     billing-mode: metered
     endpoint: ${NOVEL_MODEL_ENDPOINT:}

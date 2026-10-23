@@ -36,7 +36,9 @@ final class AgentCallAccounting {
     }
     void before(String body) {
         if(turns>=maxRequests) throw new IllegalStateException("Agent 已达到模型请求次数上限："+maxRequests);
-        if(body.getBytes(StandardCharsets.UTF_8).length>maxContext) throw new IllegalStateException("上下文超过字节限制，请调整设定或阶段大纲");
+        int requestBytes=body.getBytes(StandardCharsets.UTF_8).length;
+        if(requestBytes>maxContext) throw new IllegalStateException("第"+(turns+1)+"次模型请求需要"+requestBytes+"字节，超过"+maxContext+
+                "字节上限；该次请求尚未发送，前"+turns+"次调用的用量继续保留");
         try { limiter.acquire(); }
         catch(BudgetService.RateLimited limited) {
             if(started==0) throw limited;
@@ -48,13 +50,13 @@ final class AgentCallAccounting {
             budget.reserve(task,reserved,selected.model(),selected.inputPrice(),selected.outputPrice(),skill,body,
                     selected.provider(),selected.billingMode(),AgentScopeExecutor.FRAMEWORK,callId);
             started=System.nanoTime();
-            event("MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),"reasoningEffort",selected.reasoningEffort(),"reserved",reserved,"billingMode",selected.billingMode(),"callId",callId,"maxRequests",maxRequests));
+            event("MODEL_REQUEST_SENT",Map.of("provider",selected.provider(),"model",selected.model(),"reasoningEffort",selected.reasoningEffort(),"reserved",reserved,"billingMode",selected.billingMode(),"callId",callId,"maxRequests",maxRequests,"contextBytes",requestBytes));
         }
         turns++;turnId=UUID.randomUUID().toString();turnStarted=System.nanoTime();
         try { budget.recordTurn(turnId,callId,Store.string(task,"id"),turns,body); }
         catch(BudgetService.RateLimited limited) { throw new IllegalStateException("Agent 后续请求达到数据库调用频率限制，已有用量已保存，请稍后重新执行"); }
         answered=false;requestOpen=true;
-        event("MODEL_TURN_STARTED",Map.of("turn",turns,"limit",maxRequests));
+        event("MODEL_TURN_STARTED",Map.of("turn",turns,"limit",maxRequests,"contextBytes",requestBytes,"contextLimitBytes",maxContext));
     }
     void after(HttpResponse response) {
         long elapsed=Math.max(0,(System.nanoTime()-turnStarted)/1_000_000);latency+=elapsed;

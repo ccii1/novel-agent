@@ -19,20 +19,36 @@ public class MemoryExtractionAgent implements NovelAgent {
     private final EvidenceMatcher evidence;
     public MemoryExtractionAgent(AgentContextService context,ModelClient model,MemoryService memory,Json json,EvidenceMatcher evidence) { this.context=context;this.model=model;this.memory=memory;this.json=json;this.evidence=evidence; }
     public Set<String> kinds() { return Set.of("MEMORY","MEMORY_REPAIR"); }
-    public String purpose() { return "从已通过正文检查的章节提取记忆增量与来源证据"; }
-    public List<String> contextFiles() { return AgentInstructions.storyFiles("character_matrix.md","character_knowledge.md"); }
+    public String purpose() { return "根据已审核正文整理人物、规则、伏笔、支线等 Markdown 主题记忆，并记录来源"; }
+    public List<String> contextFiles() { return AgentInstructions.storyFiles(); }
     public JsonNode execute(Map<String,Object> task) throws Exception {
         var draft=context.draft(task);
+        String draftInput=json.write(Map.of("title",draft.get("title"),"paragraphs",evidence.paragraphs((String)draft.get("body"))));
+        var payload=json.read(Store.string(task,"payload"));
+        boolean repairing="MEMORY_REPAIR".equals(task.get("kind"));
+        var repair=repairing?Map.of("instructions",payload.path("instructions"),"review",payload.path("review"),
+                "pending",payload.path("delta").has("files")?memory.files().coverage(payload.path("delta")):payload.path("delta")):Map.of();
         var result=model.call(task,AgentInstructions.SYSTEM+purpose(),
-                "输出：{summary:string,facts:[{key:string,kind:string,name:string,detail:string,active:boolean,evidencePath:string}],"+
-                "relations:[{subject:string,predicate:string,object:string,detail:string,deleted:boolean,evidencePath:string}]}。"+
-                "summary 不超过600字。kind 仅为 WORLD/CHARACTER/EVENT/FORESHADOW。伏笔可以附加 dueChapter 整数表示计划回收章节。"+
-                "相同事实沿用已有 key；伏笔回收时沿用 key 并设置 active=false。关系改变时沿用 subject/predicate/object，结束旧关系设置 deleted=true。"+
-                "人物获知秘密用 KNOWS 关系，秘密作为 object。evidencePath 从当前正文的 paragraphs 段落选择，例如 /paragraphs/p0；"+
-                "选择至少4个字符的证据段落，由程序读取完整原文作为 evidence，无需抄写。禁止编造路径或引用历史段落编号。只抽取当前正文已明确支持的事实，最多40条增量；历史记忆为空时仍可建立首批记忆。"+
-                "人物推测、怀疑和可能性必须保持原有确定程度，不得写成已经确认的事实。"+
-                ("MEMORY_REPAIR".equals(task.get("kind"))?"本次修正待审核记忆：只修改记忆，保持正文、大纲和已批准设定。逐项处理审核问题及人工要求，保留其他有证据的记忆和稳定 key。修正资料="+Store.string(task,"payload"):"")+
-                "上下文="+context.context(task,contextFiles())+"；正文="+json.write(Map.of("title",draft.get("title"),"paragraphs",evidence.paragraphs((String)draft.get("body")))));
-        return memory.validateDelta(result,(String)draft.get("body"));
+                "输出 {summary:string,files:[{path:string,expectedHash:string,content:string,description:string,evidencePaths:[string]}]}。"+
+                "summary 不超过600字。content 是完整 Markdown 文件，开头为 YAML front matter，必须包含 id、type、name 和 aliases；后接标题与主题正文。"+
+                "文件使用稳定标识，例如 characters/char_001.md、world/city_rule.md、hooks/hook_001.md、arcs/arc_001.md。type 使用 character/world/hook/arc/stage/chapter/relation/issue；事件文件使用 chapter，current_state.md 使用 state，handoff_current.md 使用 handoff。"+
+                "先搜索并读取已有主题文件，保持原有标识及未变化的有效内容。expectedHash 使用上下文 fileHashes 或 read_memory 返回的 hash；新文件填写空字符串。"+
+                "每章必须更新 current_state.md 和 handoff_current.md；每个文件最多16000个UTF-8字节，这两个短文件最多6000字节。"+
+                "MEMORY.md、各目录 INDEX.md 和 chapters/ 文件由程序维护，不在 files 中输出。每项 description 说明本章变化与影响，最多800字符。"+
+                "evidencePaths 引用本章实际支持修改的 /paragraphs/p0 等路径；在正文中记录章节、revision、片段标识及事件来源。不得编造引用。"+
+                "物品转移、关系和认知变化要同步更新相关人物文件；世界事实、人物推测和未来计划分别表达。历史事件通过章节记录追溯。"+
+                "伏笔文件明确记录 OPEN/ADVANCING/RESOLVED/CANCELLED 状态，处理计划有指定章节时记录 dueChapter 与来源，description 保留状态和计划关键词供目录搜索。"+
+                (repairing?"本次修正保持正文与大纲。可以只返回需要修复的文件，未返回的候选文件由程序保留；使用 read_candidate_memory 查看待审内容。修正要求="+json.write(repair):"")+
+                "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);
+        if(repairing && payload.path("delta").has("files") && result.has("files")) {
+            var merged=(com.fasterxml.jackson.databind.node.ObjectNode)result.deepCopy();
+            var changes=new LinkedHashMap<String,JsonNode>();
+            payload.path("delta").path("files").forEach(item->changes.put(item.path("path").asText(),item));
+            result.path("files").forEach(item->changes.put(item.path("path").asText(),item));
+            var array=merged.putArray("files");changes.values().forEach(array::add);result=merged;
+        }
+        var normalized=memory.validateDelta(result,(String)draft.get("body"));
+        if(normalized.has("files")) memory.files().stage(task,normalized);
+        return normalized;
     }
 }

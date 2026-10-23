@@ -10,7 +10,7 @@ public class MigrateH2ToMySql {
     // 迁移业务数据；budget_lock 是目标 schema 初始化的互斥记录。
     private static final List<String> TABLES=List.of("app_users","novels","tasks","chapters","chapter_history","memories",
             "model_calls","model_call_turns","chapter_metrics","research","research_messages","edit_requests","events",
-            "agent_executions","agent_feedback","plan_changes");
+            "agent_executions","agent_feedback","plan_changes","memory_file_versions","memory_files");
 
     public static void main(String[] args) throws Exception {
         var configuration=new Properties();
@@ -37,14 +37,25 @@ public class MigrateH2ToMySql {
         for(String table:TABLES) {
             if(count(target,table)!=0) throw new IllegalStateException("目标表已有数据，迁移终止："+table);
         }
+        var tables=new ArrayList<>(TABLES);
+        boolean versions=exists(source,"memory_file_versions"),files=exists(source,"memory_files");
+        if(versions!=files) throw new IllegalStateException("源数据库的记忆文件版本表不完整");
+        if(!versions) tables.removeAll(List.of("memory_file_versions","memory_files"));
         target.setAutoCommit(false);
-        for(String table:TABLES) {
+        for(String table:tables) {
             long rows=copy(source,target,table);
             if(rows!=count(source,table) || rows!=count(target,table))
                 throw new IllegalStateException("迁移数量校验失败："+table);
             System.out.println(table+"：已复制并核对 "+rows+" 条记录");
         }
         target.commit();
+    }
+
+    private static boolean exists(Connection connection,String table) throws SQLException {
+        try(var rows=connection.getMetaData().getTables(null,null,null,null)) {
+            while(rows.next()) if(table.equalsIgnoreCase(rows.getString("TABLE_NAME"))) return true;
+            return false;
+        }
     }
 
     private static long count(Connection connection,String table) throws SQLException {

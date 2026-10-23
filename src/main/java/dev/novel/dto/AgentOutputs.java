@@ -25,6 +25,9 @@ public final class AgentOutputs {
     public record Reflection(@NotNull Boolean majorChange,@NotBlank String instructions,@NotNull List<@NotBlank String> conflicts) {}
     public record MemoryDelta(@NotBlank @Size(max=1200) String summary,@NotNull List<@NotNull @Valid Fact> facts,
             @NotNull List<@NotNull @Valid Relation> relations) {}
+    public record MemoryFiles(@NotBlank @Size(max=1200) String summary,@NotNull List<@NotNull @Valid MemoryFile> files) {}
+    public record MemoryFile(@NotBlank String path,@NotNull String expectedHash,@NotBlank String content,
+            @NotBlank @Size(max=800) String description,@NotEmpty List<@NotBlank String> evidencePaths) {}
     public record Fact(@NotBlank @Size(max=350) String key,@NotBlank @Pattern(regexp="WORLD|CHARACTER|EVENT|FORESHADOW") String kind,
             @NotBlank String name,String detail,Boolean active,@Positive Integer dueChapter,@NotBlank @Size(min=4) String evidence) {}
     public record Relation(@NotBlank String subject,@NotBlank String predicate,@NotBlank String object,

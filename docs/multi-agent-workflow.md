@@ -1,6 +1,6 @@
 # 小说 Agent 流程与职责
 
-依据版本：1.12.1；核查日期：2026-10-22。
+依据版本：1.16.0；核查日期：2026-10-23。
 
 ## 用户身份与隔离
 
@@ -53,8 +53,8 @@ flowchart TD
 | StyleCheckAgent | `CHECK_STYLE` | 检查表达、文风与写作规则 |
 | ChapterReviewAgent | `CHECK_CHAPTER` | 联合检查人物、剧情、节奏、文风 |
 | ReflectionAgent | `REFLECT` | 汇总审核意见，生成统一修改要求并标记重大变更 |
-| MemoryExtractionAgent | `MEMORY`、`MEMORY_REPAIR` | 提取或修复摘要、事实、伏笔与关系增量 |
-| MemoryCheckAgent | `CHECK_MEMORY` | 检查待确认记忆是否得到正文支持、是否与已有状态冲突 |
+| MemoryExtractionAgent | `MEMORY`、`MEMORY_REPAIR` | 整理或修复 Markdown 主题文件、本章摘要与来源 |
+| MemoryCheckAgent | `CHECK_MEMORY` | 逐项审核文件修改，检查本章遗漏及跨文件一致性 |
 | PlanChangeAgent | `PLAN_CHANGE` | 为选定大纲字段生成局部修改建议与影响分析 |
 | CoordinatorAgent | `COORDINATE` | 分析用户修改要求，选择正文、大纲或记忆处理角色 |
 
@@ -78,10 +78,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Body["当前章节正文"] --> Delta["待确认记忆：摘要、事实、关系"]
-    Existing["正式记忆与当前版本"] --> Check["MemoryCheckAgent"]
+    Body["当前章节正文"] --> Delta["候选 Markdown 与修改清单"]
+    Existing["当前版本的主题文件"] --> Check["MemoryCheckAgent：文件审核及遗漏检查"]
     Delta --> Check
-    Check -->|通过| Transaction["数据库事务"]
+    Check -->|通过| Prepare["准备不可变文件"]
+    Prepare --> Transaction["数据库事务：登记发布清单"]
     Transaction --> Facts["正式记忆版本加一"]
     Transaction --> Chapter["章节标记为 ACCEPTED"]
     Transaction --> Progress["推进章节进度"]
@@ -89,15 +90,15 @@ flowchart LR
     Repair --> Check
 ```
 
-提取结果包含摘要、WORLD / CHARACTER / EVENT / FORESHADOW 事实，以及 RELATION 关系变化。推测、判断与已确认事实需要保留各自含义。
+整理结果包含摘要与文件修改，文件按人物、世界规则、伏笔、支线、阶段和章节组织。稳定标识、别名与正文来源写入 Markdown；推测、人物认知、计划和已确认事实分别表达。
 
 记忆审核发现表述问题时，自动修复对象是待确认记忆，正文与大纲保持当前版本。最多自动修复三轮；重要变更或超过限制后，在概况页面提供人工处理入口，可以提交修改要求，也可以直接编辑记忆后重新审核。
 
-正式提交前再次检查章节编号、正文 revision 与 memoryVersion。正式记忆、章节确认和进度更新在同一数据库事务中完成。
+正式提交前再次检查章节编号、正文 revision、memoryVersion、候选指纹和旧文件指纹。文件在事务外准备，发布清单、章节确认、进度及下一任务在同一数据库事务中完成。
 
-写作上下文按角色组织当前状态、相关事实、人物关系、待处理伏笔、近期摘要及前章结尾。Agent 可以使用授权工具补充查询，查询范围绑定当前作品与任务版本。
+写作上下文包含短入口、当前状态、交接与本章明确相关的主题文件。Agent 通过授权的文件目录、关键词搜索、范围读取及正文来源工具补充资料，查询范围绑定当前用户、作品与任务版本。
 
-人物关系查询当前使用 Apache TinkerGraph，支持查询人物的两跳关系。Neo4j 已在本机安装，业务关系查询尚未接入 Neo4j。
+人物关系与知情范围保存在人物 Markdown。Apache TinkerGraph 继续支持历史结构记录的兼容查询；Neo4j 尚未接入业务。
 
 ## 用户修改要求与协调委派
 
@@ -152,7 +153,8 @@ AgentScope Java 2.0.4 负责 Agent 构建、推理、Toolkit 与生命周期事�
 | 数据 | 保存与使用方式 |
 | --- | --- |
 | 任务输入、结果、错误与状态 | 数据库保存，用于调度、执行详情与恢复 |
-| 正文、历史版本、大纲修改与正式记忆 | 数据库保存；正式状态通过事务更新 |
+| 正文、历史版本与大纲修改 | 数据库保存；正式状态通过事务更新 |
+| 正式记忆与历史文件 | 不可变 Markdown 文件；数据库登记发布清单、指纹和当前版本 |
 | Agent 执行事件与耗时 | 数据库保存，前端执行记录与 Agent 看板查询 |
 | 单次 HTTP 请求与用量 | `model_call_turns` 保存请求、响应、token、缓存用量、时间及估算费用 |
 | 任务级模型调用 | `model_calls` 保存最终响应检查点与合计用量、费用 |

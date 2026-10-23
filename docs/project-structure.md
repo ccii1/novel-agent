@@ -1,6 +1,6 @@
 # 项目结构与代码导航
 
-核查版本：1.14.0；日期：2026-10-22。
+核查版本：1.16.0；日期：2026-10-23。
 
 ## 执行关系
 
@@ -30,8 +30,10 @@ flowchart TD
 | `dto`、`dto/response` | 请求、Agent 输出及按业务分组的响应 record | `ApiRequests`、`AgentOutputs`、`TaskResponses` |
 | `security` | 登录安全配置、资源权限及线程用户范围 | `SecurityConfiguration`、`OwnershipInterceptor`、`UserScope` |
 | `service` | 作品、选题、审核、记忆、费用及审批业务 | `ProjectService`、`WorkflowService`、`MemoryService` |
+| `service/MemoryFileService` | Markdown 文件、候选目录、差异、版本清单及发布 | `prepare`、`publish`、`read`、`search` |
 | `engine` | 认领任务、线程执行、恢复及错误处理 | `TaskEngine` |
 | `agent` | 各创作角色、共享写作与审核行为、上下文组织 | `NovelAgent`、`PlannerAgent`、`ChapterAuthorAgent`、`ReviewAgent` |
+| `agent/ContextBudget` | 角色资料的字节预算、检索记录选择与省略说明 | `AgentContextService.pack` |
 | `agent/orchestration` | 审核角色集合、模式及结果汇集 | `ReviewOrchestrator`、`AgentRoles` |
 | `agent/runtime` | 按任务构建 Agent、授权工具及受限委派 | `AgentRuntimeFactory`、`StoryReadTools` |
 | `agent/validation` | JSON 类型、Bean Validation、大纲及引用证据检查 | `AgentOutputReader`、`PlanValidator`、`ReviewValidator` |
@@ -47,7 +49,7 @@ flowchart TD
 
 `src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 是固定版本的上游技能资料，应用适配规则在 `SkillService` 中维护。
 
-`StoryGraph` 只返回普通数据，查询结束后关闭本次图实例。正式关系与证据由数据库中的版本化记忆保存，Redis 保存可重新生成的查询结果。
+`MemoryFileService` 保存不可变 Markdown 文件，`MemoryFileMapper` 保存发布清单和指纹；新版本共享未变化文件。`MemoryMarkdown` 使用 CommonMark 和 YAML 库处理格式，差异使用 java-diff-utils。`MemoryFileController` 提供分页、搜索与读取接口，`MemoryFileHealthService` 检查已发布文件。`StoryGraph` 兼容历史 Markdown 附录中的关系记录，查询结束后关闭图实例。
 
 ## 前端与运行文件
 
@@ -57,7 +59,7 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 
 思考强度由 `ModelCatalog` 校验服务支持的等级并解析作品、任务或服务默认配置，`AgentScopeExecutor` 通过 SDK 参数发送 `reasoning_effort`。业务选择保存在作品和任务中，实际发送值保存在每次模型请求中；`ModelSelect` 共用于作品、选题与重试入口。`ModelSelectionTest` 验证继承和重试，`LiveReasoningEffortTest` 在显式启用后验证真实本地服务与调用持久化。
 
-阅读主流程时从 `WorkflowService.finished` 进入，按任务类型查看 `saveDraft`、`finishChapterReview`、`finishReflection`、`finishMemoryReview` 与 `commitApprovedChapter`。这些方法共享完成事务；正式记忆、章节进度和下一任务共同提交。`TaskEngine` 分别负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
+阅读主流程时从 `WorkflowService.finished` 进入。记忆修改依次完成文件差异审核与全文遗漏检查；文件在事务外准备，清单、章节进度和下一任务共同提交。`TaskEngine` 负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
 
 | 位置 | 用途 |
 | --- | --- |
@@ -79,6 +81,8 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | 版本、预算及并发事务 | `DomainIntegrationTest` |
 | Agent 运行实例与工具范围 | `AgentRuntimeIntegrationTest` |
 | 记忆证据、审核与自动修复 | `MemoryEvidenceIntegrationTest`、`MemoryRepairIntegrationTest` |
+| Markdown 文件、分组审核、历史迁移与 HTTP 读取 | `MarkdownMemoryIntegrationTest`、`MarkdownMemoryMySqlTest` |
+| Markdown 真实模型流程 | `LiveMarkdownMemoryTest`，显式配置服务后启用 |
 | 正文引用证据 | `ReviewEvidenceIntegrationTest` |
 | 中断执行与持久化恢复 | `ObservationIntegrationTest` |
 | 双账号权限与接口隔离 | `UserIsolationIntegrationTest` |
@@ -87,5 +91,6 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | 迁移完整性、非空目标拒绝及失败撤销 | `DatabaseMigrationTest` |
 | 真实 MySQL 与 Redis | `MySqlIntegrationTest`、`RedisIntegrationTest`、`MemoryCacheIntegrationTest` |
 | 真实供应商模型 | `Live*Test`，按对应环境变量显式启用 |
+| 长期记忆增长与有界工具往返 | `ContextBudgetIntegrationTest`、`LiveToolContextTest` |
 
 本地学习路线保存在 `C:/Users/cc/Documents/Obsidian Vault/小说agent/学习路线与代码阅读指南.md`，流程图见 [多 Agent 流程](multi-agent-workflow.md)。

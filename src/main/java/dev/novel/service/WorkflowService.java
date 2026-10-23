@@ -41,13 +41,28 @@ public class WorkflowService {
     }
 
     public void finished(Map<String, Object> task, JsonNode result) {
+        MemoryFileService.Prepared prepared=null;
+        var payload=json.read(Store.string(task,"payload"));
+        if("CHECK_MEMORY".equals(task.get("kind")) && "COVERAGE".equals(payload.path("reviewPhase").asText())
+                && result.path("approved").asBoolean() && (!result.path("majorChange").asBoolean() || payload.path("humanApproved").asBoolean())) {
+            var novel=store.novel(Store.string(task,"novel_id"));
+            if(!SUSPENDED.contains(novel.get("status")) && Store.number(novel,"memory_version")==Store.number(task,"memory_version")
+                    && "RUNNING".equals(store.one("tasks.find",task.get("id")).get("status"))) {
+                var draft=store.one("chapters.find",task.get("novel_id"),task.get("chapter_no"));
+                var delta=memory.validateDelta(memoryDelta(payload),Store.string(draft,"body"));
+                if(Store.integer(draft,"revision")!=Store.integer(task,"revision")) throw new IllegalStateException("记忆审核对应的正文版本已经变化");
+                prepared=memory.files().prepare(Store.string(task,"novel_id"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),
+                        Store.number(task,"memory_version")+1,delta);
+            }
+        }
+        var publication=prepared;
         store.transaction(() -> {
-            finishWithinTransaction(task, result);
+            finishWithinTransaction(task, result,publication);
             return null;
         });
     }
 
-    private void finishWithinTransaction(Map<String, Object> task, JsonNode result) {
+    private void finishWithinTransaction(Map<String, Object> task, JsonNode result,MemoryFileService.Prepared prepared) {
         String taskId = Store.string(task, "id");
         String novelId = (String) task.get("novel_id");
         String kind = Store.string(task, "kind");
@@ -81,7 +96,7 @@ public class WorkflowService {
             case "REFLECT" -> finishReflection(novel, task, result);
             case "MEMORY", "MEMORY_REPAIR" -> scheduleMemoryCheck(novel, task, result,
                     json.read(Store.string(task, "payload")).path("repairAttempt").asInt(0));
-            case "CHECK_MEMORY" -> finishMemoryReview(novel, task, result);
+            case "CHECK_MEMORY" -> finishMemoryReview(novel, task, result,prepared);
             default -> throw new IllegalArgumentException("未知流程步骤：" + kind);
         }
     }
@@ -143,12 +158,25 @@ public class WorkflowService {
         }
     }
 
-    private void finishMemoryReview(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+    private void finishMemoryReview(Map<String, Object> novel, Map<String, Object> task, JsonNode result,MemoryFileService.Prepared prepared) {
         var payload = json.read(Store.string(task, "payload"));
         boolean major = result.path("majorChange").asBoolean();
         boolean authorized = !major || payload.path("humanApproved").asBoolean();
         if (result.path("approved").asBoolean() && authorized) {
-            commitApprovedChapter(novel, task, memoryDelta(payload));
+            if(payload.has("reviewPhase")) {
+                String fingerprint=SkillService.digest(json.write(memoryDelta(payload)));
+                if(!fingerprint.equals(payload.path("changeSetHash").asText()))
+                    throw new IllegalStateException("记忆候选内容与审核指纹不一致");
+                if("FILES".equals(payload.path("reviewPhase").asText())) {
+                    int next=payload.path("reviewIndex").asInt()+1;
+                    scheduleFileReview(novel,task,memoryDelta(payload),payload.path("repairAttempt").asInt(),
+                            next<payload.path("reviewGroups").size()?"FILES":"COVERAGE",next,
+                            payload.path("humanApproved").asBoolean());
+                    return;
+                }
+                if(!"COVERAGE".equals(payload.path("reviewPhase").asText())) throw new IllegalStateException("未知记忆审核阶段");
+            }
+            commitApprovedChapter(novel, task, memoryDelta(payload),prepared);
             return;
         }
 
@@ -165,7 +193,7 @@ public class WorkflowService {
                 "majorChange", major, "instructions", instructions, "issues", result.get("issues"))), novel.get("id"));
     }
 
-    private void commitApprovedChapter(Map<String, Object> novel, Map<String, Object> task, JsonNode pending) {
+    private void commitApprovedChapter(Map<String, Object> novel, Map<String, Object> task, JsonNode pending,MemoryFileService.Prepared prepared) {
         String novelId = Store.string(novel, "id");
         int chapter = Store.integer(task, "chapter_no");
         var draft = store.one("chapters.find", novelId, chapter);
@@ -176,7 +204,11 @@ public class WorkflowService {
         var delta = memory.validateDelta(pending, Store.string(draft, "body"));
         long nextVersion = Store.number(novel, "memory_version") + 1;
         // 本方法仍处于 finished 的事务内，记忆、章节、进度及下一任务共同提交。
-        memory.commit(novelId, chapter, nextVersion, delta);
+        if(delta.has("files")) {
+            if(prepared==null || prepared.base()!=Store.number(novel,"memory_version") || !prepared.delta().equals(json.write(delta)))
+                throw new IllegalStateException("记忆文件尚未完成准备或与审核内容不同");
+            memory.files().publish(prepared);
+        } else memory.commit(novelId, chapter, nextVersion, delta);
         store.update("chapters.accept", json.text(delta, "summary"), nextVersion, novelId, chapter);
         var chapters = json.read(Store.string(novel, "plan")).path("chapters");
         int last = chapters.get(chapters.size() - 1).path("number").asInt();
@@ -216,10 +248,35 @@ public class WorkflowService {
         String novelId = Store.string(novel, "id");
         state(novelId, "CHECKING_MEMORY");
         boolean humanApproved = json.read(Store.string(source, "payload")).path("humanApproved").asBoolean(false);
+        if(delta.has("files")) {
+            var draft=store.one("chapters.find",novelId,source.get("chapter_no"));
+            delta=memory.validateDelta(delta,Store.string(draft,"body"));
+            memory.files().stage(source,delta);
+            return scheduleFileReview(novel,source,delta,attempt,"FILES",0,humanApproved);
+        }
         return store.enqueue(novelId, "CHECK_MEMORY", Store.integer(source, "chapter_no"),
                 Store.integer(source, "revision"), Store.number(source, "memory_version"),
                 novelId + ":memory-check:" + source.get("id"),
                 Map.of("delta", delta, "repairAttempt", attempt, "humanApproved", humanApproved));
+    }
+
+    private String scheduleFileReview(Map<String,Object> novel,Map<String,Object> source,JsonNode delta,int attempt,
+            String phase,int index,boolean humanApproved) {
+        String novelId=Store.string(novel,"id");
+        var previous=json.read(Store.string(source,"payload"));
+        Object groups=previous.has("reviewGroups") && !("FILES".equals(phase) && index==0)?previous.path("reviewGroups"):memory.files().reviewGroups(novelId,Store.number(source,"memory_version"),delta,
+                Store.string(store.one("chapters.find",novelId,source.get("chapter_no")),"body"));
+        var covered=new java.util.HashSet<Integer>();
+        for(var group:json.tree(groups)) {
+            if(!group.isArray() || group.isEmpty()) throw new IllegalStateException("记忆审核分组不能为空");
+            for(var item:group) if(!item.canConvertToInt() || item.asInt()<0 || item.asInt()>=delta.path("files").size() || !covered.add(item.asInt()))
+                throw new IllegalStateException("记忆审核分组存在重复或无效文件");
+        }
+        if(covered.size()!=delta.path("files").size()) throw new IllegalStateException("记忆审核分组没有覆盖全部候选文件");
+        return store.enqueue(novelId,"CHECK_MEMORY",Store.integer(source,"chapter_no"),Store.integer(source,"revision"),
+                Store.number(source,"memory_version"),novelId+":file-review:"+source.get("id")+":"+phase+":"+index,
+                Map.of("delta",delta,"repairAttempt",attempt,"humanApproved",humanApproved,"reviewPhase",phase,
+                        "reviewIndex",index,"reviewGroups",groups,"changeSetHash",SkillService.digest(json.write(delta))));
     }
 
     private void state(String id, String state) {

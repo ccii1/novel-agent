@@ -3,8 +3,6 @@ package dev.novel.service;
 import dev.novel.repository.Store;
 import dev.novel.agent.validation.PlanValidator;
 import dev.novel.repository.mapper.ModelCallMapper;
-import dev.novel.repository.mapper.MemoryMapper;
-import dev.novel.repository.model.MemoryEntry;
 import dev.novel.support.Json;
 import dev.novel.integration.model.ModelCatalog;
 
@@ -22,12 +20,10 @@ public class ProjectService {
     private final Json json;
     private final ModelCatalog catalog;
     private final ModelCallMapper calls;
-    private final MemoryMapper memories;
-    public ProjectService(Store store,WorkflowService workflow,PlanValidator plans,MemoryService memory,Json json,ModelCatalog catalog,ModelCallMapper calls,MemoryMapper memories) {
+    public ProjectService(Store store,WorkflowService workflow,PlanValidator plans,MemoryService memory,Json json,ModelCatalog catalog,ModelCallMapper calls) {
         this.store=store;this.workflow=workflow;this.plans=plans;this.memory=memory;this.json=json;
         this.catalog=catalog;
         this.calls=calls;
-        this.memories=memories;
     }
     public String create(String title,String premise,String bible,int size,BigDecimal novelBudget,BigDecimal chapterBudget) {
         return create(title,premise,bible,size,novelBudget,chapterBudget,null,"");
@@ -243,15 +239,7 @@ public class ProjectService {
             if(!acknowledgePublished && !store.list("chapters.published",id,chapter).isEmpty())
                 throw new IllegalStateException("影响范围包含已发布章节，需要明确确认");
             long version=Store.number(novel,"memory_version"), next=version+1;
-            var baseline=memories.baseline(id,chapter,version);
-            Map<String,Map<String,Object>> before=new HashMap<>();baseline.forEach(row->before.put((String)row.get("memory_key"),row));
-            for(var row:memory.snapshot(id,version)) {
-                if(Store.integer(row,"chapter_no")<chapter) continue;
-                var old=before.get(row.get("memory_key"));
-                String content=old==null?json.write(Map.of("deleted",true,"name",row.get("memory_key"))):(String)old.get("content");
-                memories.insert(new MemoryEntry(UUID.randomUUID().toString(),id,Store.string(row,"memory_key"),Store.string(row,"kind"),
-                        old==null?chapter-1:Store.integer(old,"chapter_no"),next,content));
-            }
+            memory.files().restore(id,next,chapter);
             store.update("tasks.cancelNovel",id);
             store.update("chapters.invalidate",id,chapter);
             store.update("novels.edit",chapter,next,id);

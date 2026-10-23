@@ -94,7 +94,8 @@ class DomainIntegrationTest {
         assertThatThrownBy(()->store.transaction(()-> {
             memory.commit(id,1,1,delta);memory.commit(id,1,1,delta);return null;
         })).isInstanceOf(org.springframework.dao.DuplicateKeyException.class);
-        assertThat(memory.snapshot(id,1)).isEmpty();
+        assertThat(memory.snapshot(id,0)).isEmpty();
+        assertThatThrownBy(()->memory.files().readFull(id,1,"MEMORY.md")).hasMessageContaining("尚未发布");
     }
     @Test void approvalRequiresAwaitingPlanAndValidSequence() {
         String id=novel();assertThatThrownBy(()->projects.approvePlan(id,null)).isInstanceOf(IllegalStateException.class);

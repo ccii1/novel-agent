@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="dev.novel.repository.mapper.MemoryFileMapper">
+  <select id="version" resultType="map">SELECT * FROM memory_file_versions WHERE novel_id=#{novel} AND version=#{version}</select>
+  <select id="files" resultType="map">SELECT * FROM memory_files WHERE novel_id=#{novel} AND version=#{version} ORDER BY path</select>
+  <select id="file" resultType="map">SELECT * FROM memory_files WHERE novel_id=#{novel} AND version=#{version} AND path=#{path}</select>
+  <select id="beforeChapter" resultType="long">SELECT MAX(version) FROM memory_file_versions WHERE novel_id=#{novel} AND chapter_no&lt;#{chapter} AND version&lt;=#{version}</select>
+  <select id="migrationBoundary" resultType="long">SELECT MAX(version) FROM memory_file_versions WHERE novel_id=#{novel} AND base_version=version</select>
+  <insert id="insertVersion">INSERT INTO memory_file_versions(novel_id,version,base_version,chapter_no,revision,fingerprint) VALUES(#{novel},#{version},#{base},#{chapter},#{revision},#{fingerprint})</insert>
+  <insert id="insertFile">INSERT INTO memory_files(novel_id,version,path,physical_path,fingerprint,bytes,title,description,kind,entity_key,chapter_no,source_revision) VALUES(#{novel_id},#{version},#{path},#{physical_path},#{fingerprint},#{bytes},#{title},#{description},#{kind},#{entity_key},#{chapter_no},#{source_revision})</insert>
+</mapper>

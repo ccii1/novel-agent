@@ -48,6 +48,15 @@ class DatabaseMigrationTest {
         assertThat(copied.queryForObject("SELECT COUNT(*) FROM novels",Integer.class)).isZero();
         assertThat(copied.queryForObject("SELECT username FROM app_users",String.class)).isEqualTo("existing_user");
     }
+    @Test void migratesLegacySchemaBeforeMarkdownTablesWereIntroduced() throws Exception {
+        var source=populated();var target=database();var old=new JdbcTemplate(source);
+        old.execute("DROP TABLE memory_files");old.execute("DROP TABLE memory_file_versions");
+        try(var from=source.getConnection();var to=target.getConnection()) { MigrateH2ToMySql.copyBusinessData(from,to); }
+        var copied=new JdbcTemplate(target);
+        assertThat(copied.queryForObject("SELECT COUNT(*) FROM novels",Integer.class)).isEqualTo(1);
+        assertThat(copied.queryForObject("SELECT COUNT(*) FROM memory_file_versions",Integer.class)).isZero();
+        assertThat(copied.queryForObject("SELECT COUNT(*) FROM memory_files",Integer.class)).isZero();
+    }
     @Test void connectionCloseUndoesAllCopiesAfterSchemaMismatch() throws Exception {
         var source=populated();var target=database();
         new JdbcTemplate(source).execute("ALTER TABLE plan_changes ADD COLUMN source_extension INT");

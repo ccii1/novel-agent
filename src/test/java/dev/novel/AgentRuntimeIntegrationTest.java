@@ -35,8 +35,8 @@ class AgentRuntimeIntegrationTest {
     }
     @Test void rolesDeclareIndependentToolPermissionsAndIterationLimits() {
         assertThat(agents.runtime("COORDINATE").tools()).contains("delegate_outline","delegate_memory","delegate_draft");
-        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations");
-        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph");
+        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","read_source","read_candidate_memory");
+        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","read_source","read_candidate_memory");
         assertThat(agents.runtime("MEMORY").tools()).doesNotContain("delegate_draft","delegate_outline");
         assertThat(agents.runtime("COORDINATE").maxRequests()).isEqualTo(3);
         assertThat(agents.runtime("RESEARCH").maxRequests()).isEqualTo(1);

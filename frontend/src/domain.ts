@@ -13,7 +13,8 @@ export interface Chapter {number: number; title: string; status: string; revisio
 export interface Event {id: number; type: string; message: string; created_at: string}
 export interface Edit {id: string; chapter_no: number; instruction: string; status: string; impact: string}
 export interface MemoryIssue {quote: string; reason: string; suggestion: string; quoteSource?: string; quotePath?: string}
-export interface MemoryDelta {summary: string; facts: (Record<string, unknown> & {key: string; name: string; detail?: string; evidence: string})[]; relations: (Record<string, unknown> & {subject: string; predicate: string; object: string; detail?: string; evidence: string})[]}
+export interface MemoryFileChange {path: string; expectedHash: string; content: string; description: string; evidencePaths: string[]}
+export interface MemoryDelta {summary: string; files?: MemoryFileChange[]; facts: (Record<string, unknown> & {key: string; name: string; detail?: string; evidence: string})[]; relations: (Record<string, unknown> & {subject: string; predicate: string; object: string; detail?: string; evidence: string})[]}
 export interface MemoryReview {pending: boolean; taskId?: string; revision?: number; repairAttempt?: number; automaticLimit?: number; delta?: MemoryDelta; review?: {majorChange: boolean; issues: MemoryIssue[]}}
 export interface NovelDetail {novel: Novel; chapters: Chapter[]; tasks: Task[]; events: Event[]; edits: Edit[]; memoryReview?: MemoryReview}
 export interface Provider {id: string; label: string; ready: boolean; defaultModel: string; billingMode: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string}

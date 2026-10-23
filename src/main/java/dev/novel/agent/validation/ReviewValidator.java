@@ -44,10 +44,14 @@ public class ReviewValidator {
                 if(requested.equals("MEMORY") && memory!=null) {
                     var pointer=JsonPointer.compile(path);
                     String root=pointer.getMatchingProperty();
-                    if(root!=null && java.util.Set.of("summary","facts","relations").contains(root)) {
+                    if(root!=null && java.util.Set.of("summary","facts","relations","files").contains(root)) {
                         var selected=memory.at(pointer);
                         if(!selected.isMissingNode()) {
                             String text=selected.isTextual()?selected.textValue():null;
+                            if(text!=null && node.hasNonNull("quote") && !node.path("quote").asText().isBlank()) {
+                                String quote=evidence.source(text).require(node.path("quote").asText(),"记忆引用");
+                                node.put("quote",quote);node.put("quoteValue",quote);continue;
+                            }
                             node.put("quote",text!=null && evidence.source(text).find(text)!=null?text:path+" = "+selected);
                             node.set("quoteValue",selected.deepCopy());
                             continue;

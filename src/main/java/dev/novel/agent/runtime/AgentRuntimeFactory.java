@@ -10,6 +10,7 @@ import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.model.*;
 import io.agentscope.core.tool.Toolkit;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
@@ -20,8 +21,12 @@ public class AgentRuntimeFactory {
     private final MemoryService memory;
     private final Store store;
     private final Json json;
-    public AgentRuntimeFactory(ObjectProvider<AgentService> agents,AgentContextService context,MemoryService memory,Store store,Json json) {
+    private final int toolResultBytes;
+    public AgentRuntimeFactory(ObjectProvider<AgentService> agents,AgentContextService context,MemoryService memory,Store store,Json json,
+            @Value("${novel.max-context-bytes}") int maxContext,@Value("${novel.agent-tool-result-bytes:12000}") int toolResultBytes) {
         this.agents=agents;this.context=context;this.memory=memory;this.store=store;this.json=json;
+        if(toolResultBytes<1024) throw new IllegalArgumentException("工具返回预算至少为1024字节");
+        this.toolResultBytes=Math.min(toolResultBytes,maxContext/10);
     }
     public AgentRuntimeSpec spec(String kind) { return agents.getObject().runtime(kind); }
     public void validateDelegation(Map<String,Object> task,Handle handle,String output) {
@@ -36,7 +41,7 @@ public class AgentRuntimeFactory {
     }
     public Handle build(Map<String,Object> task,Model model,String system,GenerateOptions options,MiddlewareBase middleware) {
         var spec=spec(Store.string(task,"kind"));
-        var tools=new StoryReadTools(task,context,memory,store,json);
+        var tools=new StoryReadTools(task,context,memory,store,json,toolResultBytes);
         var toolkit=new Toolkit();
         if(!spec.tools().isEmpty()) {
             toolkit.registerTool(tools);

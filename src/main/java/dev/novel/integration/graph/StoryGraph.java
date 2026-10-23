@@ -7,7 +7,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
-// 关系数据库保存正式记忆；本组件按指定版本构建查询所需的关系图。
+// 历史 Markdown 附录保留原关系记录，本组件按指定版本提供兼容查询。
 @Component
 public class StoryGraph {
     private final Json json;

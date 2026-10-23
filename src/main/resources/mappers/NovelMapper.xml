@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="novels">
+  <update id="fileFailure">UPDATE novels SET status='ERROR',error=#{args[0]} WHERE id=#{args[1]}</update>
   <sql id="scope"><if test="userId != null">AND user_id=#{userId}</if></sql>
   <select id="find" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} <include refid="scope"/></select>
   <select id="lock" resultType="map">SELECT * FROM novels WHERE id=#{args[0]} <include refid="scope"/> FOR UPDATE</select>
