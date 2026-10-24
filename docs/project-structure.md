@@ -51,6 +51,8 @@ flowchart TD
 
 `MemoryFileService` 保存不可变 Markdown 文件，`MemoryFileMapper` 保存发布清单和指纹；新版本共享未变化文件。`MemoryMarkdown` 使用 CommonMark 和 YAML 库处理格式，差异使用 java-diff-utils。`MemoryFileController` 提供分页、搜索与读取接口，`MemoryFileHealthService` 检查已发布文件。`StoryGraph` 读取 Markdown 中的明确关系记录，包含 `story-relations` 与历史关系附录；`Neo4jStoryGraph` 按用户、作品和版本建立图投影，使用唯一约束和参数化 Cypher 查询。`Neo4jConfiguration` 读取本机连接文件并检查连接，`/api/status` 显示当前查询组件。
 
+`ChapterMemoryTopics` 按本章人物、伏笔的标识、名称和别名选择主题，保留有歧义的候选，按预算提供历史来源路径。Caffeine 缓存文件指纹对应的派生别名；正式文本仍从已发布文件读取。`TruthDocumentService` 记录初始已加载范围，`StoryReadTools` 提供批量读取和模型可见的预算信息，`MemoryFileService` 对一次批量读取使用同一份版本清单。
+
 ## 前端与运行文件
 
 Controller 按作品、选题、大纲修改、协调、执行观测、Agent、供应商和费用分别提供接口。`SystemController` 只提供运行状态与技能信息。请求共用 `ApiRequests`，响应使用 `dto/response` 中的业务 record；错误与登录响应也使用明确类型。

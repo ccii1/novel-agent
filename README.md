@@ -129,7 +129,7 @@ flowchart TD
 
 各角色通过 `NovelAgent.runtime()` 声明名称、职责、工具权限与推理轮数。`AgentRuntimeFactory` 按角色声明构建独立的 `ReActAgent` 和 Toolkit，`AgentScopeExecutor` 负责传输与 Middleware 事件。创作角色可以查询相关记忆与人物关系，审核角色可以查询记忆和正文段落，协调角色可以选择正文、大纲或记忆处理角色。工具绑定当前任务的作品与版本，不能指定其他作品，工具失败会使任务失败。
 
-`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文并取得限流许可。带工具的角色最多2轮推理、3次模型请求，工具读取由单次返回量、累计返回量及完整请求大小限制；默认单次最多12000字节、累计最多24000字节，并根据完整请求的剩余空间进一步收紧。没有固定的工具调用次数限制，多个主题文件可以在同一轮读取。未配置工具的角色最多1次模型请求，每次请求的框架尝试次数为1。`AgentCallAccounting` 按请求次数和上下文上限预留任务预算，逐次保存请求、响应、用量、耗时及估算费用到 `model_call_turns`，最终结果和合计费用保存到 `model_calls`。数据库与 Redis 限流都按真实请求次数计算。工具响应不会成为任务最终检查点；完整 Agent 最终输出才可复用，重启期间未确定的调用需要人工核对。服务中断、人工审核和正文记忆事务由持久化业务流程管理。
+`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文并取得限流许可。资料读取角色默认最多3轮推理、4次模型请求，协调角色默认2轮推理、3次请求；通过 `novel.agent-tool-rounds.default` 和具体角色键（例如 `write`、`check_plot`）配置1至3轮，另保留一次最终输出请求。工具默认单次最多24000字节、累计最多60000字节，并根据完整请求剩余空间进一步收紧。多个主题文件可以在同一轮通过 `read_memory_batch` 读取，共用返回预算。未配置工具的角色最多1次模型请求，每次请求的框架尝试次数为1。`AgentCallAccounting` 按允许的请求次数和上下文上限预留任务预算，逐次保存请求、响应、用量、耗时及估算费用到 `model_call_turns`，最终结果和合计费用保存到 `model_calls`。数据库与 Redis 限流都按真实请求次数计算。工具响应不会成为任务最终检查点；完整 Agent 最终输出才可复用，重启期间未确定的调用需要人工核对。服务中断、人工审核和正文记忆事务由持久化业务流程管理。
 
 MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处理任务认领与模型调用状态，`resources/mappers` 按小说、任务、章节、记忆、选题、费用、质量、修改申请和事件组织 SQL；`Store` 使用 `SqlSessionTemplate` 调用命名语句并提供事务入口。Mapper 参数通过 `#{...}` 绑定，业务服务通过命名操作访问数据。CLOB 转换和 Map 字段名称在 MyBatis 配置中统一处理，事务内部查询采用 `STATEMENT` 本地缓存范围。
 
@@ -369,7 +369,11 @@ flowchart LR
 
 `list_memory_files(directory, offset, limit)` 返回路径、标题、说明与指纹；`search_memory(query, directory, offset, limit)` 返回有限命中上下文；`read_memory(path, offset, length)` 返回正文范围、指纹、下一位置和未读取标记，位置按 Unicode code point 计算。`read_candidate_memory` 读取当前待审文件，`read_source` 按章节、revision 与片段读取原始证据。所有工具受用户、作品、任务版本和目录限制。
 
-工具返回默认单次最多12000字节、累计最多24000字节，运行时再根据完整请求的剩余空间收紧。可以通过 `NOVEL_TOOL_RESULT_BYTES` 设置单次预算，实际值同时受请求总预算约束。每次真实请求仍检查完整序列化大小；若固定资料本身过大，在发送前明确报错，保留已有调用的真实用量。任务日志与事件分别记录角色资料大小、检索省略数、工具返回大小和各次请求字节数。
+工具默认单次最多24000字节、累计最多60000字节，运行时按完整请求剩余空间收紧；预算包含序列化转义与 `_toolBudget` 信息。通过 `NOVEL_TOOL_RESULT_BYTES`、`NOVEL_TOOL_TOTAL_BYTES` 分别配置单次与累计预算。结果向模型显示剩余字节和模型请求次数。单文件默认读取6000个 Unicode code point，可指定1至12000；目录默认15项、最多30项，搜索默认10项、最多20项。每次真实请求检查完整序列化大小；固定资料本身过大时，在发送前明确报错并保留已有用量。
+
+`read_memory_batch(paths, offset, length)` 支持最多30个不同路径，顺序表示读取优先级。一次读取版本清单并验证全部路径，再在共同预算内返回各文件原文、指纹、已读范围、`nextOffset` 和 `hasMore`。`pendingPaths` 明确列出尚未读取的文件；单个文件可以使用 `read_memory` 从继续位置获取后续内容。分页按实际字节计算能够容纳的字符数，保持 Unicode 完整。
+
+本章人物和伏笔通过稳定标识、名称及 YAML 别名匹配。明确的当前主题在初始预算内自动提供；同名或别名冲突保留候选，历史来源按本章条目提供路径、指纹和章节，供模型直接批量读取。本章主题预算通过 `novel.memory-initial-topic-bytes` 配置，默认16000字节。`_loadedMemory` 显示已经完整提供的文件及范围，模型据此减少重复读取。别名由 YAML 库解析，派生别名缓存使用文件指纹作为键并限制容量；正式记忆继续由已发布文件版本提供。
 
 ### 记忆整理与审核
 

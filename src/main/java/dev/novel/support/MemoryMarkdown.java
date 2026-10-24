@@ -2,19 +2,20 @@ package dev.novel.support;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.commonmark.ext.front.matter.YamlFrontMatterExtension;
-import org.commonmark.ext.front.matter.YamlFrontMatterVisitor;
+import org.commonmark.ext.front.matter.YamlFrontMatterBlock;
 import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.Heading;
 import org.commonmark.node.Text;
 import org.commonmark.node.Link;
 import org.commonmark.parser.Parser;
+import org.commonmark.parser.IncludeSourceSpans;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
 @Component
 public class MemoryMarkdown {
-    private final Parser parser=Parser.builder().extensions(List.of(YamlFrontMatterExtension.create())).build();
+    private final Parser parser=Parser.builder().extensions(List.of(YamlFrontMatterExtension.create())).includeSourceSpans(IncludeSourceSpans.BLOCKS).build();
     private final YAMLMapper yaml=new YAMLMapper();
     private final Json json;
     public MemoryMarkdown(Json json) { this.json=json; }
@@ -22,8 +23,15 @@ public class MemoryMarkdown {
             List<com.fasterxml.jackson.databind.JsonNode> relations) {}
     public Document parse(String content) {
         var node=parser.parse(content);
-        var metadata=new YamlFrontMatterVisitor();node.accept(metadata);
-        var data=metadata.getData();
+        if(!(node.getFirstChild() instanceof YamlFrontMatterBlock header)) throw new IllegalArgumentException("记忆 Markdown 缺少 YAML metadata");
+        var spans=header.getSourceSpans();
+        com.fasterxml.jackson.databind.JsonNode data;
+        try {
+            data=yaml.readTree(content.substring(spans.get(0).getInputIndex()+spans.get(0).getLength(),spans.get(spans.size()-1).getInputIndex()));
+        } catch(java.io.IOException failure) { throw new IllegalArgumentException("记忆 YAML metadata 格式无效",failure); }
+        if(data==null || !data.isObject()) throw new IllegalArgumentException("记忆 YAML metadata 需要对象格式");
+        for(String field:List.of("id","type","name")) if(!data.path(field).isTextual())
+            throw new IllegalArgumentException("记忆 YAML 字段需要文本："+field);
         var headings=new ArrayList<String>();
         var legacy=new ArrayList<String>();
         var links=new ArrayList<String>();
@@ -53,17 +61,22 @@ public class MemoryMarkdown {
             }
         });
         if(legacy.size()>1) throw new IllegalArgumentException("记忆文件只能包含一个历史记录附录");
-        String id=first(data,"id"),type=first(data,"type"),name=first(data,"name");
+        String id=data.path("id").asText(),type=data.path("type").asText(),name=data.path("name").asText();
         if(id.isBlank() || type.isBlank() || name.isBlank() || headings.isEmpty())
             throw new IllegalArgumentException("记忆 Markdown 需要 id、type、name metadata 和标题");
         if(id.length()>350 || name.length()>300 || id.contains("\n") || name.contains("\n") || !Set.of("index","state","handoff","world","character","hook","arc","chapter","stage","relation","issue").contains(type))
             throw new IllegalArgumentException("记忆文件标识、名称或类型无效");
         if(!relations.isEmpty() && !Set.of("relation","character").contains(type))
             throw new IllegalArgumentException("story-relations 只能写入人物或关系文件");
-        return new Document(id,type,name,List.copyOf(data.getOrDefault("aliases",List.of())),List.copyOf(headings),List.copyOf(links),legacy.isEmpty()?"":legacy.get(0),List.copyOf(relations));
-    }
-    private String first(Map<String,List<String>> data,String key) {
-        var values=data.get(key);return values==null || values.isEmpty()?"":values.get(0);
+        var aliases=new ArrayList<String>();
+        if(data.has("aliases")) {
+            if(!data.path("aliases").isArray()) throw new IllegalArgumentException("aliases 需要 YAML 列表");
+            for(var alias:data.path("aliases")) {
+                if(!alias.isTextual() || alias.asText().isBlank()) throw new IllegalArgumentException("别名需要有效文本");
+                aliases.add(alias.asText());
+            }
+        }
+        return new Document(id,type,name,List.copyOf(aliases),List.copyOf(headings),List.copyOf(links),legacy.isEmpty()?"":legacy.get(0),List.copyOf(relations));
     }
     public String create(String id,String type,String name,List<String> aliases,String body) {
         try {

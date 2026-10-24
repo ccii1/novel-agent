@@ -16,8 +16,10 @@ public class TruthDocumentService {
     private final Json json;
     private final MemoryService memory;
     private final ChapterQualityService quality;
-    public TruthDocumentService(Store store,Json json,MemoryService memory,ChapterQualityService quality) {
+    private final ChapterMemoryTopics topics;
+    public TruthDocumentService(Store store,Json json,MemoryService memory,ChapterQualityService quality,ChapterMemoryTopics topics) {
         this.store=store;this.json=json;this.memory=memory;this.quality=quality;
+        this.topics=topics;
     }
     public Map<String,Object> prompt(Map<String,Object> novel,int chapter) {
         return prompt(novel,chapter,List.of("MEMORY.md","story_bible.md","outline.md","current_state.md","pending_hooks.md","handoff_current.md",
@@ -46,36 +48,27 @@ public class TruthDocumentService {
             result.put(name,value);
         }
         result.put("memoryVersion",version);
-        result.put("memoryTools","list_memory_files 列出目录；search_memory 根据标识、姓名、别名或关键词定位文件；read_memory 按路径分页读取；read_source 核对正文。任务必需资料未读全时继续读取，不能仅依据目录判断事实。");
+        result.put("memoryTools","requiredTopics 与 _loadedMemory 标明已经提供的原文及范围，完整加载的文件无需再次读取。unresolvedTopics 提供本章候选路径，优先 read_memory_batch 批量获取；路径未知时再使用 search_memory 或 list_memory_files。read_memory 按 nextOffset 继续读取；read_source 核对正文。必需资料缺失时明确报告，不能仅依据目录判断事实。");
         var plan=Store.string(novel,"plan").isBlank()?json.read("{}"):json.read(Store.string(novel,"plan"));
         var terms=new LinkedHashSet<String>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) {
             item.path("characters").forEach(term->terms.add(term.asText()));item.path("foreshadowIds").forEach(term->terms.add(term.asText()));
         }});
-        var selected=new LinkedHashMap<String,String>();
         var manifest=files.manifest(id,version);
-        var candidates=new ArrayList<Map<String,Object>>();
         boolean includeTopics=requestedFiles.contains("current_state.md") || requestedFiles.contains("character_matrix.md");
-        for(var row:manifest) {
-            if(!includeTopics) break;
-            String kind=Store.string(row,"kind");boolean legacy=kind.startsWith("legacy-");
-            if(!Set.of("character","hook","legacy-character","legacy-hook").contains(kind)) continue;
-            if(terms.contains(Store.string(row,"entity_key")) || terms.contains(Store.string(row,"title"))) {
-                String path=Store.string(row,"path");
-                long sameName=manifest.stream().filter(other->Objects.equals(row.get("title"),other.get("title")) && Objects.equals(row.get("kind"),other.get("kind"))).count();
-                if((legacy || sameName>1) && !terms.contains(Store.string(row,"entity_key"))) {
-                    if(candidates.size()<5) candidates.add(Map.of("path",path,"title",row.get("title"),"id",row.get("entity_key")));
-                } else if(Store.integer(row,"bytes")<=16000) selected.put(path,files.readFull(id,version,path));
-                else throw new IllegalStateException("本章必需主题文件超过读取预算，需要整理："+path);
-            }
-        }
-        if(!selected.isEmpty()) result.put("requiredTopics",selected);
-        if(!candidates.isEmpty()) result.put("unresolvedTopics",Map.of("examples",candidates,
-                "instruction","匹配到历史来源或需要确认的主题。优先使用明确匹配的当前主题，按需核对这些来源；这里只提供部分入口，不能据此认为已经读取全部必要资料。"));
+        if(includeTopics) result.putAll(topics.resolve(files,id,version,terms));
+        var selected=json.tree(result.getOrDefault("requiredTopics",Map.of()));
         var hashes=new LinkedHashMap<String,String>();
-        for(var row:manifest) if(result.containsKey(row.get("path")) || selected.containsKey(row.get("path")))
-            hashes.put(Store.string(row,"path"),Store.string(row,"fingerprint"));
+        var loaded=new ArrayList<Map<String,Object>>();
+        for(var row:manifest) {
+            String path=Store.string(row,"path");
+            if(!result.containsKey(path) && !selected.has(path)) continue;
+            String text=result.containsKey(path)?Objects.toString(result.get(path)):selected.path(path).asText();
+            hashes.put(path,Store.string(row,"fingerprint"));
+            loaded.add(Map.of("path",path,"hash",row.get("fingerprint"),"offset",0,"nextOffset",text.codePointCount(0,text.length()),"complete",true));
+        }
         result.put("fileHashes",hashes);
+        result.put("_loadedMemory",loaded);
         return result;
     }
     public Map<String,String> files(String id) {

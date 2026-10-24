@@ -196,18 +196,46 @@ public class MemoryFileService {
         return Map.of("path",row.get("path"),"title",row.get("title"),"description",row.get("description"),"hash",row.get("fingerprint"),"bytes",row.get("bytes"),"legacy",Store.string(row,"kind").startsWith("legacy-"));
     }
     public Map<String,Object> read(String novel,long version,String path,int offset,int length,int budget) {
-        String text=readFull(novel,version,path);
+        ensure(novel,version);var row=mapper.file(novel,version,path(path));
+        if(row==null) throw new NoSuchElementException("记忆文件不存在："+path);
+        return page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,budget);
+    }
+    private Map<String,Object> page(String path,long version,String fingerprint,String text,int offset,int length,int budget) {
         int total=text.codePointCount(0,text.length());
-        if(offset<0 || offset>total || length<1 || length>4000) throw new IllegalArgumentException("记忆读取范围无效");
-        int end=Math.min(total,offset+length),start=text.offsetByCodePoints(0,offset);
-        Map<String,Object> result;
-        do {
-            result=Map.of("path",path,"memoryVersion",version,"hash",hash(novel,version,path),"content",text.substring(start,text.offsetByCodePoints(0,end)),
-                    "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total);
-            if(bytes(json.write(result))<=budget) return result;
-            end=offset+(end-offset)/2;
-        } while(end>offset);
-        throw new IllegalStateException("工具剩余预算不足以读取文件");
+        if(offset<0 || offset>total || length<1 || length>12000) throw new IllegalArgumentException("记忆读取范围无效");
+        int low=0,high=Math.min(length,total-offset);
+        while(low<high) {
+            int middle=(low+high+1)/2;
+            if(bytes(json.write(json.write(filePage(path,version,fingerprint,text,offset,offset+middle,total))))<=budget) low=middle;
+            else high=middle-1;
+        }
+        var result=filePage(path,version,fingerprint,text,offset,offset+low,total);
+        if((low==0 && offset<total) || bytes(json.write(json.write(result)))>budget) throw new IllegalStateException("工具剩余预算不足以读取文件");
+        return result;
+    }
+    private Map<String,Object> filePage(String path,long version,String fingerprint,String text,int offset,int end,int total) {
+        return Map.of("path",path,"memoryVersion",version,"hash",fingerprint,
+                "content",text.substring(text.offsetByCodePoints(0,offset),text.offsetByCodePoints(0,end)),
+                "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total);
+    }
+    public Map<String,Object> batch(String novel,long version,List<String> paths,int offset,int length,int budget) {
+        if(paths==null || paths.isEmpty() || paths.size()>30 || new HashSet<>(paths).size()!=paths.size())
+            throw new IllegalArgumentException("批量读取需要1至30个不同路径");
+        if(offset<0 || length<1 || length>12000) throw new IllegalArgumentException("批量读取范围无效");
+        var rows=new HashMap<String,Map<String,Object>>();manifest(novel,version).forEach(row->rows.put(Store.string(row,"path"),row));
+        for(String name:paths) if(!rows.containsKey(path(name))) throw new IllegalArgumentException("批量读取文件不存在："+name);
+        var results=new ArrayList<Map<String,Object>>();var pending=new ArrayList<String>();
+        var response=new LinkedHashMap<String,Object>();
+        response.put("memoryVersion",version);response.put("files",results);response.put("pendingPaths",pending);
+        for(int index=0;index<paths.size();index++) {
+            int room=budget-bytes(json.write(json.write(response)))-512;
+            if(room<1024) { pending.addAll(paths.subList(index,paths.size()));break; }
+            int share=Math.max(512,(room-128*(paths.size()-index))/(paths.size()-index));
+            String path=paths.get(index);var row=rows.get(path);
+            results.add(page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share)));
+        }
+        response.put("hasMore",!pending.isEmpty() || results.stream().anyMatch(file->Boolean.TRUE.equals(file.get("hasMore"))));
+        return response;
     }
     public Map<String,Object> search(String novel,long version,String query,String directory,int offset,int limit,int budget) {
         if(query==null || query.isBlank() || query.length()>200 || offset<0 || limit<1 || limit>20)

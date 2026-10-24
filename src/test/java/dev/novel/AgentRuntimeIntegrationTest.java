@@ -35,11 +35,12 @@ class AgentRuntimeIntegrationTest {
     }
     @Test void rolesDeclareIndependentToolPermissionsAndIterationLimits() {
         assertThat(agents.runtime("COORDINATE").tools()).contains("delegate_outline","delegate_memory","delegate_draft");
-        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","read_source","read_candidate_memory");
-        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","read_source","read_candidate_memory");
+        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","read_source","read_candidate_memory","read_memory_batch");
+        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","read_source","read_candidate_memory","read_memory_batch");
         assertThat(agents.runtime("MEMORY").tools()).doesNotContain("delegate_draft","delegate_outline");
         assertThat(agents.runtime("COORDINATE").maxRequests()).isEqualTo(3);
         assertThat(agents.runtime("RESEARCH").maxRequests()).isEqualTo(1);
+        assertThat(agents.runtime("WRITE").maxRequests()).isEqualTo(4);
     }
     @Test void toolsReadActualParagraphAndRejectStaleVersions() {
         String id=novel();
@@ -94,6 +95,42 @@ class AgentRuntimeIntegrationTest {
         assertThatThrownBy(()->{for(int index=0;index<100;index++) tools.paragraph("p1");})
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("剩余预算");
         assertThatThrownBy(tools::check).hasMessageContaining("剩余预算");
+    }
+    @Test void defaultReadReturnsMoreTextAndReportsRemainingRequestAndByteBudgets() {
+        String id=novel();
+        memory.commit(id,1,1,json.tree(Map.of("summary","核对钥匙","facts",List.of(Map.of("key","large-person","kind","CHARACTER",
+                "name","林舟","detail","林舟😀核对钥匙的来源。".repeat(500),"evidence","林舟查看封条。")),"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String task=store.enqueue(id,"WRITE",2,0,1,UUID.randomUUID().toString(),Map.of());
+        var tools=new StoryReadTools(store.one("tasks.find",task),context,memory,store,json);
+        tools.reserveRequestSpace(40000,120000);
+        String response=tools.file(memory.files().legacyPath("large-person","CHARACTER"),null,null);
+        assertThat(response.getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isBetween(12001,24000);
+        var value=json.read(response);
+        assertThat(value.path("nextOffset").asInt()).isEqualTo(6000);
+        assertThat(value.path("hasMore").asBoolean()).isTrue();
+        assertThat(value.path("_toolBudget").path("remainingModelRequests").asInt()).isEqualTo(3);
+        assertThat(value.path("_toolBudget").path("remainingBytes").asInt()).isBetween(24001,59999);
+    }
+    @Test void batchReadSharesBudgetAndIndividualReadsContinueAtUnicodeOffsets() {
+        String id=novel();var facts=new ArrayList<Map<String,Object>>();var paths=new ArrayList<String>();
+        for(int index=0;index<3;index++) {
+            String key="large-"+index;paths.add(memory.files().legacyPath(key,"CHARACTER"));
+            facts.add(Map.of("key",key,"kind","CHARACTER","name","人物"+index,"detail","人物😀核对封条。".repeat(100),"evidence","查看封条。"));
+        }
+        memory.commit(id,1,1,json.tree(Map.of("summary","核对封条","facts",facts,"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String task=store.enqueue(id,"WRITE",2,0,1,UUID.randomUUID().toString(),Map.of());
+        var tools=new StoryReadTools(store.one("tasks.find",task),context,memory,store,json,4096,60000,4);
+        var batch=json.read(tools.batch(paths,0,6000));
+        assertThat(batch.path("files")).hasSize(3);assertThat(batch.path("hasMore").asBoolean()).isTrue();
+        assertThat(json.write(batch).getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isLessThanOrEqualTo(4096);
+        var first=batch.path("files").get(0);String path=first.path("path").asText();
+        var next=json.read(tools.file(path,first.path("nextOffset").asInt(),100));
+        String original=memory.files().readFull(id,1,path);
+        assertThat(original).startsWith(first.path("content").asText()+next.path("content").asText());
+        tools.check();
+        assertThatThrownBy(()->tools.batch(List.of(paths.get(0),"characters/missing.md"),0,10)).hasMessageContaining("不存在");
     }
     @Test void requestHeadroomStillRestrictsToolReads() {
         String id=novel();String taskId=store.enqueue(id,"CHECK_PLOT",1,0,0,UUID.randomUUID().toString(),Map.of());

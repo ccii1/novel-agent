@@ -36,6 +36,7 @@ class MarkdownMemoryIntegrationTest {
     @Autowired MemoryMarkdown markdown;
     @Autowired Json json;
     @Autowired AgentContextService context;
+    @Autowired TruthDocumentService truth;
     @Autowired dev.novel.agent.validation.ReviewValidator validator;
     @LocalServerPort int port;
     private static final String BODY="林舟把铜钥匙交给陈岚。\n\n陈岚收起钥匙，林舟走向城门。";
@@ -172,5 +173,48 @@ class MarkdownMemoryIntegrationTest {
         assertThat(value.path("requiredTopics").has(files.legacyPath("old-lin-state","CHARACTER"))).isFalse();
         var search=json.tree(files.search(id,2,"林舟","characters",0,1,4000));
         assertThat(search.path("matches").get(0).path("path").asText()).isEqualTo("characters/char_001.md");
+    }
+    @Test void chapterAliasesLoadTheCurrentTopicAndDeclareTheCompleteReadRange() {
+        String id=novel();var pending=delta(id);
+        for(var item:pending.path("files")) if(item.path("path").asText().equals("characters/char_001.md"))
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).put("content",markdown.create("char_001","character","林舟",List.of("持钥人"),"已经交出铜钥匙。来源：第1章 revision 2 p0。"));
+        memory.commit(id,1,1,pending);
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        store.update("novels.awaitPlan",json.write(Map.of("stageGoal","核对钥匙","chapters",List.of(Map.of("number",1,"characters",List.of("持钥人"),"foreshadowIds",List.of())))),id);
+        var value=json.tree(truth.prompt(store.novel(id),1,AgentInstructions.storyFiles()));
+        assertThat(value.path("requiredTopics").path("characters/char_001.md").asText()).contains("已经交出铜钥匙");
+        var loaded=new ArrayList<JsonNode>();value.path("_loadedMemory").forEach(loaded::add);
+        String original=files.readFull(id,1,"characters/char_001.md");
+        assertThat(loaded).anySatisfy(row->{
+            assertThat(row.path("path").asText()).isEqualTo("characters/char_001.md");
+            assertThat(row.path("complete").asBoolean()).isTrue();
+            assertThat(row.path("nextOffset").asInt()).isEqualTo(original.codePointCount(0,original.length()));
+        });
+    }
+    @Test void legacyChapterTopicsProvideAllMatchingPathsWithoutReadingTheEntireDirectory() {
+        String id=novel();var facts=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<8;index++) facts.add(Map.of("key","old-lin-"+index,"kind","CHARACTER","name","林舟","detail","线索"+index,"evidence","林舟核对钥匙。"));
+        memory.commit(id,1,1,json.tree(Map.of("summary","核对钥匙","facts",facts,"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        var value=json.tree(truth.prompt(store.novel(id),1,AgentInstructions.storyFiles()));
+        assertThat(value.path("unresolvedTopics").path("examples")).hasSize(8);
+        assertThat(value.path("unresolvedTopics").path("hasMore").asBoolean()).isFalse();
+        for(var row:value.path("unresolvedTopics").path("examples")) {
+            assertThat(row.path("term").asText()).isEqualTo("林舟");
+            assertThat(row.path("hash").asText()).hasSize(64);
+        }
+    }
+    @Test void yamlAliasesKeepQuotedTextAndUnicodeWithWindowsLineEndings() {
+        var names=List.of("持钥人","小舟：编号01","门前人😀");
+        String content=markdown.create("char_001","character","林舟",names,"核对钥匙。").replace("\n","\r\n");
+        assertThat(markdown.parse(content).aliases()).containsExactlyElementsOf(names);
+    }
+    @Test void ambiguousAliasesRemainExplicitCandidates() {
+        String id=novel();memory.commit(id,1,1,delta(id));db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        store.update("novels.awaitPlan",json.write(Map.of("stageGoal","核对人物身份","chapters",List.of(Map.of("number",1,"characters",List.of("小舟"),"foreshadowIds",List.of())))),id);
+        var value=json.tree(truth.prompt(store.novel(id),1,AgentInstructions.storyFiles()));
+        assertThat(value.has("requiredTopics")).isFalse();
+        assertThat(value.path("unresolvedTopics").path("examples")).hasSize(2);
+        for(var candidate:value.path("unresolvedTopics").path("examples")) assertThat(candidate.path("ambiguous").asBoolean()).isTrue();
     }
 }

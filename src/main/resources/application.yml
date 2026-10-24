@@ -60,7 +60,12 @@ novel:
   workers: 4
   monthly-budget: 300
   max-context-bytes: 120000
-  agent-tool-result-bytes: ${NOVEL_TOOL_RESULT_BYTES:12000}
+  agent-tool-result-bytes: ${NOVEL_TOOL_RESULT_BYTES:24000}
+  agent-tool-total-bytes: ${NOVEL_TOOL_TOTAL_BYTES:60000}
+  memory-initial-topic-bytes: 16000
+  agent-tool-rounds:
+    default: 3
+    coordinate: 2
   model:
     billing-mode: metered
     endpoint: ${NOVEL_MODEL_ENDPOINT:}

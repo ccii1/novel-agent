@@ -31,6 +31,35 @@ class LiveToolContextTest {
     @Autowired Json json;
 
     @Test @Timeout(180)
+    void actualModelListsAndBatchReadsLargerMemoryResultsThenChecksSource() throws Exception {
+        String id=projects.create("批量记忆工具验证","核对人物线索","保持人物知情范围",2,BigDecimal.TEN,BigDecimal.ONE,"local","gpt-6.1-sol","low");
+        store.update("tasks.cancelNovel",id);
+        var facts=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<3;index++) facts.add(Map.of("key","batch-person-"+index,"kind","CHARACTER","name","人物"+index,
+                "detail",("人物"+index+"记录钥匙线索。").repeat(70),"evidence","人物核对钥匙。"));
+        memory.commit(id,1,1,json.tree(Map.of("summary","人物线索核对","facts",facts,"relations",List.of())));
+        String proof="核验编号："+UUID.randomUUID();
+        store.update("chapters.draft",id,1,1,0,"来源核验",proof,1);
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String taskId=store.enqueue(id,"WRITE",2,0,1,UUID.randomUUID().toString(),Map.of());
+        var result=model.call(store.one("tasks.find",taskId),AgentInstructions.SYSTEM,
+                "执行文件和来源读取验证，不创作小说。第一轮使用 list_memory_files 列出 characters 目录，limit=30。"+
+                "第二轮根据目录结果调用一次 read_memory_batch，读取全部三个人物文件，跳过 INDEX.md，length=6000。"+
+                "收到批量文件后，调用 read_source 读取 chapter=1、revision=0、paragraph=p0。"+
+                "取得来源后仅输出 JSON {\"verifiedFiles\":3,\"source\":来源工具返回的完整 text}。不得猜测来源编号。");
+        assertThat(result.path("verifiedFiles").asInt()).isEqualTo(3);
+        assertThat(result.path("source").asText()).isEqualTo(proof);
+        var events=db.list("SELECT message FROM events WHERE task_id=? AND type='AGENT_TOOL_USED' ORDER BY id",taskId);
+        var messages=events.stream().map(row->json.read(Store.string(row,"message"))).toList();
+        assertThat(messages.stream().map(row->row.path("tool").asText()).toList()).contains("list_memory_files","read_memory_batch","read_source");
+        var batch=messages.stream().filter(row->row.path("tool").asText().equals("read_memory_batch")).findFirst().orElseThrow();
+        assertThat(batch.path("responseBytes").asInt()).isBetween(12001,24000);
+        var turns=db.list("SELECT request_body FROM model_call_turns WHERE task_id=? ORDER BY turn_no",taskId);
+        assertThat(turns.size()).isBetween(3,4);
+        for(var turn:turns) assertThat(Store.string(turn,"request_body").getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(120000);
+        assertThat(db.one("SELECT status FROM model_calls WHERE task_id=?",taskId).get("status")).isEqualTo("COMPLETE");
+    }
+    @Test @Timeout(180)
     void actualModelCompletesTenMemoryReadsAndFinalJson() throws Exception {
         String id=projects.create("多文件工具验证","核对人物掌握的线索","保持人物知情范围",2,BigDecimal.TEN,BigDecimal.ONE,"local","gpt-6.1-sol","low");
         store.update("tasks.cancelNovel",id);
@@ -51,7 +80,7 @@ class LiveToolContextTest {
         assertThat(events).hasSize(10);
         assertThat(json.read(Store.string(events.get(9),"message")).path("remainingToolBytes").asInt()).isPositive();
         var turns=db.list("SELECT request_body FROM model_call_turns WHERE task_id=? ORDER BY turn_no",taskId);
-        assertThat(turns.size()).isBetween(2,3);
+        assertThat(turns.size()).isBetween(2,4);
         for(var turn:turns) assertThat(Store.string(turn,"request_body").getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(120000);
         assertThat(db.one("SELECT status FROM model_calls WHERE task_id=?",taskId).get("status")).isEqualTo("COMPLETE");
     }

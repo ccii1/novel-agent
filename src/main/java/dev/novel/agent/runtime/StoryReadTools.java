@@ -25,12 +25,18 @@ public class StoryReadTools {
     private final MemoryPromptProjection projection;
     private final int resultBytes;
     private int remainingBytes;
+    private int requests;
+    private final int maxRequests;
     public StoryReadTools(Map<String,Object> task,AgentContextService context,MemoryService memory,Store store,Json json) {
-        this(task,context,memory,store,json,12000);
+        this(task,context,memory,store,json,24000,60000,4);
     }
     public StoryReadTools(Map<String,Object> task,AgentContextService context,MemoryService memory,Store store,Json json,int resultBytes) {
+        this(task,context,memory,store,json,resultBytes,resultBytes*2,4);
+    }
+    public StoryReadTools(Map<String,Object> task,AgentContextService context,MemoryService memory,Store store,Json json,int resultBytes,int totalBytes,int maxRequests) {
+        if(resultBytes<1024 || totalBytes<resultBytes || maxRequests<1) throw new IllegalArgumentException("工具预算配置无效");
         this.task=task;this.context=context;this.memory=memory;this.store=store;this.json=json;
-        this.projection=new MemoryPromptProjection(json);this.resultBytes=resultBytes;this.remainingBytes=resultBytes*2;
+        this.projection=new MemoryPromptProjection(json);this.resultBytes=resultBytes;this.remainingBytes=totalBytes;this.maxRequests=maxRequests;
     }
     private synchronized String read(String name,Supplier<Object> action) {
         try {
@@ -38,9 +44,21 @@ public class StoryReadTools {
             var novel=context.novel(task);
             Object result=action.get();
             if(Store.number(novel,"memory_version")!=Store.number(context.novel(task),"memory_version")) throw new IllegalStateException("工具读取期间记忆版本已经变化");
-            String response=json.write(result);
-            int bytes=projection.bytes(response);
-            if(bytes>availableBytes()) throw new IllegalStateException("工具"+name+"需要"+bytes+"字节，剩余预算"+availableBytes()+"字节；请使用更具体的关键词和分页参数");
+            var payload=(com.fasterxml.jackson.databind.node.ObjectNode)json.tree(result);
+            var limits=payload.putObject("_toolBudget");
+            limits.put("toolCall",callNumber);limits.put("remainingModelRequests",Math.max(0,maxRequests-requests));
+            limits.put("resultLimitBytes",resultBytes);limits.put("remainingBytes",remainingBytes);
+            int bytes;
+            String response;
+            // 预算信息本身也计入返回量，报告值保持在实际剩余空间以内。
+            do {
+                response=json.write(payload);bytes=projection.bytes(response);
+                int remaining=Math.max(0,remainingBytes-bytes);
+                if(limits.path("remainingBytes").asInt()<=remaining) break;
+                limits.put("remainingBytes",remaining);
+            } while(true);
+            int limit=Math.min(resultBytes,remainingBytes);
+            if(bytes>limit) throw new IllegalStateException("工具"+name+"需要"+bytes+"字节，剩余预算"+limit+"字节；请使用更具体的关键词和分页参数");
             remainingBytes-=bytes;
             store.event(Store.string(task,"novel_id"),Store.string(task,"id"),"AGENT_TOOL_USED",json.write(Map.of("tool",name,"toolCall",callNumber,"responseBytes",bytes,"remainingToolBytes",remainingBytes)),(String)task.get("execution_id"));
             return response;
@@ -48,10 +66,11 @@ public class StoryReadTools {
     }
     public void check() { if(error.get()!=null) throw error.get(); }
     public Map<String,Object> delegation() { return delegation; }
-    private int availableBytes() { return Math.min(resultBytes,remainingBytes); }
+    private int availableBytes() { return Math.max(0,Math.min(resultBytes,remainingBytes)-512); }
     public synchronized void reserveRequestSpace(int requestBytes,int maxContext) {
         // 根据上一份完整请求的实际大小收紧工具预算，额外保留调用参数与消息包装空间。
         remainingBytes=Math.min(remainingBytes,Math.max(0,maxContext-requestBytes-4096));
+        requests++;
     }
     public String plan() { return plan(null); }
     @Tool(name="read_plan",description="读取阶段目标和指定章节计划，默认当前章；其他章节通过编号读取，只读",readOnly=true)
@@ -84,24 +103,31 @@ public class StoryReadTools {
     @Tool(name="list_memory_files",description="按主题目录分页列出当前版本的 Markdown 记忆文件，返回路径、标题、描述和指纹。",readOnly=true)
     public String files(@ToolParam(name="directory",required=false,description="主题目录，例如 characters、hooks，省略表示全部") String directory,
             @ToolParam(name="offset",required=false,description="起点，默认0") Integer offset,
-            @ToolParam(name="limit",required=false,description="每页1至10个，默认5") Integer limit) {
+            @ToolParam(name="limit",required=false,description="每页1至30个，默认15") Integer limit) {
         return read("list_memory_files",()->memory.files().list(Store.string(task,"novel_id"),Store.number(task,"memory_version"),
-                Objects.toString(directory,""),offset==null?0:offset,limit==null?5:Math.min(limit,10)));
+                Objects.toString(directory,""),offset==null?0:offset,limit==null?15:limit));
     }
     @Tool(name="search_memory",description="在固定版本的记忆文件中搜索标识、姓名、别名或关键词，返回有限命中上下文与分页位置。没有命中不能证明事实不存在。",readOnly=true)
     public String search(@ToolParam(name="query",description="关键词，最多200字符") String query,
             @ToolParam(name="directory",required=false,description="主题目录，默认全部") String directory,
             @ToolParam(name="offset",required=false,description="起点，默认0") Integer offset,
-            @ToolParam(name="limit",required=false,description="每页1至10个，默认5") Integer limit) {
+            @ToolParam(name="limit",required=false,description="每页1至20个，默认10") Integer limit) {
         return read("search_memory",()->memory.files().search(Store.string(task,"novel_id"),Store.number(task,"memory_version"),query,
-                Objects.toString(directory,""),offset==null?0:offset,limit==null?5:limit,availableBytes()));
+                Objects.toString(directory,""),offset==null?0:offset,limit==null?10:limit,availableBytes()));
     }
     @Tool(name="read_memory",description="根据逻辑路径分页读取 Markdown 记忆文件。返回原文、指纹和 nextOffset。准备修改时沿用返回的 hash。",readOnly=true)
     public String file(@ToolParam(name="path",description="目录返回的完整逻辑路径，例如 characters/char_001.md") String path,
             @ToolParam(name="offset",required=false,description="Unicode code point 起点，默认0") Integer offset,
-            @ToolParam(name="length",required=false,description="读取字符数1至4000，默认1500") Integer length) {
+            @ToolParam(name="length",required=false,description="读取字符数1至12000，默认6000") Integer length) {
         return read("read_memory",()->memory.files().read(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path,
-                offset==null?0:offset,length==null?1500:length,availableBytes()));
+                offset==null?0:offset,length==null?6000:length,availableBytes()));
+    }
+    @Tool(name="read_memory_batch",description="批量读取已知路径的 Markdown 文件，共用字节预算；返回每份文件的指纹、已读范围和继续位置。",readOnly=true)
+    public String batch(@ToolParam(name="paths",description="目录或上下文提供的逻辑路径列表，最多30个，顺序表示优先级") List<String> paths,
+            @ToolParam(name="offset",required=false,description="各文件的 Unicode 起点，默认0；单独续读时使用 read_memory") Integer offset,
+            @ToolParam(name="length",required=false,description="每份文件读取1至12000个字符，默认6000") Integer length) {
+        return read("read_memory_batch",()->memory.files().batch(Store.string(task,"novel_id"),Store.number(task,"memory_version"),paths,
+                offset==null?0:offset,length==null?6000:length,availableBytes()));
     }
     @Tool(name="read_candidate_memory",description="按路径读取本次待审 Markdown 文件，用于跨文件核对或修复；不会发布修改。",readOnly=true)
     public String candidate(@ToolParam(name="path",description="候选文件逻辑路径") String path,

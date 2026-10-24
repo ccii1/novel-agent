@@ -22,11 +22,15 @@ public class AgentRuntimeFactory {
     private final Store store;
     private final Json json;
     private final int toolResultBytes;
+    private final int totalToolBytes;
     public AgentRuntimeFactory(ObjectProvider<AgentService> agents,AgentContextService context,MemoryService memory,Store store,Json json,
-            @Value("${novel.max-context-bytes}") int maxContext,@Value("${novel.agent-tool-result-bytes:12000}") int toolResultBytes) {
+            @Value("${novel.max-context-bytes}") int maxContext,@Value("${novel.agent-tool-result-bytes:24000}") int toolResultBytes,
+            @Value("${novel.agent-tool-total-bytes:60000}") int totalToolBytes) {
         this.agents=agents;this.context=context;this.memory=memory;this.store=store;this.json=json;
         if(toolResultBytes<1024) throw new IllegalArgumentException("工具返回预算至少为1024字节");
-        this.toolResultBytes=Math.min(toolResultBytes,maxContext/10);
+        if(totalToolBytes<toolResultBytes) throw new IllegalArgumentException("累计工具预算不能小于单次工具预算");
+        this.toolResultBytes=Math.min(toolResultBytes,maxContext/3);
+        this.totalToolBytes=Math.min(totalToolBytes,maxContext);
     }
     public AgentRuntimeSpec spec(String kind) { return agents.getObject().runtime(kind); }
     public void validateDelegation(Map<String,Object> task,Handle handle,String output) {
@@ -41,7 +45,7 @@ public class AgentRuntimeFactory {
     }
     public Handle build(Map<String,Object> task,Model model,String system,GenerateOptions options,MiddlewareBase middleware) {
         var spec=spec(Store.string(task,"kind"));
-        var tools=new StoryReadTools(task,context,memory,store,json,toolResultBytes);
+        var tools=new StoryReadTools(task,context,memory,store,json,toolResultBytes,totalToolBytes,spec.maxRequests());
         var toolkit=new Toolkit();
         if(!spec.tools().isEmpty()) {
             toolkit.registerTool(tools);
