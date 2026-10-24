@@ -534,6 +534,8 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 直接启动 Java 应用时，`novel.redis.enabled` 默认 `false`，使用数据库调用数量限制；启用后叠加 Redisson 共享限流。`/api/status` 返回 `agentFramework`、`persistence` 与 `rateLimiter`，方便确认当前配置。
 
+Redis 限流使用 `<key-prefix>:model:requests:v2` 保存持久化配置，每次申请额度前通过 `trySetRate` 幂等初始化并核对额度、时间间隔和类型。已有配置和已消耗额度会继续使用；Redis 重启后配置缺失时按需建立，数据库调用次数限制继续生效。旧限流键保留原有过期行为，版本化名称使当前配置具有独立的生命周期。
+
 网页操作顺序：选题研究或直接创建作品 → 阶段大纲审核 → 查看章节和执行记录 → 处理修改或费用待办 → 阶段阅读审核 → 继续下一阶段。正文可以导出为文本文件，发布及平台正文修改由人工完成。
 
 未指定 MySQL profile 时，数据库位于 `data/novel`。`data/`、`target/`、`.work/`、日志、`.env`、`config/application-local.yml` 和 `config/mysql-local.properties` 已加入 Git 忽略规则。

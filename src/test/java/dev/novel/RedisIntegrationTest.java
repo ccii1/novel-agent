@@ -33,7 +33,7 @@ class RedisIntegrationTest {
         var second=Redisson.create(config);
         ExecutorService pool=Executors.newFixedThreadPool(8);
         try {
-            var shared=second.getRateLimiter(PREFIX+":model:requests");
+            var shared=second.getRateLimiter(PREFIX+":model:requests:v2");
             assertThat(shared.trySetRate(RateType.OVERALL,4,Duration.ofMinutes(1))).isFalse();
             List<Future<Boolean>> results=new ArrayList<>();
             for(int index=0;index<20;index++) {
@@ -49,12 +49,12 @@ class RedisIntegrationTest {
             assertThat(accepted).isEqualTo(4);
             second.shutdown();
             var reconnected=Redisson.create(config);
-            try { assertThat(reconnected.getRateLimiter(PREFIX+":model:requests").tryAcquire()).isFalse(); }
+            try { assertThat(reconnected.getRateLimiter(PREFIX+":model:requests:v2").tryAcquire()).isFalse(); }
             finally { reconnected.shutdown(); }
         } finally {
             pool.shutdownNow();
             if(!second.isShutdown()) second.shutdown();
-            client.getRateLimiter(PREFIX+":model:requests").delete();
+            client.getRateLimiter(PREFIX+":model:requests:v2").delete();
         }
     }
 }
