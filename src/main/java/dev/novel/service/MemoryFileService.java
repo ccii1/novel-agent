@@ -203,6 +203,21 @@ public class MemoryFileService {
                 generated?"此文件由程序维护，只能读取，不在 files 修改列表中输出。":
                 "当前主题可提交修改；保留本文件稳定 id 和 path，引用当前 hash，不包含 memory-record 附录。");
     }
+    public Map<String,Object> editingPolicy(String novel,long version,String target) {
+        ensure(novel,version);var row=mapper.file(novel,version,path(target));
+        return editPolicy(target,row!=null && Store.string(row,"kind").startsWith("legacy-"));
+    }
+    public Map<String,Object> repairContext(String novel,long version,JsonNode delta) {
+        var rows=new HashMap<String,Map<String,Object>>();
+        manifest(novel,version).forEach(row->rows.put(Store.string(row,"path"),row));
+        var targets=new ArrayList<Map<String,Object>>();
+        for(var file:delta.path("files")) {
+            String path=file.path("path").asText();var existing=rows.get(path);
+            targets.add(Map.of("path",path,"editPolicy",editPolicy(path,existing!=null && Store.string(existing,"kind").startsWith("legacy-"))));
+        }
+        return Map.of("proposal",coverage(delta),"targets",targets,"completeReplacement",true,
+                "instruction","返回修正后的完整 files 集合。保留有效修改，替换只读目标；原候选不会自动合并，正式文件不受候选列表移除影响。所有候选将重新审核。");
+    }
     public Map<String,Object> read(String novel,long version,String path,int offset,int length,int budget) {
         ensure(novel,version);var row=mapper.file(novel,version,path(path));
         if(row==null) throw new NoSuchElementException("记忆文件不存在："+path);

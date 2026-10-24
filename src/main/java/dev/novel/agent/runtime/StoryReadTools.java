@@ -138,7 +138,9 @@ public class StoryReadTools {
                 String text=item.path("content").asText();int start=offset==null?0:offset,total=text.codePointCount(0,text.length());
                 if(start<0 || start>total) throw new IllegalArgumentException("候选文件读取范围无效");
                 int end=Math.min(total,start+Math.max(1,availableBytes()/8));
-                return Map.of("path",path,"content",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)),"nextOffset",end,"hasMore",end<total);
+                return Map.of("path",path,"content",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)),"nextOffset",end,"hasMore",end<total,
+                        "candidate",true,"targetPolicy",memory.files().editingPolicy(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path),
+                        "instruction","此内容是未发布候选；targetPolicy.readOnly=true 时需要改写到普通主题目标。修正需返回完整候选集合，保留有效修改。");
             }
             throw new IllegalArgumentException("候选记忆文件不存在："+path);
         });

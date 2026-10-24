@@ -377,6 +377,8 @@ flowchart LR
 
 ### 记忆整理与审核
 
+记忆修正返回完整的 `files` 候选集合，整体替换原候选列表。修正上下文列出每个原目标的编辑策略，`read_candidate_memory` 返回原候选及其目标策略，模型据此保留有效修改、更新普通主题，并排除历史只读目标。候选移除只影响待审提案，已发布记忆与旧任务记录继续保留；新候选重新执行文件审核和全文遗漏检查。
+
 工具的目录、搜索、单文件与批量文件结果通过 `editPolicy` 说明内容用途：`historical-source` 为只读迁移来源，`generated` 为程序维护的目录和章节记录，`current-topic` 为可提交修改的当前主题。历史来源中的 `memory-record` 附录用于核对事实，由程序保留；整理和修正应更新当前主题，新主题使用独立的稳定 `id` 和 `path`，保留来源链接及原始章节。历史文件不参与修改列表，后台在版本校验时禁止覆盖；候选内容包含历史附录时会指出具体文件及整理要求。
 
 记忆整理输出 `summary` 与 `files`。每项文件修改包含 `path`、`expectedHash`、完整 Markdown `content`、变化 `description` 和本章 `evidencePaths`。旧文件必须沿用读取时的指纹和稳定标识，新文件指纹为空；每章更新 `current_state.md` 与 `handoff_current.md`。目录和本章记录由程序生成。

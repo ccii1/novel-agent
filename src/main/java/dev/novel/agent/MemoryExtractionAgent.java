@@ -27,7 +27,7 @@ public class MemoryExtractionAgent implements NovelAgent {
         var payload=json.read(Store.string(task,"payload"));
         boolean repairing="MEMORY_REPAIR".equals(task.get("kind"));
         var repair=repairing?Map.of("instructions",payload.path("instructions"),"review",payload.path("review"),
-                "pending",payload.path("delta").has("files")?memory.files().coverage(payload.path("delta")):payload.path("delta")):Map.of();
+                "pending",payload.path("delta").has("files")?memory.files().repairContext(Store.string(task,"novel_id"),Store.number(task,"memory_version"),payload.path("delta")):payload.path("delta")):Map.of();
         var result=model.call(task,AgentInstructions.SYSTEM+purpose(),
                 "输出 {summary:string,files:[{path:string,expectedHash:string,content:string,description:string,evidencePaths:[string]}]}。"+
                 "summary 不超过600字。content 是完整 Markdown 文件，开头为 YAML front matter，必须包含 id、type、name 和 aliases；后接标题与主题正文。"+
@@ -43,15 +43,10 @@ public class MemoryExtractionAgent implements NovelAgent {
                 "人物关系另外维护 relations/ 下的 Markdown 文件，包含 story-relations 代码围栏，内容为 JSON 数组；每项包含 subject、predicate、object、detail、evidence 字符串和 deleted 布尔值。"+
                 "subject、object 使用稳定的人物名称；predicate 使用稳定关系类型。每条关系只在一个关系文件维护，解除关系保留该项并设置 deleted=true；evidence 记录正文证据。人物文件使用链接引用关系文件。"+
                 "伏笔文件明确记录 OPEN/ADVANCING/RESOLVED/CANCELLED 状态，处理计划有指定章节时记录 dueChapter 与来源，description 保留状态和计划关键词供目录搜索。"+
-                (repairing?"本次修正保持正文与大纲。可以只返回需要修复的文件，未返回的候选文件由程序保留；使用 read_candidate_memory 查看待审内容。修正要求="+json.write(repair):"")+
+                (repairing?"本次修正保持正文与大纲。files 是修正后完整的候选集合，将整体替换原候选列表。读取原候选，保留仍然有效的全部修改，始终包含 current_state.md 和 handoff_current.md。"+
+                        "原候选若指向只读历史路径，需将有效内容整理到对应当前主题，并从完整候选集合中排除历史路径；新主题使用独立 id 和 path，expectedHash 为空。"+
+                        "使用 read_candidate_memory 读取原候选正文；原候选只是待审核提案，不表示其目标路径允许写入。修正要求="+json.write(repair):"")+
                 "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);
-        if(repairing && payload.path("delta").has("files") && result.has("files")) {
-            var merged=(com.fasterxml.jackson.databind.node.ObjectNode)result.deepCopy();
-            var changes=new LinkedHashMap<String,JsonNode>();
-            payload.path("delta").path("files").forEach(item->changes.put(item.path("path").asText(),item));
-            result.path("files").forEach(item->changes.put(item.path("path").asText(),item));
-            var array=merged.putArray("files");changes.values().forEach(array::add);result=merged;
-        }
         var normalized=memory.validateDelta(result,(String)draft.get("body"));
         if(normalized.has("files")) memory.files().stage(task,normalized);
         return normalized;
