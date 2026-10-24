@@ -48,7 +48,7 @@ public class ModelClient {
         var selected=catalog.forTask(task);
         if(!selected.ready()) throw new IllegalStateException("请配置模型服务、模型名称和计费方式");
         var spec=runtimes.spec(Store.string(task,"kind"));
-        var accounting=new AgentCallAccounting(task,selected,skill,store,calls,budget,limiter,json,maxContext,maxOutput,spec.maxRequests());
+        var accounting=new AgentCallAccounting(task,selected,skill,store,calls,budget,limiter,json,maxContext,maxOutput,spec.maxRequests(),executor.limits(task));
         try {
             String result=executor.execute(task,selected,system+"\n"+skill.instruction()+
                     "\n只能使用本角色已注册的工具；资料不足时查询，已有资料充分时直接输出。先核对 _loadedMemory，完整提供的文件无需重复读取；路径已知时优先 read_memory_batch。工具结果的 _toolBudget 显示剩余字节和模型请求次数，保留最终输出所需的一次请求。必要资料未读全时明确报告缺失，不得编造事实。工具仅提供当前任务范围的数据，正式变更等待后端审批。",

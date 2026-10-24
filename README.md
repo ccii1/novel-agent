@@ -488,6 +488,10 @@ flowchart TD
 
 ## 启动与配置
 
+模型单次 HTTP 等待时间由 `novel.model.timeout-seconds` 配置，默认180秒。`novel.model.role-timeout-seconds` 按角色覆盖：`memory`、`memory_repair` 默认600秒，`check_memory` 默认300秒。角色键使用任务类型的小写形式。SDK 的请求截止时间比 HTTP 多15秒，整个 Agent 的截止时间按允许请求次数计算；模型请求仍只执行一次尝试。
+
+每次请求开始的日志与事件记录当前单次等待上限。模型异常会保留原始原因并终止任务，SDK 的错误说明文本不能成为正式结果。尚未取得响应的调用保留 `UNCERTAIN` 状态和待核对费用，已完成轮次的用量继续保存；调用记录的 `usage_json` 分别记录已知输入、输出用量及未完成请求数量。
+
 运行环境需要 Java 17 或更高版本。项目自带 Maven Wrapper；当前 `start.ps1` 使用本机路径 `C:\Program Files\Java\jdk-17`，其他电脑需要调整脚本中的 `JAVA_HOME`。
 
 在 PowerShell 中执行：

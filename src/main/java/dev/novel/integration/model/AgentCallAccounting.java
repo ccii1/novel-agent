@@ -29,10 +29,12 @@ final class AgentCallAccounting {
     private boolean requestOpen;
     private String lastContent;
     private BigDecimal reserved;
+    private final ModelTimeoutPolicy.Limits timeouts;
     AgentCallAccounting(Map<String,Object> task,ModelCatalog.Selection selected,SkillService.Snapshot skill,Store store,
-            ModelCallMapper calls,BudgetService budget,ModelRateLimiter limiter,Json json,int maxContext,int maxOutput,int maxRequests) {
+            ModelCallMapper calls,BudgetService budget,ModelRateLimiter limiter,Json json,int maxContext,int maxOutput,int maxRequests,ModelTimeoutPolicy.Limits timeouts) {
         this.task=task;this.selected=selected;this.skill=skill;this.store=store;this.calls=calls;this.budget=budget;
         this.limiter=limiter;this.json=json;this.maxContext=maxContext;this.maxOutput=maxOutput;this.maxRequests=maxRequests;
+        this.timeouts=timeouts;
     }
     void before(String body) {
         if(turns>=maxRequests) throw new IllegalStateException("Agent 已达到模型请求次数上限："+maxRequests);
@@ -56,7 +58,8 @@ final class AgentCallAccounting {
         try { budget.recordTurn(turnId,callId,Store.string(task,"id"),turns,body); }
         catch(BudgetService.RateLimited limited) { throw new IllegalStateException("Agent 后续请求达到数据库调用频率限制，已有用量已保存，请稍后重新执行"); }
         answered=false;requestOpen=true;
-        event("MODEL_TURN_STARTED",Map.of("turn",turns,"limit",maxRequests,"contextBytes",requestBytes,"contextLimitBytes",maxContext));
+        event("MODEL_TURN_STARTED",Map.of("turn",turns,"limit",maxRequests,"contextBytes",requestBytes,"contextLimitBytes",maxContext,
+                "requestTimeoutSeconds",timeouts.request().toSeconds(),"taskTimeoutSeconds",timeouts.task().toSeconds()));
     }
     void after(HttpResponse response) {
         long elapsed=Math.max(0,(System.nanoTime()-turnStarted)/1_000_000);latency+=elapsed;
@@ -100,8 +103,10 @@ final class AgentCallAccounting {
             return;
         }
         if(turnId!=null) store.update("modelTurns.uncertain",turnId);
+        calls.observation(callId,Math.max(0,(System.nanoTime()-started)/1_000_000),json.write(Map.of(
+                "known_prompt_tokens",input,"known_completion_tokens",output,"completedRequests",turns-1,"pendingRequests",1)),null);
         calls.transportFailure(callId,Math.max(0,(System.nanoTime()-started)/1_000_000));
-        calls.markUncertain(failure.getClass().getSimpleName(),callId);
+        calls.markUncertain(failure.getClass().getSimpleName()+": "+Objects.toString(failure.getMessage(),"模型请求未完成"),callId);
     }
     private BigDecimal cost(long in,long out) {
         return selected.inputPrice().multiply(BigDecimal.valueOf(in)).add(selected.outputPrice().multiply(BigDecimal.valueOf(out))).divide(BigDecimal.valueOf(1_000_000),6,RoundingMode.CEILING);

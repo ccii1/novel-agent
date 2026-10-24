@@ -80,7 +80,8 @@ public class TaskLogFormatter {
             case "MODEL_TURN_STARTED" -> {
                 var data=json.read(message);
                 yield "开始第"+data.path("turn").asInt()+"次模型请求，上限"+data.path("limit").asInt()+"次"+
-                        (data.has("contextBytes")?"；上下文 "+data.path("contextBytes").asInt()+" / "+data.path("contextLimitBytes").asInt()+" 字节":"");
+                          (data.has("contextBytes")?"；上下文 "+data.path("contextBytes").asInt()+" / "+data.path("contextLimitBytes").asInt()+" 字节":"")+
+                          (data.has("requestTimeoutSeconds")?"；单次等待上限 "+data.path("requestTimeoutSeconds").asLong()+" 秒":"");
             }
             case "STAGE_APPROVED" -> "已批准进入下一阶段，开始规划";
             case "PAUSED" -> "作品已暂停，已发出的模型调用仍会结算并保存结果";

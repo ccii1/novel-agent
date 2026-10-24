@@ -7,6 +7,7 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.middleware.ReasoningInput;
+import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.GenerateOptions;
@@ -23,21 +24,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class AgentScopeExecutor {
     public static final String FRAMEWORK = "agentscope-java-2.0.4";
     private final Store store;
-    private final Duration timeout;
+    private final ModelTimeoutPolicy timeouts;
     private final int maxContext;
     private final dev.novel.agent.runtime.AgentRuntimeFactory runtimes;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20))
             .followRedirects(HttpClient.Redirect.NEVER).build();
 
-    public AgentScopeExecutor(Store store, @Value("${novel.model.timeout-seconds}") int timeout,dev.novel.agent.runtime.AgentRuntimeFactory runtimes,
+    public AgentScopeExecutor(Store store,ModelTimeoutPolicy timeouts,dev.novel.agent.runtime.AgentRuntimeFactory runtimes,
             @Value("${novel.max-context-bytes}") int maxContext) {
         this.store = store;
-        this.timeout = Duration.ofSeconds(timeout);
+        this.timeouts=timeouts;
         this.runtimes=runtimes;
         this.maxContext=maxContext;
     }
@@ -45,19 +47,26 @@ public class AgentScopeExecutor {
     public String execute(Map<String,Object> task, ModelCatalog.Selection selected, String system, String prompt,
             int maxOutput, Consumer<String> beforeRequest, Consumer<HttpResponse> afterResponse) {
         URI endpoint = ModelEndpoint.resolve(selected.endpoint());
+        int maxRequests=runtimes.spec(Store.string(task,"kind")).maxRequests();
+        var limits=limits(task);
+        var modelFailure=new AtomicReference<Throwable>();
         var optionsBuilder = GenerateOptions.builder().maxTokens(maxOutput).stream(false)
                 .responseFormat(ResponseFormat.jsonObject())
-                .executionConfig(ExecutionConfig.builder().timeout(timeout).maxAttempts(1).build());
+                .executionConfig(ExecutionConfig.builder().timeout(limits.framework()).maxAttempts(1).build());
         // SDK 将此字段序列化为 Chat Completions 的 reasoning_effort，空值交给服务默认设置。
         if (!selected.reasoningEffort().isEmpty()) optionsBuilder.reasoningEffort(selected.reasoningEffort());
         var options = optionsBuilder.build();
         var delegate = JdkHttpTransport.builder().client(client).config(HttpTransportConfig.builder()
-                .connectTimeout(Duration.ofSeconds(20)).responseTimeout(timeout).readTimeout(timeout).build()).build();
-        var transport = new AccountedTransport(delegate, endpoint, beforeRequest, afterResponse,runtimes.spec(Store.string(task,"kind")).maxRequests());
+                .connectTimeout(Duration.ofSeconds(20)).responseTimeout(limits.request()).readTimeout(limits.request()).build()).build();
+        var transport = new AccountedTransport(delegate, endpoint, beforeRequest, afterResponse,maxRequests);
         var model = OpenAIChatModel.builder().modelName(selected.model()).apiKey(selected.apiKey())
                 .baseUrl(endpoint.getScheme()+"://"+endpoint.getRawAuthority()).endpointPath(endpoint.getPath())
                 .stream(false).generateOptions(options).httpTransport(transport).build();
         MiddlewareBase audit = new MiddlewareBase() {
+            @Override public Flux<AgentEvent> onModelCall(Agent agent,RuntimeContext context,ModelCallInput input,
+                    Function<ModelCallInput,Flux<AgentEvent>> next) {
+                return next.apply(input).doOnError(failure->modelFailure.compareAndSet(null,failure));
+            }
             @Override public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext context, ReasoningInput input,
                     Function<ReasoningInput,Flux<AgentEvent>> next) {
                 return Flux.defer(() -> {
@@ -70,7 +79,13 @@ public class AgentScopeExecutor {
         // 每个任务独立创建 Agent，长期故事记忆由业务模块按版本提供。
         try (var handle=runtimes.build(task,model,system,options,audit)) {
             transport.contextBudget=body->handle.tools().reserveRequestSpace(body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,maxContext);
-            var reply = handle.agent().call(List.of(new UserMessage(prompt))).block(timeout.multipliedBy(runtimes.spec(Store.string(task,"kind")).maxRequests()).plusSeconds(5));
+            io.agentscope.core.message.Msg reply;
+            try {
+                reply=handle.agent().call(List.of(new UserMessage(prompt))).block(limits.task());
+            } catch(RuntimeException failure) {
+                throw failedRequest(limits,modelFailure.get()==null?failure:modelFailure.get());
+            }
+            if(modelFailure.get()!=null) throw failedRequest(limits,modelFailure.get());
             handle.tools().check();
             if (reply == null || reply.getTextContent().isBlank()) throw new IllegalStateException("AgentScope 未返回文本");
             runtimes.validateDelegation(task,handle,reply.getTextContent());
@@ -78,6 +93,13 @@ public class AgentScopeExecutor {
         } finally {
             transport.close();
         }
+    }
+
+    public ModelTimeoutPolicy.Limits limits(Map<String,Object> task) {
+        return timeouts.limits(Store.string(task,"kind"),runtimes.spec(Store.string(task,"kind")).maxRequests());
+    }
+    private IllegalStateException failedRequest(ModelTimeoutPolicy.Limits limits,Throwable failure) {
+        return new IllegalStateException("模型请求失败（单次等待上限"+limits.request().toSeconds()+"秒）："+failure.getMessage(),failure);
     }
 
     static final class AccountedTransport implements HttpTransport {

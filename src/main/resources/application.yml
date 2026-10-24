@@ -75,4 +75,8 @@ novel:
     output-per-million: ${NOVEL_OUTPUT_PRICE:0}
     max-output-tokens: ${NOVEL_MAX_OUTPUT:8192}
     timeout-seconds: 180
+    role-timeout-seconds:
+      memory: 600
+      memory_repair: 600
+      check_memory: 300
     requests-per-minute: 30
