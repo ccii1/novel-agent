@@ -6,12 +6,20 @@ import org.apache.tinkerpop.gremlin.tinkergraph.structure.TinkerGraph;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.springframework.stereotype.Component;
 import java.util.*;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.ObjectProvider;
 
-// 历史 Markdown 附录保留原关系记录，本组件按指定版本提供兼容查询。
+// 关系查询按配置选择服务，版本数据仅在需要创建图投影时读取。
 @Component
 public class StoryGraph {
     private final Json json;
-    public StoryGraph(Json json) { this.json=json; }
+    private final Neo4jStoryGraph neo4j;
+    public StoryGraph(Json json,ObjectProvider<Neo4jStoryGraph> neo4j) { this.json=json;this.neo4j=neo4j.getIfAvailable(); }
+    public String mode() { return neo4j==null?"tinkergraph":"neo4j"; }
+    public Map<String,Object> query(String owner,String novel,long version,List<String> characters,int depth,Supplier<List<Map<String,Object>>> facts) {
+        if(depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
+        return neo4j==null?query(facts.get(),version,characters,depth):neo4j.query(owner,novel,version,characters,depth,facts);
+    }
 
     public Map<String,Object> query(List<Map<String,Object>> facts,long version,List<String> characters,int depth) {
         if(depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");

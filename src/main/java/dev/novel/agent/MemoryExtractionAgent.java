@@ -37,6 +37,8 @@ public class MemoryExtractionAgent implements NovelAgent {
                 "MEMORY.md、各目录 INDEX.md 和 chapters/ 文件由程序维护，不在 files 中输出。每项 description 说明本章变化与影响，最多800字符。"+
                 "evidencePaths 引用本章实际支持修改的 /paragraphs/p0 等路径；在正文中记录章节、revision、片段标识及事件来源。不得编造引用。"+
                 "物品转移、关系和认知变化要同步更新相关人物文件；世界事实、人物推测和未来计划分别表达。历史事件通过章节记录追溯。"+
+                "人物关系另外维护 relations/ 下的 Markdown 文件，包含 story-relations 代码围栏，内容为 JSON 数组；每项包含 subject、predicate、object、detail、evidence 字符串和 deleted 布尔值。"+
+                "subject、object 使用稳定的人物名称；predicate 使用稳定关系类型。每条关系只在一个关系文件维护，解除关系保留该项并设置 deleted=true；evidence 记录正文证据。人物文件使用链接引用关系文件。"+
                 "伏笔文件明确记录 OPEN/ADVANCING/RESOLVED/CANCELLED 状态，处理计划有指定章节时记录 dueChapter 与来源，description 保留状态和计划关键词供目录搜索。"+
                 (repairing?"本次修正保持正文与大纲。可以只返回需要修复的文件，未返回的候选文件由程序保留；使用 read_candidate_memory 查看待审内容。修正要求="+json.write(repair):"")+
                 "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);

@@ -1,6 +1,6 @@
 # Novel Agent
 
-面向中文网文持续连载的个人创作工作台，前端使用 React、TypeScript、Vite 与 TanStack Query，后端使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Apache TinkerGraph，兼容已有 H2 数据。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
+面向中文网文持续连载的个人创作工作台，前端使用 React、TypeScript、Vite 与 TanStack Query，后端使用 Java 17、Spring Boot、AgentScope Java、MyBatis、MySQL、Flyway、Redisson 和 Neo4j，兼容已有 H2 数据及进程内 TinkerGraph 查询。通过阶段规划、逐章写作、并行检查和修改流程维护剧情，人工负责选题、阶段审核及重要剧情变更。MySQL 适配、Redis 记忆缓存与现有业务已通过独立环境验证，验证范围及真实模型结果见文末；已有作品数据尚未迁移到 MySQL。
 
 整体流程、Agent 职责、人工处理位置与持久化机制见 [小说 Agent 流程与职责](docs/multi-agent-workflow.md)，包含逐章创作、协调委派、记忆处理及执行架构的 Mermaid 图。
 
@@ -36,10 +36,17 @@ npm.cmd ci
 | 配置 | 用途 |
 | --- | --- |
 | `Novel Frontend` | 执行 `frontend/package.json` 中的 `dev` 命令，地址为 `http://127.0.0.1:5173` |
-| `Novel Backend` | 使用项目 JDK 和 `local` profile 启动 Spring Boot，端口8096 |
+| `Novel Backend` | 自动启动 Redis 与 Neo4j，使用项目 JDK 和 `local` profile 启动 Spring Boot，使用 H2，端口8096 |
 | `Novel Fullstack` | 同时运行上述两个配置 |
+| `Novel MySQL` | 检查并启动本机 MySQL Windows 服务 |
+| `Novel Redis` | 检查并启动本机 Redis，已经运行时直接复用 |
+| `Novel Neo4j` | 检查并启动本机 Neo4j，等待 HTTP 和 Bolt 接口就绪 |
+| `Novel Backend MySQL` | 自动启动 MySQL、Redis 和 Neo4j，使用 `local,mysql` profiles 启动后端 |
+| `Novel Fullstack MySQL` | 同时启动 MySQL 后端与前端，后端自动启动依赖 |
 
-已有后端在 IDEA 运行时，只运行 `Novel Frontend`。后端配置需要 Java 17或更高版本；使用 MySQL 时，将 `Novel Backend` 的 Active profiles 设置为 `local,mysql`。`npm` 配置需要 IDEA 启用 JavaScript/Node.js 功能，Node interpreter 使用本机 `D:\Program Files\NodeJs\node.exe`。共享配置不包含密钥。
+已有后端在 IDEA 运行时，只运行 `Novel Frontend`。后端配置需要 Java 17或更高版本；`npm` 配置需要 IDEA 启用 JavaScript/Node.js 功能，Node interpreter 使用本机 `D:\Program Files\NodeJs\node.exe`。中间件入口需要 IDEA 启用 Shell Script 插件，使用 Windows PowerShell 执行项目脚本。共享配置不包含密钥。
+
+已有作品继续使用 `Novel Fullstack`；完成数据迁移后可以选择 `Novel Fullstack MySQL`。MySQL 连接信息读取被 Git 忽略的 `config/mysql-local.properties`，Neo4j 读取 `config/neo4j-local.json`。MySQL 服务已经运行时启动配置直接完成；服务停止时需要当前 IDEA 进程具备启动该 Windows 服务的权限。Redis 和 Neo4j 通过后台进程运行，IDEA 中结束启动脚本不会关闭这些服务。
 
 开发页面使用5173端口；Vite 将 `/api` 转发到8096，保存 React 或 CSS 文件后执行热更新。后端端口改变时，在前端运行配置的环境变量中设置 `NOVEL_BACKEND_URL=http://127.0.0.1:实际端口`。本次升级包含新增后端接口，需要在 IDEA 重新启动后端后使用新版前端。
 
@@ -529,9 +536,15 @@ IDEA 的 Run Configuration 使用 Java 17，启用 `local` profile，并设置�
 
 Browser 地址为 [Neo4j Browser](http://127.0.0.1:7474/browser/)，Bolt 为 `bolt://127.0.0.1:7687`，默认数据库与账号均为 `neo4j`。密码和连接信息保存在 Git 忽略的 `config/neo4j-local.json`，不包含在仓库与全局环境记录中。
 
-当前使用隐藏的后台进程运行，未注册 Windows 服务或配置开机启动。进程结束后，可在项目目录执行 `.\start-neo4j.ps1`，该脚本检查安装目录、Java 和监听端口，并将标准输出与错误保存到 Neo4j 日志目录。启动成功需要等待日志中的 `Started.`，首次启动可能需要数十秒。
+当前使用隐藏的后台进程运行，未注册 Windows 服务或配置开机启动。进程结束后，可在项目目录执行 `.\start-neo4j.ps1`，该脚本检查安装目录、Java 和监听端口，并将标准输出与错误保存到 Neo4j 日志目录。脚本等待 HTTP 和 Bolt 接口就绪；已有可用服务时直接完成。
 
-安装包已通过官方下载的 SHA-256 校验；Neo4j 配置检查、HTTP 版本检查以及通过 Bolt 登录执行 `RETURN 1 AS ready` 均通过。小说项目当前仍使用 TinkerGraph，业务数据尚未接入 Neo4j。本次安装没有启动、重启或停止小说服务，也没有运行项目构建、测试或数据迁移。
+IDEA 后端配置和 `start.ps1` 默认启用 Neo4j。直接启动 Java 时，通过 `NOVEL_NEO4J_ENABLED=true` 启用；`NOVEL_NEO4J_CONFIG` 指定连接 JSON，字段为 `uri`、`database`、`username`、`password`。样例见 `config/neo4j-local.example.json`。`NOVEL_NEO4J_NAMESPACE` 指定实例命名空间。连接失败会阻止应用启动；`/api/status` 的 `graphDatabase` 返回 `neo4j` 或 `tinkergraph`。明确关闭时使用进程内查询。
+
+正式记忆内容保存在 Markdown。人物和关系文件可以包含 `story-relations` 代码围栏，内容为 JSON 数组，字段为 `subject`、`predicate`、`object`、`detail`、`evidence`、`deleted`。关系文件由记忆 Agent 生成并经过文件审核，每条关系集中维护，解除关系设置 `deleted=true`。普通叙述不会自动推断成关系；旧 `memory-record` 关系附录继续支持查询。
+
+关系查询按实例、用户、作品和记忆版本隔离。某个版本首次查询时，从已发布 Markdown 建立不可变 Neo4j 投影；关系和完成标记在一个 Neo4j 事务内提交。后续查询通过一次 Cypher 请求执行1至3层关系遍历，保留原有 Redis 查询缓存。新版本按需建立独立投影，历史查询保留原有状态；历史修改产生的新记忆版本按同样方式处理。每个被查询的版本保存一份关系投影，历史关系很多时需要相应的图数据库存储空间。
+
+Neo4j 服务使用共享 Driver 和连接池，每次查询使用独立 Session，固定数据库并使用参数化查询；节点具有唯一约束。图数据库用于人物关系遍历，Markdown 文件搜索继续使用现有文件工具。真实 Neo4j 检查通过环境变量 `NOVEL_NEO4J_TEST=true` 启用，测试使用独立 namespace 并清理自己的图数据。
 
 ### MySQL 与已有数据迁移
 
@@ -628,7 +641,7 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 | [AgentOutputReader.java](src/main/java/dev/novel/agent/validation/AgentOutputReader.java) | Jackson 类型映射与嵌套字段验证 |
 | [TaskExecutionConfiguration.java](src/main/java/dev/novel/config/TaskExecutionConfiguration.java) | Spring 任务线程池与关闭流程 |
 | [MemoryService.java](src/main/java/dev/novel/service/MemoryService.java) | 版本化事实、上下文组装及记忆增量校验 |
-| [StoryGraph.java](src/main/java/dev/novel/integration/graph/StoryGraph.java) | TinkerGraph 关系构建、限定深度查询与资源关闭 |
+| [StoryGraph.java](src/main/java/dev/novel/integration/graph/StoryGraph.java) | Neo4j/TinkerGraph 查询选择、限定深度与历史版本读取 |
 | [MemoryProjectionCache.java](src/main/java/dev/novel/integration/cache/MemoryProjectionCache.java) | 用户和版本范围内的 Redis 查询缓存 |
 | [ProjectService.java](src/main/java/dev/novel/service/ProjectService.java) | 人工审批、暂停恢复和历史修改 |
 | [ModelClient.java](src/main/java/dev/novel/integration/model/ModelClient.java) | 模型配置选择、响应复用、请求和结算 |

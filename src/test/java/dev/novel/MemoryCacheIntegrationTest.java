@@ -36,6 +36,7 @@ class MemoryCacheIntegrationTest {
                 {"subject":"沈月","predicate":"KNOWS","object":"密信","detail":"知道内容","deleted":false,"evidence":"沈月知道密信"}]}
                 """);
         store.transaction(()-> {memory.commit(first,1,1,delta);return null;});
+        memory.commit(second,1,1,json.read("{\"summary\":\"没有人物关系变化\",\"facts\":[],\"relations\":[]}"));
         try {
             assertThat((List<?>)memory.graph(first,1,List.of("林舟"),1).get("edges")).hasSize(1);
             assertThat((List<?>)memory.graph(first,1,List.of("林舟"),2).get("edges")).hasSize(2);

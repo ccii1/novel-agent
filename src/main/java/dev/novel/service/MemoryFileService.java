@@ -279,11 +279,15 @@ public class MemoryFileService {
         mapper.files(novel,base).forEach(row->available.add(Store.string(row,"path")));
         available.add(chapterPath(Store.integer(store.novel(novel),"chapter_no")));
         var ids=new HashMap<String,String>();
+        var relationFiles=new HashMap<String,String>();
+        for(var row:mapper.files(novel,base)) if(!changed.contains(row.get("path")) && Set.of("relation","character").contains(row.get("kind")))
+            validateRelationKeys(markdown.parse(content(novel,row)),Store.string(row,"path"),relationFiles);
         for(var row:mapper.files(novel,base)) if(!changed.contains(row.get("path"))) ids.put(Store.string(row,"entity_key"),Store.string(row,"path"));
         for(var item:delta.path("files")) {
             String path=item.path("path").asText(),expected=item.path("expectedHash").asText();
             if(!hash(novel,base,path).equals(expected)) throw new IllegalStateException("记忆文件已变化，需要重新读取："+path);
             var document=markdown.parse(item.path("content").asText());
+            validateRelationKeys(document,path,relationFiles);
             var old=mapper.file(novel,base,path);
             if(old!=null && !document.id().equals(old.get("entity_key"))) throw new IllegalArgumentException("已有记忆文件需要保留稳定标识："+path);
             for(String destination:document.links()) {
@@ -303,6 +307,13 @@ public class MemoryFileService {
             if(previous!=null) throw new IllegalArgumentException("同一记忆标识已经保存在文件："+previous);
         }
         return delta;
+    }
+    private void validateRelationKeys(MemoryMarkdown.Document document,String path,Map<String,String> locations) {
+        for(var relation:document.relations()) {
+            String key=json.write(List.of(relation.path("subject").asText(),relation.path("predicate").asText(),relation.path("object").asText()));
+            String previous=locations.putIfAbsent(key,path);
+            if(previous!=null) throw new IllegalArgumentException("关系重复记录，需要在同一文件维护："+previous+"；"+path);
+        }
     }
     public record Prepared(String novel,long version,long base,int chapter,int revision,String delta,
             Map<String,Map<String,Object>> rows) {}
@@ -402,13 +413,29 @@ public class MemoryFileService {
     }
     public List<Map<String,Object>> snapshot(String novel,long version) {
         var result=new ArrayList<Map<String,Object>>();
+        var nativeRelations=new LinkedHashMap<String,Map<String,Object>>();
         for(var row:manifest(novel,version)) {
             if(Set.of("index","state","handoff").contains(row.get("kind")) || Store.string(row,"path").startsWith("chapters/")) continue;
             String text=content(novel,row);var doc=markdown.parse(text);
             String kind=switch(doc.type()) {case "world"->"WORLD";case "character"->"CHARACTER";case "hook"->"FORESHADOW";case "relation"->doc.legacy().isBlank()?"EVENT":"RELATION";default->"EVENT";};
             String data=doc.legacy().isBlank()?json.write(Map.of("name",doc.name(),"detail",text,"path",row.get("path"))):json.write(json.read(doc.legacy()));
             result.add(Map.of("id",row.get("fingerprint"),"novel_id",novel,"memory_key",doc.id(),"kind",kind,"chapter_no",row.get("chapter_no"),"version",version,"content",data));
+            for(var relation:doc.relations()) {
+                String key="relation:"+json.write(List.of(relation.path("subject").asText(),relation.path("predicate").asText(),relation.path("object").asText()));
+                String memoryKey="relation:"+relation.path("subject").asText()+":"+relation.path("predicate").asText()+":"+relation.path("object").asText();
+                var projected=Map.<String,Object>of("id",row.get("fingerprint"),"novel_id",novel,"memory_key",memoryKey,"kind","RELATION",
+                        "chapter_no",row.get("chapter_no"),"version",version,"content",json.write(relation));
+                var previous=nativeRelations.putIfAbsent(key,projected);
+                if(previous!=null && !previous.get("content").equals(projected.get("content")))
+                    throw new IllegalStateException("多个 Markdown 文件包含冲突关系："+key);
+            }
         }
+        result.removeIf(row->{
+            if(!"RELATION".equals(row.get("kind"))) return false;
+            var relation=json.read(Store.string(row,"content"));
+            return nativeRelations.containsKey("relation:"+json.write(List.of(relation.path("subject").asText(),relation.path("predicate").asText(),relation.path("object").asText())));
+        });
+        result.addAll(nativeRelations.values());
         return result;
     }
     public void restore(String novel,long version,int chapter) {

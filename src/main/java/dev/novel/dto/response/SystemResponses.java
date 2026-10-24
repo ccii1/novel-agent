@@ -17,7 +17,7 @@ public final class SystemResponses {
     public record SystemStatusResponse(
             EngineStatusResponse engine, boolean modelConfigured, String timezone,
             SkillStatusResponse skill, String agentFramework, String persistence,
-            String rateLimiter, boolean researchModelSelection, boolean retryModelSelection, String database) {}
+            String rateLimiter, boolean researchModelSelection, boolean retryModelSelection, String database, String graphDatabase) {}
 
     public record AgentResponse(
             String kind, String agent, String purpose, List<String> contextFiles,

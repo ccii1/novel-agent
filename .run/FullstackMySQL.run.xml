@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Novel Fullstack MySQL" type="CompoundRunConfigurationType">
+    <toRun name="Novel Backend MySQL" type="SpringBootApplicationConfigurationType" />
+    <toRun name="Novel Frontend" type="js.build_tools.npm" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -1,4 +1,4 @@
-param([int]$Port = 6379)
+﻿param([int]$Port = 6379)
 $ErrorActionPreference = 'Stop'
 $redisDirectory = 'D:\Program Files\Redis-x64-5.0.14.1'
 $redisServer = Join-Path $redisDirectory 'redis-server.exe'

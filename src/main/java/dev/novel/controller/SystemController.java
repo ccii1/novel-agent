@@ -8,6 +8,7 @@ import dev.novel.integration.model.AgentScopeExecutor;
 import dev.novel.integration.model.ModelRateLimiter;
 import dev.novel.service.SkillService;
 import dev.novel.integration.storage.DatabaseStorage;
+import dev.novel.integration.graph.StoryGraph;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,22 +20,24 @@ public class SystemController {
     private final ModelRateLimiter limiter;
     private final DatabaseStorage storage;
     private final ResponseMapper responses;
+    private final StoryGraph graph;
 
     public SystemController(TaskEngine engine, ModelClient model, SkillService skills,
-            ModelRateLimiter limiter, DatabaseStorage storage, ResponseMapper responses) {
+            ModelRateLimiter limiter, DatabaseStorage storage, ResponseMapper responses, StoryGraph graph) {
         this.engine = engine;
         this.model = model;
         this.skills = skills;
         this.limiter = limiter;
         this.storage = storage;
         this.responses = responses;
+        this.graph = graph;
     }
 
     @GetMapping("/status")
     public SystemStatusResponse status() {
         return new SystemStatusResponse(responses.to(engine.status(), EngineStatusResponse.class),
                 model.configured(), "Asia/Shanghai", skills(), AgentScopeExecutor.FRAMEWORK,
-                "mybatis", limiter.mode(), true, true, storage.kind());
+                "mybatis", limiter.mode(), true, true, storage.kind(), graph.mode());
     }
 
     @GetMapping("/skills")

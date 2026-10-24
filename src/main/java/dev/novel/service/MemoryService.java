@@ -36,8 +36,9 @@ public class MemoryService {
     public Map<String,Object> graph(String novel, long version, List<String> characters, int depth) {
         if(depth<1 || depth>3) throw new IllegalArgumentException("graph 查询深度必须为1至3");
         var selected=characters.stream().distinct().sorted().toList();
-        return cache.graph(novel,version,json.write(Map.of("characters",selected,"depth",depth)),
-                ()->relationships.query(snapshot(novel,version),version,selected,depth));
+        String owner=Store.string(store.novel(novel),"user_id");
+        return cache.graph(novel,version,json.write(Map.of("characters",selected,"depth",depth,"graphEngine",relationships.mode(),"schema",3)),
+                ()->relationships.query(owner,novel,version,selected,depth,()->snapshot(novel,version)));
     }
     public Map<String,Object> contextData(Map<String,Object> novel,int chapter) {
         String id=(String)novel.get("id"); long version=Store.number(novel,"memory_version");
@@ -48,8 +49,7 @@ public class MemoryService {
         });
         List<Map<String,Object>> relevant=new ArrayList<>();
         var snapshot=snapshot(id,version);
-        var relatedGraph=cache.graph(id,version,json.write(Map.of("characters",characters.stream().distinct().sorted().toList(),"depth",2)),
-                ()->relationships.query(snapshot,version,characters,2));
+        var relatedGraph=graph(id,version,characters,2);
         String terms=json.write(relatedGraph.get("nodes"));
         Set<String> requestedKeys=new HashSet<>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) item.path("foreshadowIds").forEach(key->requestedKeys.add(key.asText()));});

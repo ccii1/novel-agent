@@ -39,7 +39,7 @@ flowchart TD
 | `agent/validation` | JSON 类型、Bean Validation、大纲及引用证据检查 | `AgentOutputReader`、`PlanValidator`、`ReviewValidator` |
 | `integration/model` | 供应商选择、HTTP 传输、逐次费用及限流 | `ModelClient`、`AgentCallAccounting`、`AgentScopeExecutor` |
 | `integration/cache` | Redis 记忆快照与关系查询缓存 | `MemoryProjectionCache` |
-| `integration/graph` | 从记忆快照构建 TinkerGraph 并查询人物关系 | `StoryGraph` |
+| `integration/graph` | 按作品版本发布 Neo4j 关系投影与查询，支持进程内 TinkerGraph | `StoryGraph`、`Neo4jStoryGraph` |
 | `integration/storage` | 当前数据库类型及描述 | `DatabaseStorage` |
 | `repository/mapper`、`repository/model` | 类型化 MyBatis 接口与持久化数据 | `TaskDispatchMapper`、`ModelCallMapper`、`MemoryMapper` |
 | `repository` | 命名 SQL 调用、事务入口、事件及任务创建 | `Store` |
@@ -49,7 +49,7 @@ flowchart TD
 
 `src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 是固定版本的上游技能资料，应用适配规则在 `SkillService` 中维护。
 
-`MemoryFileService` 保存不可变 Markdown 文件，`MemoryFileMapper` 保存发布清单和指纹；新版本共享未变化文件。`MemoryMarkdown` 使用 CommonMark 和 YAML 库处理格式，差异使用 java-diff-utils。`MemoryFileController` 提供分页、搜索与读取接口，`MemoryFileHealthService` 检查已发布文件。`StoryGraph` 兼容历史 Markdown 附录中的关系记录，查询结束后关闭图实例。
+`MemoryFileService` 保存不可变 Markdown 文件，`MemoryFileMapper` 保存发布清单和指纹；新版本共享未变化文件。`MemoryMarkdown` 使用 CommonMark 和 YAML 库处理格式，差异使用 java-diff-utils。`MemoryFileController` 提供分页、搜索与读取接口，`MemoryFileHealthService` 检查已发布文件。`StoryGraph` 读取 Markdown 中的明确关系记录，包含 `story-relations` 与历史关系附录；`Neo4jStoryGraph` 按用户、作品和版本建立图投影，使用唯一约束和参数化 Cypher 查询。`Neo4jConfiguration` 读取本机连接文件并检查连接，`/api/status` 显示当前查询组件。
 
 ## 前端与运行文件
 
