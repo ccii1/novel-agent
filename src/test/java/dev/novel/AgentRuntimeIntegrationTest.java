@@ -65,6 +65,42 @@ class AgentRuntimeIntegrationTest {
         assertThatThrownBy(()->tools.draft("修改正文")).hasMessageContaining("只能选择一个");
         assertThatThrownBy(()->coordination.approve(id,task)).hasMessageContaining("等待");
     }
+    @Test void tenSmallMemoryReadsCompleteWithinTheSameTaskBudget() {
+        String id=novel();
+        var facts=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<8;index++) facts.add(Map.of("key","character-"+index,"kind","CHARACTER","name","人物"+index,
+                "detail","第"+index+"个人物掌握钥匙线索。","evidence","人物核对钥匙。"));
+        memory.commit(id,1,1,json.tree(Map.of("summary","核对钥匙","facts",facts,"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String taskId=store.enqueue(id,"WRITE",2,0,1,UUID.randomUUID().toString(),Map.of());
+        var tools=new StoryReadTools(store.one("tasks.find",taskId),context,memory,store,json);
+        var directory=json.read(tools.files("characters",0,10));
+        tools.files("hooks",0,10);
+        for(var row:directory.path("files")) {
+            if(row.path("path").asText().endsWith("/INDEX.md")) continue;
+            var result=json.read(tools.file(row.path("path").asText(),0,1500));
+            assertThat(result.path("content").asText()).contains("钥匙线索");
+        }
+        tools.check();
+        var events=db.list("SELECT message FROM events WHERE task_id=? AND type='AGENT_TOOL_USED' ORDER BY id",taskId);
+        assertThat(events).hasSize(10);
+        var last=json.read(Store.string(events.get(9),"message"));
+        assertThat(last.path("toolCall").asInt()).isEqualTo(10);
+        assertThat(last.path("remainingToolBytes").asInt()).isPositive();
+    }
+    @Test void cumulativeToolBytesStillStopReadsAndPreserveTheError() {
+        String id=novel();String taskId=store.enqueue(id,"CHECK_PLOT",1,0,0,UUID.randomUUID().toString(),Map.of());
+        var tools=new StoryReadTools(store.one("tasks.find",taskId),context,memory,store,json,1024);
+        assertThatThrownBy(()->{for(int index=0;index<100;index++) tools.paragraph("p1");})
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("剩余预算");
+        assertThatThrownBy(tools::check).hasMessageContaining("剩余预算");
+    }
+    @Test void requestHeadroomStillRestrictsToolReads() {
+        String id=novel();String taskId=store.enqueue(id,"CHECK_PLOT",1,0,0,UUID.randomUUID().toString(),Map.of());
+        var tools=new StoryReadTools(store.one("tasks.find",taskId),context,memory,store,json);
+        tools.reserveRequestSpace(119900,120000);
+        assertThatThrownBy(()->tools.paragraph("p1")).hasMessageContaining("剩余预算0字节");
+    }
     @Test void reviewRoundRequiresAllRolesAndSameRevision() {
         String id=novel();var novel=store.novel(id);
         reviews.start(novel,1,0);reviews.start(novel,1,0);

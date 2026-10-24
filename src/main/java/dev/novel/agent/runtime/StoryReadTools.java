@@ -34,7 +34,7 @@ public class StoryReadTools {
     }
     private synchronized String read(String name,Supplier<Object> action) {
         try {
-            if(uses.incrementAndGet()>8) throw new IllegalStateException("单次 Agent 任务最多执行8次工具调用");
+            int callNumber=uses.incrementAndGet();
             var novel=context.novel(task);
             Object result=action.get();
             if(Store.number(novel,"memory_version")!=Store.number(context.novel(task),"memory_version")) throw new IllegalStateException("工具读取期间记忆版本已经变化");
@@ -42,7 +42,7 @@ public class StoryReadTools {
             int bytes=projection.bytes(response);
             if(bytes>availableBytes()) throw new IllegalStateException("工具"+name+"需要"+bytes+"字节，剩余预算"+availableBytes()+"字节；请使用更具体的关键词和分页参数");
             remainingBytes-=bytes;
-            store.event(Store.string(task,"novel_id"),Store.string(task,"id"),"AGENT_TOOL_USED",json.write(Map.of("tool",name,"responseBytes",bytes,"remainingToolBytes",remainingBytes)),(String)task.get("execution_id"));
+            store.event(Store.string(task,"novel_id"),Store.string(task,"id"),"AGENT_TOOL_USED",json.write(Map.of("tool",name,"toolCall",callNumber,"responseBytes",bytes,"remainingToolBytes",remainingBytes)),(String)task.get("execution_id"));
             return response;
         } catch(RuntimeException failure) { error.compareAndSet(null,failure);throw failure; }
     }

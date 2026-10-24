@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_CONTEXT_LIVE_TEST",matches="true")
 @ActiveProfiles("local")
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:file:./.work/context-live;DB_CLOSE_ON_EXIT=FALSE",
-        "novel.engine-enabled=false","novel.redis.enabled=false","novel.model.max-output-tokens=512"})
+        "novel.engine-enabled=false","novel.redis.enabled=false","novel.model.max-output-tokens=2048"})
 class LiveToolContextTest {
     @Autowired Store store;
     @Autowired TestDatabase db;
@@ -30,6 +30,31 @@ class LiveToolContextTest {
     @Autowired ModelClient model;
     @Autowired Json json;
 
+    @Test @Timeout(180)
+    void actualModelCompletesTenMemoryReadsAndFinalJson() throws Exception {
+        String id=projects.create("多文件工具验证","核对人物掌握的线索","保持人物知情范围",2,BigDecimal.TEN,BigDecimal.ONE,"local","gpt-6.1-sol","low");
+        store.update("tasks.cancelNovel",id);
+        var facts=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<10;index++) facts.add(Map.of("key","person-"+index,"kind","CHARACTER","name","人物"+index,
+                "detail","人物"+index+"掌握第"+index+"号钥匙线索。","evidence","人物核对钥匙。"));
+        memory.commit(id,1,1,json.tree(Map.of("summary","人物线索核对","facts",facts,"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String taskId=store.enqueue(id,"WRITE",2,0,1,UUID.randomUUID().toString(),Map.of());
+        var paths=memory.files().manifest(id,1).stream().map(row->Store.string(row,"path"))
+                .filter(path->path.startsWith("characters/") && !path.endsWith("/INDEX.md")).sorted().toList();
+        assertThat(paths).hasSize(10);
+        var result=model.call(store.one("tasks.find",taskId),AgentInstructions.SYSTEM,
+                "执行文件读取验证。必须对下面十个不同路径分别调用一次 read_memory，offset=0、length=4000；请在同一轮提出十次调用。"+
+                "每个路径都必须读取。收到十份结果后停止工具调用，仅输出 JSON {\"verifiedFiles\":10}，不要创作正文。路径="+json.write(paths));
+        assertThat(result.path("verifiedFiles").asInt()).isEqualTo(10);
+        var events=db.list("SELECT message FROM events WHERE task_id=? AND type='AGENT_TOOL_USED' ORDER BY id",taskId);
+        assertThat(events).hasSize(10);
+        assertThat(json.read(Store.string(events.get(9),"message")).path("remainingToolBytes").asInt()).isPositive();
+        var turns=db.list("SELECT request_body FROM model_call_turns WHERE task_id=? ORDER BY turn_no",taskId);
+        assertThat(turns.size()).isBetween(2,3);
+        for(var turn:turns) assertThat(Store.string(turn,"request_body").getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(120000);
+        assertThat(db.one("SELECT status FROM model_calls WHERE task_id=?",taskId).get("status")).isEqualTo("COMPLETE");
+    }
     @Test @Timeout(180)
     void actualModelCompletesMemoryToolRoundTripWithLargeRetainedEvidence() throws Exception {
         String id=projects.create("上下文工具验证","林舟核对钥匙来源","保持人物知情范围",2,BigDecimal.TEN,BigDecimal.ONE,"local","gpt-6.1-sol","low");
