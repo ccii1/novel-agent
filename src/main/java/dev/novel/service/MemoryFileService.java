@@ -193,30 +193,38 @@ public class MemoryFileService {
         return Map.of("memoryVersion",version,"files",selected,"total",matches.size(),"nextOffset",next,"hasMore",next<matches.size());
     }
     private Map<String,Object> descriptor(Map<String,Object> row) {
-        return Map.of("path",row.get("path"),"title",row.get("title"),"description",row.get("description"),"hash",row.get("fingerprint"),"bytes",row.get("bytes"),"legacy",Store.string(row,"kind").startsWith("legacy-"));
+        boolean legacy=Store.string(row,"kind").startsWith("legacy-");
+        return Map.of("path",row.get("path"),"title",row.get("title"),"description",row.get("description"),"hash",row.get("fingerprint"),"bytes",row.get("bytes"),"legacy",legacy,"editPolicy",editPolicy(Store.string(row,"path"),legacy));
+    }
+    private Map<String,Object> editPolicy(String path,boolean legacy) {
+        boolean generated=path.equals("MEMORY.md") || path.endsWith("/INDEX.md") || path.startsWith("chapters/");
+        return Map.of("readOnly",legacy || generated,"kind",legacy?"historical-source":generated?"generated":"current-topic","instruction",legacy?
+                "历史来源只读。核对事实后更新普通主题文件；新主题使用独立 id 和 path，不复制 memory-record 附录。":
+                generated?"此文件由程序维护，只能读取，不在 files 修改列表中输出。":
+                "当前主题可提交修改；保留本文件稳定 id 和 path，引用当前 hash，不包含 memory-record 附录。");
     }
     public Map<String,Object> read(String novel,long version,String path,int offset,int length,int budget) {
         ensure(novel,version);var row=mapper.file(novel,version,path(path));
         if(row==null) throw new NoSuchElementException("记忆文件不存在："+path);
-        return page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,budget);
+        return page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,budget,Store.string(row,"kind").startsWith("legacy-"));
     }
-    private Map<String,Object> page(String path,long version,String fingerprint,String text,int offset,int length,int budget) {
+    private Map<String,Object> page(String path,long version,String fingerprint,String text,int offset,int length,int budget,boolean readOnly) {
         int total=text.codePointCount(0,text.length());
         if(offset<0 || offset>total || length<1 || length>12000) throw new IllegalArgumentException("记忆读取范围无效");
         int low=0,high=Math.min(length,total-offset);
         while(low<high) {
             int middle=(low+high+1)/2;
-            if(bytes(json.write(json.write(filePage(path,version,fingerprint,text,offset,offset+middle,total))))<=budget) low=middle;
+            if(bytes(json.write(json.write(filePage(path,version,fingerprint,text,offset,offset+middle,total,readOnly))))<=budget) low=middle;
             else high=middle-1;
         }
-        var result=filePage(path,version,fingerprint,text,offset,offset+low,total);
+        var result=filePage(path,version,fingerprint,text,offset,offset+low,total,readOnly);
         if((low==0 && offset<total) || bytes(json.write(json.write(result)))>budget) throw new IllegalStateException("工具剩余预算不足以读取文件");
         return result;
     }
-    private Map<String,Object> filePage(String path,long version,String fingerprint,String text,int offset,int end,int total) {
+    private Map<String,Object> filePage(String path,long version,String fingerprint,String text,int offset,int end,int total,boolean readOnly) {
         return Map.of("path",path,"memoryVersion",version,"hash",fingerprint,
                 "content",text.substring(text.offsetByCodePoints(0,offset),text.offsetByCodePoints(0,end)),
-                "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total);
+                "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total,"editPolicy",editPolicy(path,readOnly));
     }
     public Map<String,Object> batch(String novel,long version,List<String> paths,int offset,int length,int budget) {
         if(paths==null || paths.isEmpty() || paths.size()>30 || new HashSet<>(paths).size()!=paths.size())
@@ -232,7 +240,7 @@ public class MemoryFileService {
             if(room<1024) { pending.addAll(paths.subList(index,paths.size()));break; }
             int share=Math.max(512,(room-128*(paths.size()-index))/(paths.size()-index));
             String path=paths.get(index);var row=rows.get(path);
-            results.add(page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share)));
+            results.add(page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share),Store.string(row,"kind").startsWith("legacy-")));
         }
         response.put("hasMore",!pending.isEmpty() || results.stream().anyMatch(file->Boolean.TRUE.equals(file.get("hasMore"))));
         return response;
@@ -259,7 +267,7 @@ public class MemoryFileService {
                 found=true;
                 if(count++>=offset && matches.size()<limit) {
                     String snippet=lines.get(line);if(snippet.length()>200) snippet=snippet.substring(0,200);
-                    matches.add(Map.of("path",path,"line",line+1,"text",snippet,"hash",row.get("fingerprint")));
+                    matches.add(Map.of("path",path,"line",line+1,"text",snippet,"hash",row.get("fingerprint"),"editPolicy",editPolicy(path,Store.string(row,"kind").startsWith("legacy-"))));
                 }
                 // 每个文件返回首个命中，避免同一事实在目录和正文中占满一页。
                 if(found) break;
@@ -287,7 +295,7 @@ public class MemoryFileService {
                 case "events"->"chapter";case "relations"->"relation";default->"issue";
             };
             if(!expectedType.equals(document.type())) throw new IllegalArgumentException("记忆文件类型与目录不一致："+path);
-            if(!document.legacy().isBlank()) throw new IllegalArgumentException("新记忆修改不能写入历史结构附录");
+            if(!document.legacy().isBlank()) throw new IllegalArgumentException("记忆修改包含只读 memory-record 附录："+path+"；请将有效事实整理到当前主题正文，不复制历史附录，新主题使用独立 id 和 path");
             if(!ids.add(document.id())) throw new IllegalArgumentException("候选记忆文件标识重复");
             for(String reference:change.evidencePaths()) {
                 if(!reference.startsWith("/paragraphs/") || !paragraphs.containsKey(reference.substring("/paragraphs/".length())))
@@ -317,6 +325,8 @@ public class MemoryFileService {
             var document=markdown.parse(item.path("content").asText());
             validateRelationKeys(document,path,relationFiles);
             var old=mapper.file(novel,base,path);
+            if(old!=null && Store.string(old,"kind").startsWith("legacy-"))
+                throw new IllegalArgumentException("历史来源文件只读："+path+"；请更新对应当前主题或使用独立 id 和 path 创建主题文件");
             if(old!=null && !document.id().equals(old.get("entity_key"))) throw new IllegalArgumentException("已有记忆文件需要保留稳定标识："+path);
             for(String destination:document.links()) {
                 var uri=java.net.URI.create(destination);

@@ -65,7 +65,7 @@ public class ChapterMemoryTopics {
         var result=new LinkedHashMap<String,Object>();
         if(!required.isEmpty()) result.put("requiredTopics",required);
         if(!pending.isEmpty() || matches>0) result.put("unresolvedTopics",Map.of("examples",pending,"total",matches,"hasMore",matches>pending.size(),
-                "instruction","按 term 分组定位本章人物或伏笔，使用 read_memory_batch 读取所需路径；同名候选需要核对身份。这里只列出预算内入口，未列出不表示不存在。"));
+                "instruction","按 term 分组定位本章人物或伏笔，使用 read_memory_batch 读取所需路径；同名候选需要核对身份。legacy=true 表示只读历史来源，不得复制其 memory-record 附录；请更新普通当前主题，新主题使用独立 id 和 path。这里只列出预算内入口，未列出不表示不存在。"));
         return result;
     }
     private int size(Map<String,String> required,List<Map<String,Object>> pending) {
