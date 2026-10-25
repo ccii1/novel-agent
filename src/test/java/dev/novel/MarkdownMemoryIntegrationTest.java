@@ -63,10 +63,17 @@ class MarkdownMemoryIntegrationTest {
         String task=store.enqueue(id,"MEMORY",1,2,0,UUID.randomUUID().toString(),Map.of());
         return store.one("tasks.find",task);
     }
-    @Test void filesBecomeVisibleOnlyAfterAllFileReviewsAndCoveragePass() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void filesBecomeVisibleOnlyAfterAllFileReviewsAndCoveragePass(boolean grouped) {
         String id=novel();var delta=delta(id);
         files.validateBase(id,0,delta);
-        String check=workflow.scheduleMemoryCheck(store.novel(id),source(id),delta,0);
+        var extraction=source(id);
+        if(grouped) {
+            store.update("tasks.payload",json.write(Map.of("reviewGroups",List.of(List.of(0,1),List.of(2,3)))),extraction.get("id"));
+            extraction=store.one("tasks.find",extraction.get("id"));
+        }
+        String check=workflow.scheduleMemoryCheck(store.novel(id),extraction,delta,0);
         var groups=json.read(Store.string(store.one("tasks.find",check),"payload")).path("reviewGroups");
         var covered=new HashSet<Integer>();groups.forEach(group->group.forEach(item->assertThat(covered.add(item.asInt())).isTrue()));
         assertThat(covered).containsExactlyInAnyOrder(0,1,2,3);
@@ -96,6 +103,23 @@ class MarkdownMemoryIntegrationTest {
         assertThat(files.readFull(id,0,"MEMORY.md")).contains("记忆目录");
         assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
         assertThat(store.one("chapters.find",id,1).get("status")).isEqualTo("DRAFT");
+    }
+    @Test void groupedReviewIncludesCompleteCandidateDirectoryAndOriginalFileIndices() {
+        String id=novel();var delta=delta(id);
+        var input=json.tree(files.reviewGroupInput(id,0,delta,List.of(2,3),BODY));
+        assertThat(input.path("files")).hasSize(2);
+        assertThat(input.path("reviewedIndices")).containsExactly(json.tree(2),json.tree(3));
+        assertThat(input.path("totalCandidateFiles").asInt()).isEqualTo(4);
+        assertThat(input.path("candidateCatalog")).hasSize(4);
+        var omitted=input.path("candidateCatalog").get(0);
+        assertThat(omitted.path("path").asText()).isEqualTo("characters/char_001.md");
+        assertThat(omitted.path("quotePath").asText()).isEqualTo("/files/0/content");
+        assertThat(omitted.path("hash").asText()).isEqualTo(SkillService.digest(delta.path("files").get(0).path("content").asText()));
+        var extraction=source(id);extraction.put("payload",json.write(Map.of("delta",delta)));
+        var tool=new StoryReadTools(extraction,context,memory,store,json);
+        var candidate=json.read(tool.candidate(omitted.path("path").asText(),0));
+        assertThat(candidate.path("quotePath")).isEqualTo(omitted.path("quotePath"));
+        assertThat(candidate.path("content").asText()).contains("已经交出铜钥匙");
     }
     @Test void checksReferencesStableIdsConflictsAndPublishedFileIntegrity() throws Exception {
         String id=novel();var delta=delta(id);

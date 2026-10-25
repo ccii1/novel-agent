@@ -39,6 +39,8 @@ public class MemoryCheckAgent extends ReviewAgent {
                 "问题引用正文时 quoteSource=BODY，quotePath=/paragraphs/p0；引用候选文件时 quoteSource=MEMORY，quotePath=/files/实际序号/content 或 /summary。"+
                 "引用已发布文件时 quoteSource=PUBLISHED，quotePath 为工具返回的实际 Markdown 路径，并填写该文件中的连续原文 quote。"+
                 "MEMORY 的序号仅指本次候选 files 数组，从0开始；正式目录或批量查询的序号不能用于 /files/序号/content。"+
+                "分组审核时，files 仅是当前组详情，candidateCatalog 才是完整候选集合。核对其他组内容时调用 read_candidate_memory；"+
+                "候选未发布前，read_memory 返回旧版属于正常状态，不能据此否定已有候选修改。"+
                 "引用文件内容时同时填写 quote，选择与问题直接相关且至少4个有效字符的连续原文，程序会核对该片段；不要重复引用完整文件。"+
                 (coverage || all?"检查本章重要变化遗漏、摘要依据、文件修改依据、旧状态与跨文件一致性；核对物品双方状态与人物认知，原有有效信息应当保留。":"检查当前文件修改的原文依据、旧状态、实体、认知与关联主题，原有有效信息应当保留。")+
                 "证据不足时继续使用文件和来源工具，不能编造矛盾。上下文="+context.context(task,contextFiles(),input+paragraphs)+

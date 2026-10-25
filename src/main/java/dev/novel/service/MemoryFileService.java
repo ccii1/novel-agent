@@ -480,8 +480,18 @@ public class MemoryFileService {
             evidence.fields().forEachRemaining(entry->sources.put(entry.getKey(),entry.getValue()));
             single.put("evidenceRefs",delta.path("files").get(index).path("evidencePaths"));changes.add(single);
         }
-        return Map.of("files",changes,"evidenceCatalog",sources,
-                "instruction","共同核对关联文件的状态变化，正文证据按引用共享。需要其他原文或关联资料时使用工具读取。");
+        return Map.of("files",changes,"reviewedIndices",List.copyOf(indices),"totalCandidateFiles",delta.path("files").size(),
+                "candidateCatalog",candidateCatalog(delta),"evidenceCatalog",sources,
+                "instruction","files 仅包含当前组的修改详情，candidateCatalog 是本次完整候选目录。其他组的候选通过 read_candidate_memory 核对；正式文件仍是发布前版本，不能据此声称候选缺失。正文证据按引用共享。");
+    }
+    public List<Map<String,Object>> candidateCatalog(JsonNode delta) {
+        var catalog=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<delta.path("files").size();index++) {
+            var item=delta.path("files").get(index);
+            catalog.add(Map.of("index",index,"path",item.path("path").asText(),"hash",SkillService.digest(item.path("content").asText()),
+                    "quoteSource","MEMORY","quotePath","/files/"+index+"/content","description",item.path("description").asText()));
+        }
+        return List.copyOf(catalog);
     }
     public Object coverage(JsonNode delta) {
         var changes=new ArrayList<Map<String,Object>>();

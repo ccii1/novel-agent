@@ -352,6 +352,8 @@ flowchart LR
 
 `lookup_memory(entity)` 按稳定标识或名称返回真实文件路径，状态为 `FOUND`、`NOT_FOUND` 或 `AMBIGUOUS`。单文件与候选读取分别标记 `scope=published/candidate`，缺失时返回 `NOT_FOUND`；查询未命中不证明故事事实不存在。格式、权限、版本及文件损坏仍明确报错。
 
+每组记忆审核提供完整 `candidateCatalog`、`totalCandidateFiles` 与当前 `reviewedIndices`；当前组的 `files` 只包含本组修改详情。其他组候选通过 `read_candidate_memory` 核对，引用保持原始候选序号。正式文件在发布前保持旧版本，审核比较对应候选内容与正式来源。
+
 ### 上下文压缩与提示缓存
 
 `AgentContextHook` 在模型调用前排序工具定义，按配置 token 容量和请求大小判断是否需要压缩；token 数由 AgentScope `TokenCounterUtil` 估算，实际费用始终使用服务返回用量。`NOVEL_MODEL_CONTEXT_TOKENS` 默认32768，特定模型可以配置 `novel.context-models.<model>.tokens`；输出额度和2048 token 包装空间另行预留。120000字节继续作为应用请求保护上限。
