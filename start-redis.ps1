@@ -4,7 +4,9 @@ $redisDirectory = 'D:\Program Files\Redis-x64-5.0.14.1'
 $redisServer = Join-Path $redisDirectory 'redis-server.exe'
 $redisCli = Join-Path $redisDirectory 'redis-cli.exe'
 if (-not (Test-Path -LiteralPath $redisServer)) { throw "Redis 程序不存在：$redisServer" }
+$ErrorActionPreference = 'Continue'
 $current = & $redisCli -h 127.0.0.1 -p $Port ping 2>$null
+$ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -eq 0 -and $current -eq 'PONG') {
     Write-Output "Redis 已运行：127.0.0.1:$Port"
     exit 0
@@ -17,7 +19,9 @@ Start-Process -FilePath $redisServer -WindowStyle Hidden -ArgumentList @(
 )
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
     Start-Sleep -Milliseconds 200
+    $ErrorActionPreference = 'Continue'
     $response = & $redisCli -h 127.0.0.1 -p $Port ping 2>$null
+    $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -eq 0 -and $response -eq 'PONG') {
         Write-Output "Redis 已启动：127.0.0.1:$Port；数据目录：$dataDirectory"
         exit 0
