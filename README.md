@@ -129,7 +129,7 @@ flowchart TD
 
 业务 Agent 共8个：选题研究、阶段规划、大纲修改、正文写作、综合审核、记忆整理、记忆审核、创作协调。写作组件同时处理创作与修改，记忆整理组件同时处理提取与修正；旧任务类型保留兼容入口。每次任务仍创建独立执行实例，作品可变状态由版本化业务数据提供。`AgentRuntimeFactory` 构建 `ReActAgent` 和授权 Toolkit，`AgentContextHook` 注入规则并接入 Harness 的 `ConversationCompactor`。工具绑定当前用户、作品和版本；文件未命中返回查询状态，权限与版本错误明确失败。
 
-`OpenAIChatModel` 负责消息格式与生成参数。资料读取默认允许8轮推理和一次最终输出，协调角色默认2轮；`novel.agent-tool-rounds` 支持1至24轮。另为上下文压缩和 HTTP 重试各预留两次请求，所有真实请求都经过同一额度、限流和费用记录。工具单次默认24000字节，每次请求的工具空间最多60000字节，并根据当前完整请求剩余空间重新计算。工具查询与压缩不会自动授权正式修改。原始请求、响应、用量与费用保存到 `model_call_turns` 和 `model_calls`；AgentState 使用框架文件存储保存在 `data/agent-sessions`，按用户和任务隔离，结果不确定的外部调用仍需核对。
+`OpenAIChatModel` 负责消息格式与生成参数。资料读取默认允许8轮推理和一次最终输出，协调角色默认2轮；`novel.agent-tool-rounds` 支持1至24轮。另预留4次请求供上下文压缩与 HTTP 重试共用，所有真实请求都经过同一额度、限流和费用记录。压缩保留原始任务中的正文、批准目标和输出格式，由框架汇总工具历史；压缩次数受总请求预算约束。工具单次默认24000字节，每次请求的工具空间最多60000字节，并根据当前完整请求剩余空间重新计算。工具查询与压缩不会自动授权正式修改。原始请求、响应、用量与费用保存到 `model_call_turns` 和 `model_calls`；AgentState 使用框架文件存储保存在 `data/agent-sessions`，按用户和任务隔离，结果不确定的外部调用仍需核对。
 
 Resilience4j 对免费服务返回的 HTTP 408、429、502、503、504 最多追加两次请求，等待间隔为1秒、2秒；每次尝试独立记录。付费服务的结果不确定请求保留原有费用核对流程，未知用量保持 null。
 
@@ -654,7 +654,7 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 
 `MySqlIntegrationTest` 和 `MarkdownMemoryMySqlTest` 默认关闭，设置 `NOVEL_MYSQL_TEST=true` 后读取本地 MySQL 配置，共用专用库 `novel_agent_test`。每个测试类通过 MySQL advisory lock 独占该库，使用 Flyway clean 清理该库，再由应用迁移初始化；此名称仅用于测试。`MemoryCacheIntegrationTest` 受 `NOVEL_REDIS_TEST=true` 控制，Redis 测试可通过 `NOVEL_REDIS_ADDRESS` 指向独立端口，使用独立 key 范围。完整历史数据迁移尚未执行。
 
-2026-10-25 恢复运行验证：`ContextBudgetIntegrationTest`、`MarkdownMemoryIntegrationTest`、`ReviewEvidenceIntegrationTest`、`AgentRuntimeIntegrationTest` 共44项通过、2项跳过，覆盖上下文预算、记忆发布、原文证据、工具权限、综合审核及工具空间耗尽后继续执行。真实后端使用本地 `gpt-6-luna`、`high` 执行第10章修改与综合审核，已观察到两次自动压缩后继续请求；完整章节提交与长期连载效果仍需结合后续结果判断。
+2026-10-25 恢复运行验证：`ContextBudgetIntegrationTest`、`MarkdownMemoryIntegrationTest`、`ReviewEvidenceIntegrationTest`、`AgentRuntimeIntegrationTest` 覆盖上下文预算、记忆发布、原文证据、工具权限、综合审核及工具空间耗尽后继续执行。正文审核通过 `planConflict` 标明批准计划内部或与世界规则之间的冲突，进入已有计划审批流程；普通正文问题继续生成修改任务。真实后端使用本地 `gpt-6-luna`、`high` 执行第10章修改与综合审核；完整章节提交与长期连载效果需结合实际结果判断。
 
 测试记忆、AgentState 和日志统一放在忽略目录 `.work/tests/`；JUnit 关闭并行执行，测试类持有文件锁，结束后清理本类新增的记忆及会话文件。UI 验证资料通过 `novel.tests.keep-files=true` 保留，`mvnw.cmd clean` 清理整个 `.work/tests/`。正式 AgentState 目录通过 `NOVEL_AGENT_STATE_DIRECTORY` 配置，默认 `data/agent-sessions`。
 

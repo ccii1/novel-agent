@@ -146,13 +146,18 @@ public class StoryReadTools {
         return read("read_candidate_memory",()-> {
             memory.files().path(path);
             var payload=json.read(Store.string(task,"payload"));var delta=payload.has("delta")?payload.path("delta"):payload;
-            for(var item:delta.path("files")) if(path.equals(item.path("path").asText())) {
+            for(int index=0;index<delta.path("files").size();index++) {
+                var item=delta.path("files").get(index);
+                if(!path.equals(item.path("path").asText())) continue;
                 String text=item.path("content").asText();int start=offset==null?0:offset,total=text.codePointCount(0,text.length());
                 if(start<0 || start>total) throw new IllegalArgumentException("候选文件读取范围无效");
                 int end=Math.min(total,start+Math.max(1,availableBytes()/8));
-                return Map.of("path",path,"content",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)),"nextOffset",end,"hasMore",end<total,
+                var result=new LinkedHashMap<String,Object>();
+                result.putAll(Map.of("path",path,"content",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)),"nextOffset",end,"hasMore",end<total,
                         "scope","candidate","status","FOUND","candidate",true,"targetPolicy",memory.files().editingPolicy(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path),
-                        "instruction","此内容是未发布候选；targetPolicy.readOnly=true 时需要改写到普通主题目标。修正需返回完整候选集合，保留有效修改。");
+                        "instruction","此内容是未发布候选；targetPolicy.readOnly=true 时需要改写到普通主题目标。修正需返回完整候选集合，保留有效修改。"));
+                result.put("fileIndex",index);result.put("quoteSource","MEMORY");result.put("quotePath","/files/"+index+"/content");
+                return result;
             }
             return Map.of("status","NOT_FOUND","scope","candidate","memoryVersion",task.get("memory_version"),"path",path,
                     "instruction","当前候选集合没有此文件；正式版本使用 read_memory，候选路径从本任务提案获取。");

@@ -255,7 +255,8 @@ public class MemoryFileService {
         result.putAll(Map.of("path",path,"memoryVersion",version,"hash",fingerprint,
                 "content",text.substring(text.offsetByCodePoints(0,offset),text.offsetByCodePoints(0,end)),
                 "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total,"editPolicy",editPolicy(path,readOnly)));
-        result.put("status","FOUND");result.put("scope","published");return result;
+        result.put("status","FOUND");result.put("scope","published");
+        result.put("quoteSource","PUBLISHED");result.put("quotePath",path);return result;
     }
     public Map<String,Object> batch(String novel,long version,List<String> paths,int offset,int length,int budget) {
         if(paths==null || paths.isEmpty() || paths.size()>30 || new HashSet<>(paths).size()!=paths.size())
@@ -436,7 +437,8 @@ public class MemoryFileService {
         String diff=diff(path,previous,next);
         Map<String,String> sources=new LinkedHashMap<>();var paragraphs=evidence.paragraphs(body);
         for(var reference:change.path("evidencePaths")) sources.put(reference.asText(),paragraphs.get(reference.asText().substring("/paragraphs/".length())));
-        return Map.of("fileIndex",index,"path",path,"description",change.path("description"),"diff",diff,"evidence",sources,
+        return Map.of("fileIndex",index,"path",path,"quoteSource","MEMORY","quotePath","/files/"+index+"/content",
+                "description",change.path("description"),"diff",diff,"evidence",sources,
                 "instruction","根据来源检查修改，必要时读取人物、伏笔与关联主题文件；问题引用 /files/"+index+"/content 或正文路径。");
     }
     private String diff(String path,String before,String after) {
@@ -482,8 +484,12 @@ public class MemoryFileService {
                 "instruction","共同核对关联文件的状态变化，正文证据按引用共享。需要其他原文或关联资料时使用工具读取。");
     }
     public Object coverage(JsonNode delta) {
-        var changes=new ArrayList<Map<String,Object>>();int index=0;
-        for(var item:delta.path("files")) changes.add(Map.of("index",index++,"path",item.path("path"),"description",item.path("description"),"evidencePaths",item.path("evidencePaths"),"headings",markdown.parse(item.path("content").asText()).headings()));
+        var changes=new ArrayList<Map<String,Object>>();
+        for(int index=0;index<delta.path("files").size();index++) {
+            var item=delta.path("files").get(index);
+            changes.add(Map.of("index",index,"path",item.path("path"),"quoteSource","MEMORY","quotePath","/files/"+index+"/content",
+                    "description",item.path("description"),"evidencePaths",item.path("evidencePaths"),"headings",markdown.parse(item.path("content").asText()).headings()));
+        }
         return Map.of("summary",delta.path("summary"),"changes",changes,"instruction","检查正文的重要变化是否都有文件记录，核对跨文件关联；必要时读取候选文件或原有主题。不能仅根据修改说明确认内容正确。");
     }
     public Map<String,String> export(String novel,long version) {

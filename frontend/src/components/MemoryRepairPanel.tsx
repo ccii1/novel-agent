@@ -14,7 +14,7 @@ export default function MemoryRepairPanel({novel, pending}: {novel: Novel; pendi
     {pending.review!.issues.map((issue,index) => <article className="setting-text" key={index}>
       <strong>问题 {index + 1}</strong>
       <blockquote>{issue.quote}</blockquote>
-      <small>{issue.quoteSource === 'MEMORY' ? `引用待审核记忆 ${issue.quotePath ?? ''}` : '引用当前正文'}</small>
+      <small>{issue.quoteSource === 'MEMORY' ? `引用待审核记忆 ${issue.quotePath ?? ''}` : issue.quoteSource === 'PUBLISHED' ? `引用正式记忆 ${issue.quotePath ?? ''}` : '引用当前正文'}</small>
       <p>{issue.reason}</p><p>修改建议：{issue.suggestion}</p>
     </article>)}
     <form onSubmit={event => {event.preventDefault(); submit();}}>

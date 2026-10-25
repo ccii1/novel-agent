@@ -27,7 +27,9 @@ public class ChapterReviewAgent extends ReviewAgent {
         return AgentInstructions.storyFiles("character_matrix.md","character_knowledge.md","progress_tracker.md","dialogue-monitor.md","pattern-detection.md","style_guide.md");
     }
     protected String additionalSchema() {
-        return "额外输出 dimensions:{character:boolean,plot:boolean,pacing:boolean,style:boolean}，true 表示该维度通过；每条 issue 额外填写 dimension=CHARACTER/PLOT/PACING/STYLE。"+
+        return "额外输出 planConflict:boolean。仅当当前批准计划内部矛盾，或计划要求与已确立的世界规则、能力次数直接冲突且正文修改无法解决时为 true；"+
+                "此时 approved=false，给出对应原文证据，等待计划审批；普通正文质量问题为 false。"+
+                "额外输出 dimensions:{character:boolean,plot:boolean,pacing:boolean,style:boolean}，true 表示该维度通过；每条 issue 额外填写 dimension=CHARACTER/PLOT/PACING/STYLE。"+
                 "未通过的每个维度至少有一条对应问题；全部维度通过才能 approved=true。额外输出 narrative:{opening:string,activity:string,ending:string,resolution:string,pattern:string,climax:boolean,combat:boolean}。";
     }
     protected String additionalInput(Map<String,Object> task,String body) {

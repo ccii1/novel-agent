@@ -19,6 +19,9 @@ public class ReviewValidator {
         return evidence.paragraphs(body);
     }
     public JsonNode validate(JsonNode review,String body,JsonNode memory) {
+        return validate(review,body,memory,Map.of());
+    }
+    public JsonNode validate(JsonNode review,String body,JsonNode memory,Map<String,String> published) {
         if(review==null || !review.isObject() || !review.path("issues").isArray())
             throw new IllegalArgumentException("检查报告必须包含 issues 数组");
         JsonNode normalized=review.deepCopy();
@@ -38,8 +41,14 @@ public class ReviewValidator {
         for(int index=0;index<normalized.path("issues").size();index++) {
             if(!(normalized.path("issues").get(index) instanceof ObjectNode node)) throw new IllegalArgumentException("检查问题必须为对象");
             String requested=node.path("quoteSource").asText("");
-            if(!java.util.Set.of("","BODY","MEMORY").contains(requested)) throw new IllegalArgumentException("未知引用来源");
+            if(!java.util.Set.of("","BODY","MEMORY","PUBLISHED").contains(requested)) throw new IllegalArgumentException("未知引用来源");
             String path=node.path("quotePath").asText("");
+            if(requested.equals("PUBLISHED")) {
+                String text=published.get(path);
+                if(text==null) throw new IllegalArgumentException("正式记忆引用路径未提供或不存在："+path);
+                String quote=evidence.source(text).require(node.path("quote").asText(),"正式记忆引用");
+                node.put("quote",quote);node.put("quoteValue",quote);continue;
+            }
             if(!path.isBlank()) {
                 if(requested.equals("MEMORY") && memory!=null) {
                     var pointer=JsonPointer.compile(path);
@@ -76,6 +85,8 @@ public class ReviewValidator {
                     "条问题的 quote 无法连续匹配正文或指定的待审核记忆："+node.path("quote")+"；模型响应已保存");
         }
         var output=outputs.read(normalized,AgentOutputs.Review.class);
+        if(Boolean.TRUE.equals(output.planConflict()) && output.approved())
+            throw new IllegalArgumentException("计划冲突需要等待审批，审核结论不能为通过");
         if(output.approved()!=output.issues().isEmpty()) throw new IllegalArgumentException("检查结论与问题列表不一致");
         return normalized;
     }

@@ -16,7 +16,7 @@ public final class AgentOutputs {
             @NotNull List<@NotBlank String> characters,@NotNull List<@NotBlank String> foreshadowIds,
             String sceneType,Boolean climax) {}
     public record Chapter(@NotBlank String title,@NotBlank String body) {}
-    public record Review(@NotNull Boolean approved,@NotNull Boolean majorChange,
+    public record Review(@NotNull Boolean approved,@NotNull Boolean majorChange,Boolean planConflict,
             @NotNull List<@NotNull @Valid Issue> issues) {}
     public record Dimensions(@NotNull Boolean character,@NotNull Boolean plot,@NotNull Boolean pacing,@NotNull Boolean style) {}
     public record Issue(String severity,@NotBlank @Size(min=4) String quote,@NotBlank String reason,@NotBlank String suggestion) {}

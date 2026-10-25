@@ -25,6 +25,7 @@ class AgentRuntimeIntegrationTest {
     @Autowired ReviewOrchestrator reviews;
     @Autowired Json json;
     @Autowired BudgetService budget;
+    @Autowired WorkflowService workflow;
     @Autowired dev.novel.repository.mapper.ModelCallMapper calls;
     private String novel() {
         String id=projects.create("角色权限验证","调查封条","保留人物知识范围",1,BigDecimal.TEN,BigDecimal.ONE);
@@ -150,6 +151,24 @@ class AgentRuntimeIntegrationTest {
         assertThat(store.list("tasks.chapterChecks",id,1,0,0)).singleElement().satisfies(row->assertThat(row).containsEntry("kind","CHECK_CHAPTER"));
         assertThat(reviews.collect(novel,1,0).ready()).isFalse();
         assertThat(reviews.collect(novel,1,1).completed()).isEmpty();
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void planConflictWaitsForApprovalAndOrdinaryIssueCreatesRewrite(boolean planConflict) {
+        String id=novel();
+        db.update("UPDATE novels SET status='CHECKING' WHERE id=?",id);
+        reviews.start(store.novel(id),1,0);
+        var task=db.one("SELECT * FROM tasks WHERE novel_id=? AND kind='CHECK_CHAPTER'",id);
+        db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",task.get("id"));
+        var report=json.tree(Map.of("approved",false,"majorChange",false,"planConflict",planConflict,
+                "issues",List.of(Map.of("dimension","PLOT","quoteSource","BODY","quotePath","/paragraphs/p0",
+                        "reason","核对封条的处理条件","suggestion","核对计划约束"))));
+        workflow.finished(store.one("tasks.find",task.get("id")),report);
+        assertThat(store.novel(id)).containsEntry("status",planConflict?"AWAITING_CHANGE":"WRITING");
+        assertThat(json.read(Store.string(store.novel(id),"reflection")).path("planConflict").asBoolean()).isEqualTo(planConflict);
+        var rewrites=db.list("SELECT * FROM tasks WHERE novel_id=? AND kind='REWRITE'",id);
+        assertThat(rewrites).hasSize(planConflict?0:1);
+        if(planConflict) assertThatThrownBy(()->projects.revise(id,"核对计划",null)).hasMessageContaining("重大变更需要提供完整批准的大纲");
     }
     @Test void coordinatorRejectsInvalidScopeAndMemoryRouteWithoutPendingReview() {
         String id=novel();

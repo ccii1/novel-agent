@@ -150,6 +150,7 @@ public class WorkflowService {
             var instructions=new java.util.ArrayList<Object>();
             for(var report:reports) instructions.add(json.read(Store.string(report,"result")));
             finishReflection(novel,task,json.tree(Map.of("majorChange",round.majorChange(),
+                    "planConflict",round.planConflict(),
                     "instructions","逐项处理有原文依据的审核问题，保留已通过内容。审核报告："+json.write(instructions),"conflicts",java.util.List.of())));
         }
     }
@@ -158,9 +159,10 @@ public class WorkflowService {
         String novelId = Store.string(novel, "id");
         int chapter = Store.integer(task, "chapter_no");
         int revision = Store.integer(task, "revision");
-        boolean major = result.path("majorChange").asBoolean() || reviews.collect(novel, chapter, revision).majorChange();
+        var round=reviews.collect(novel,chapter,revision);
+        boolean major = result.path("majorChange").asBoolean() || round.majorChange();
         store.update("novels.reflection", json.write(result), novelId);
-        if (major) {
+        if (major || result.path("planConflict").asBoolean() || round.planConflict()) {
             state(novelId, "AWAITING_CHANGE");
         } else if (revision >= REVISION_LIMIT) {
             state(novelId, "AWAITING_HELP");

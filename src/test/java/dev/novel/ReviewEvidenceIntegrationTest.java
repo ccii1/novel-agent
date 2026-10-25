@@ -17,6 +17,11 @@ class ReviewEvidenceIntegrationTest {
     @Autowired ReviewValidator validator;
     @Autowired Json json;
 
+    @Test void planConflictCannotBeApproved() {
+        assertThatThrownBy(()->validator.validate(json.read("{\"approved\":true,\"majorChange\":false,\"planConflict\":true,\"issues\":[]}"),"林舟交出钥匙。"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("计划冲突");
+    }
+
     @Test void joinedQuotesReportWhichIssueCannotMatchTheChapter() {
         var result=json.read("""
                 {"approved":false,"majorChange":false,"issues":[

@@ -35,6 +35,7 @@ public final class AgentContextHook implements MiddlewareBase {
     private final int maxBytes,inputTokens;
     private final java.util.function.Consumer<Throwable> failures;
     private int compactions;
+    private Msg taskInput;
     public AgentContextHook(Map<String,Object> task,Store store,Json json,Model model,Environment environment,
             ModelCatalog.Selection selection,int maxBytes,int maxOutput,java.util.function.Consumer<Throwable> failures) {
         this.task=task;this.store=store;this.json=json;this.model=model;this.maxBytes=maxBytes;
@@ -49,11 +50,14 @@ public final class AgentContextHook implements MiddlewareBase {
         return Flux.defer(()-> {
             var tools=input.tools()==null?List.<ToolSchema>of():input.tools().stream().sorted(Comparator.comparing(ToolSchema::getName)).toList();
             var messages=input.messages();
+            if(taskInput==null) taskInput=messages.stream().filter(message->message.getRole()==MsgRole.USER).findFirst()
+                    .orElseThrow(()->new IllegalStateException("Agent 缺少原始任务资料"));
             int bytes=bytes(messages,tools),tokens=tokens(messages,tools);
             if(bytes<maxBytes*0.75 && tokens<inputTokens*0.8) return next.apply(new ModelCallInput(messages,tools,input.options(),input.model()));
-            if(++compactions>2) return Flux.error(new IllegalStateException("本任务已执行两次上下文压缩，需要保存当前资料并调整任务范围"));
+            compactions++;
             var system=messages.stream().filter(message->message.getRole()==MsgRole.SYSTEM).toList();
-            var conversation=messages.stream().filter(message->message.getRole()!=MsgRole.SYSTEM).toList();
+            var conversation=messages.stream().filter(message->message.getRole()!=MsgRole.SYSTEM)
+                    .filter(message->!message.getId().equals(taskInput.getId())).toList();
             var failure=new AtomicReference<Throwable>();
             Model summaryModel=new Model() {
                 public String getModelName() { return model.getModelName(); }
@@ -61,9 +65,9 @@ public final class AgentContextHook implements MiddlewareBase {
                     return model.stream(data,schemas,options).doOnError(failure::set);
                 }
             };
-            var config=CompactionConfig.builder().triggerMessages(1).triggerTokens(1).keepTokens(0).keepMessages(2)
+            var config=CompactionConfig.builder().triggerMessages(1).triggerTokens(1).keepTokens(0).keepMessages(0)
                     .flushBeforeCompact(false).offloadBeforeCompact(false).prune(null).summaryPrompt(SUMMARY).build();
-            // 完整请求与原始工具响应由已有调用记录保存，框架只处理当前工作上下文。
+            // 原始任务包含正文、输出格式和批准目标；框架汇总工具历史，完整调用记录继续保存原文。
             var compactor=new ConversationCompactor(summaryModel,null);
             return compactor.compactIfNeeded(context,conversation,config,agent.getName(),Store.string(task,"id")).flatMapMany(result->{
                 if(failure.get()!=null) return Flux.error(failure.get());
@@ -72,14 +76,15 @@ public final class AgentContextHook implements MiddlewareBase {
                         return Flux.error(new IllegalStateException("当前必需输入没有可压缩的历史，请调整任务资料范围或模型容量配置"));
                     return next.apply(new ModelCallInput(messages,tools,input.options(),input.model()));
                 }
-                var compacted=result.get();
+                var compacted=new ArrayList<Msg>();compacted.add(taskInput);compacted.addAll(result.get());
                 var updated=new ArrayList<Msg>(system);updated.addAll(compacted);
                 if(bytes(updated,tools)>=maxBytes-4096 || tokens(updated,tools)>=inputTokens)
                     return Flux.error(new IllegalStateException("上下文压缩后必需资料仍超过容量，需要调整本次任务范围"));
                 var state=RuntimeContext.resolveAgentState(context,agent);
                 state.contextMutable().clear();state.contextMutable().addAll(compacted);
                 store.event(Store.string(task,"novel_id"),Store.string(task,"id"),"CONTEXT_COMPACTED",json.write(Map.of(
-                        "beforeBytes",bytes,"afterBytes",bytes(updated,tools),"estimatedTokens",tokens(updated,tools),"compactions",compactions)),(String)task.get("execution_id"));
+                        "beforeBytes",bytes,"afterBytes",bytes(updated,tools),"estimatedTokens",tokens(updated,tools),"compactions",compactions,
+                        "retainedTaskInput",true)),(String)task.get("execution_id"));
                 return next.apply(new ModelCallInput(updated,tools,input.options(),input.model()));
             });
         }).doOnError(failures);

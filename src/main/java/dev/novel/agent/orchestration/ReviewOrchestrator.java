@@ -18,7 +18,7 @@ public class ReviewOrchestrator {
         if(!Set.of("parallel","combined").contains(mode)) throw new IllegalArgumentException("review-mode 必须为 combined 或 parallel");
         this.store=store;this.scheduler=scheduler;this.json=json;this.mode=mode;
     }
-    public record Round(List<String> expected,List<String> completed,boolean ready,boolean approved,boolean majorChange) {}
+    public record Round(List<String> expected,List<String> completed,boolean ready,boolean approved,boolean majorChange,boolean planConflict) {}
     private List<String> expected(Map<String,Object> novel,int chapter,int revision) {
         // 已创建轮次沿用原审核模式，重启或修改配置不会改变正在等待的角色集合。
         var existing=store.list("tasks.chapterChecks",novel.get("id"),chapter,revision,novel.get("memory_version"));
@@ -41,6 +41,7 @@ public class ReviewOrchestrator {
         }
         boolean ready=reports.keySet().containsAll(roles);
         return new Round(roles,List.copyOf(reports.keySet()),ready,ready && reports.values().stream().allMatch(report->report.path("approved").asBoolean()),
-                reports.values().stream().anyMatch(report->report.path("majorChange").asBoolean()));
+                reports.values().stream().anyMatch(report->report.path("majorChange").asBoolean()),
+                reports.values().stream().anyMatch(report->report.path("planConflict").asBoolean()));
     }
 }

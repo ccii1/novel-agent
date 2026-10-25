@@ -218,4 +218,24 @@ class MarkdownMemoryIntegrationTest {
         assertThat(value.path("unresolvedTopics").path("examples")).hasSize(2);
         for(var candidate:value.path("unresolvedTopics").path("examples")) assertThat(candidate.path("ambiguous").asBoolean()).isTrue();
     }
+    @Test void publishedReviewEvidenceUsesVersionedFilePathsAndCandidateEvidenceKeepsItsOwnIndex() {
+        String id=novel();var delta=delta(id);memory.commit(id,1,1,delta);db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        String path="characters/char_001.md";
+        var file=json.tree(files.read(id,1,path,0,12000,24000));
+        assertThat(file.path("quoteSource").asText()).isEqualTo("PUBLISHED");
+        assertThat(file.path("quotePath").asText()).isEqualTo(path);
+        var review=json.tree(Map.of("approved",false,"majorChange",false,"issues",List.of(Map.of("quoteSource","PUBLISHED",
+                "quotePath",path,"quote","已经交出铜钥匙。","reason","核对人物的物品状态","suggestion","更新人物状态"))));
+        var sources=Map.of(path,files.readFull(id,1,path));
+        var validated=validator.validate(review,BODY,delta,sources);
+        assertThat(validated.path("issues").get(0).path("quote").asText()).isEqualTo("已经交出铜钥匙。");
+        assertThatThrownBy(()->validator.validate(review,BODY,delta,Map.of())).hasMessageContaining("正式记忆引用路径");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)review.path("issues").get(0)).put("quote","没有交出银钥匙。");
+        assertThatThrownBy(()->validator.validate(review,BODY,delta,sources)).hasMessageContaining("正式记忆引用");
+        var source=source(id);source.put("payload",json.write(Map.of("delta",delta)));source.put("memory_version",1L);
+        var tools=new StoryReadTools(source,context,memory,store,json);
+        var candidate=json.read(tools.candidate("characters/char_002.md",0));
+        assertThat(candidate.path("quoteSource").asText()).isEqualTo("MEMORY");
+        assertThat(candidate.path("quotePath").asText()).isEqualTo("/files/1/content");
+    }
 }
