@@ -24,19 +24,21 @@ public class MemoryCheckAgent extends ReviewAgent {
         if(!delta.has("files")) return super.execute(task);
         var draft=context.draft(task);String body=Store.string(draft,"body");
         boolean coverage="COVERAGE".equals(payload.path("reviewPhase").asText());
+        boolean all="ALL".equals(payload.path("reviewPhase").asText());
         var indices=new ArrayList<Integer>();
         if(!coverage) payload.path("reviewGroups").path(payload.path("reviewIndex").asInt()).forEach(value->indices.add(value.asInt()));
         if(!coverage && indices.isEmpty()) throw new IllegalArgumentException("记忆审核分组为空");
         Object material=coverage?memory.files().coverage(delta):memory.files().reviewGroupInput(Store.string(task,"novel_id"),
                 Store.number(task,"memory_version"),delta,indices,body);
+        if(all) material=Map.of("fileReview",material,"coverage",memory.files().coverage(delta));
         String input=json.write(material);
-        String paragraphs=coverage?json.write(validator().paragraphs(body)):"本次正文证据已在 evidence 中提供，需要其他片段时调用 read_paragraph。";
+        String paragraphs=coverage || all?json.write(validator().paragraphs(body)):"本次正文证据已在 evidence 中提供，需要其他片段时调用 read_paragraph。";
         var result=model.call(task,AgentInstructions.SYSTEM+"你负责独立审核 Markdown 记忆，不能修改正文或正式文件。",
                 "输出 {approved:boolean,majorChange:boolean,issues:[{severity:string,quoteSource:string,quotePath:string,reason:string,suggestion:string}]}。"+
                 "通过时 issues 必须为空；需要改变核心剧情、重要人物转变或关键伏笔答案时设置 majorChange=true。"+
                 "问题引用正文时 quoteSource=BODY，quotePath=/paragraphs/p0；引用候选文件时 quoteSource=MEMORY，quotePath=/files/实际序号/content 或 /summary。"+
                 "引用文件内容时同时填写 quote，选择与问题直接相关且至少4个有效字符的连续原文，程序会核对该片段；不要重复引用完整文件。"+
-                (coverage?"检查本章重要变化遗漏、摘要依据与跨文件一致性，结合修改目录读取必要的候选文件；物品双方状态与人物认知需要核对。":"检查当前文件修改的原文依据、旧状态、实体、认知与关联主题，原有有效信息应当保留。")+
+                (coverage || all?"检查本章重要变化遗漏、摘要依据、文件修改依据、旧状态与跨文件一致性；核对物品双方状态与人物认知，原有有效信息应当保留。":"检查当前文件修改的原文依据、旧状态、实体、认知与关联主题，原有有效信息应当保留。")+
                 "证据不足时继续使用文件和来源工具，不能编造矛盾。上下文="+context.context(task,contextFiles(),input+paragraphs)+
                 "；审核资料="+input+"；正文="+paragraphs);
         return validator().validate(result,body,delta);

@@ -50,8 +50,15 @@ public class TaskLogFormatter {
                 String billing="unmetered".equals(data.path("billingMode").asText())?"本次免费":
                         "配置单价估算费用 "+data.path("estimatedCost").asText()+" 元";
                 yield "用量已保存：输入 "+data.path("inputTokens").asLong()+" token，输出 "+
-                        data.path("outputTokens").asLong()+" token，缓存命中 "+cached+"；"+billing;
+                        data.path("outputTokens").asLong()+" token，缓存命中 "+cached+
+                        (data.hasNonNull("cacheHitRatio")?"，命中率 "+data.path("cacheHitRatio").decimalValue().multiply(java.math.BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString()+"%":"")+"；"+billing;
             }
+            case "CONTEXT_COMPACTED" -> {
+                var data=json.read(message);
+                yield "上下文已压缩："+data.path("beforeBytes").asInt()+" → "+data.path("afterBytes").asInt()+" 字节，继续执行";
+            }
+            case "PROMPT_PREFIX_READY" -> "已准备可复用规则前缀，"+json.read(message).path("bytes").asInt()+" 字节";
+            case "MODEL_RETRY_PENDING" -> "模型服务返回 HTTP "+json.read(message).path("httpStatus").asInt()+"，按剩余重试额度等待再次请求";
             case "RESEARCH_INPUT_READY" -> "选题资料已准备完成，公开资料 "+json.read(message).path("sourceCount").asInt()+" 份";
             case "RESEARCH_OUTPUT_VALIDATED" -> "选题输出检查通过，方案 "+json.read(message).path("ideaCount").asInt()+" 个";
             case "DONE" -> kind.equals("PLAN")?"阶段大纲已保存，等待人工审核":"任务结果已保存";

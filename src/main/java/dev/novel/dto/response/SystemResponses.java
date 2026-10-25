@@ -20,7 +20,7 @@ public final class SystemResponses {
             String rateLimiter, boolean researchModelSelection, boolean retryModelSelection, String database, String graphDatabase) {}
 
     public record AgentResponse(
-            String kind, String agent, String purpose, List<String> contextFiles,
+            String kind, List<String> kinds, String agent, String purpose, List<String> contextFiles,
             String contextScope, AgentRuntimeSpec runtime) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

@@ -192,9 +192,20 @@ public class MemoryFileService {
         int next=Math.min(matches.size(),offset+selected.size());
         return Map.of("memoryVersion",version,"files",selected,"total",matches.size(),"nextOffset",next,"hasMore",next<matches.size());
     }
+    public Map<String,Object> lookup(String novel,long version,String entity) {
+        if(entity==null || entity.isBlank() || entity.length()>200) throw new IllegalArgumentException("记忆定位需要有效的稳定标识或名称");
+        var matches=manifest(novel,version).stream().filter(row->entity.equals(row.get("entity_key")) || entity.equals(row.get("title"))).toList();
+        var exact=matches.stream().filter(row->entity.equals(row.get("entity_key"))).toList();
+        var current=matches.stream().filter(row->!Store.string(row,"kind").startsWith("legacy-")).toList();
+        var selected=exact.size()==1?exact:current.size()==1?current:matches;
+        return Map.of("status",selected.isEmpty()?"NOT_FOUND":selected.size()==1?"FOUND":"AMBIGUOUS",
+                "scope","published","memoryVersion",version,"total",selected.size(),
+                "references",selected.stream().limit(20).map(this::descriptor).toList(),
+                "instruction","使用返回路径读取原文。同名候选需要核对身份；名称或标识没有命中时使用 search_memory 查询别名与内容。");
+    }
     private Map<String,Object> descriptor(Map<String,Object> row) {
         boolean legacy=Store.string(row,"kind").startsWith("legacy-");
-        return Map.of("path",row.get("path"),"title",row.get("title"),"description",row.get("description"),"hash",row.get("fingerprint"),"bytes",row.get("bytes"),"legacy",legacy,"editPolicy",editPolicy(Store.string(row,"path"),legacy));
+        return Map.of("path",row.get("path"),"id",row.get("entity_key"),"scope","published","title",row.get("title"),"description",row.get("description"),"hash",row.get("fingerprint"),"bytes",row.get("bytes"),"legacy",legacy,"editPolicy",editPolicy(Store.string(row,"path"),legacy));
     }
     private Map<String,Object> editPolicy(String path,boolean legacy) {
         boolean generated=path.equals("MEMORY.md") || path.endsWith("/INDEX.md") || path.startsWith("chapters/");
@@ -220,7 +231,8 @@ public class MemoryFileService {
     }
     public Map<String,Object> read(String novel,long version,String path,int offset,int length,int budget) {
         ensure(novel,version);var row=mapper.file(novel,version,path(path));
-        if(row==null) throw new NoSuchElementException("记忆文件不存在："+path);
+        if(row==null) return Map.of("status","NOT_FOUND","scope","published","memoryVersion",version,"path",path,
+                "instruction","当前正式版本没有此文件。使用目录或搜索定位真实路径；未发布文件使用 read_candidate_memory。");
         return page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,budget,Store.string(row,"kind").startsWith("legacy-"));
     }
     private Map<String,Object> page(String path,long version,String fingerprint,String text,int offset,int length,int budget,boolean readOnly) {
@@ -233,13 +245,17 @@ public class MemoryFileService {
             else high=middle-1;
         }
         var result=filePage(path,version,fingerprint,text,offset,offset+low,total,readOnly);
-        if((low==0 && offset<total) || bytes(json.write(json.write(result)))>budget) throw new IllegalStateException("工具剩余预算不足以读取文件");
+        if((low==0 && offset<total) || bytes(json.write(json.write(result)))>budget)
+            return Map.of("status","BUDGET_EXHAUSTED","scope","published","path",path,"memoryVersion",version,
+                    "hasMore",true,"nextOffset",offset,"instruction","本轮工具返回空间不足以容纳文件内容和来源信息，请减少同时读取的文件数量或等待上下文整理后继续。");
         return result;
     }
     private Map<String,Object> filePage(String path,long version,String fingerprint,String text,int offset,int end,int total,boolean readOnly) {
-        return Map.of("path",path,"memoryVersion",version,"hash",fingerprint,
+        var result=new LinkedHashMap<String,Object>();
+        result.putAll(Map.of("path",path,"memoryVersion",version,"hash",fingerprint,
                 "content",text.substring(text.offsetByCodePoints(0,offset),text.offsetByCodePoints(0,end)),
-                "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total,"editPolicy",editPolicy(path,readOnly));
+                "offset",offset,"nextOffset",end,"totalCharacters",total,"hasMore",end<total,"editPolicy",editPolicy(path,readOnly)));
+        result.put("status","FOUND");result.put("scope","published");return result;
     }
     public Map<String,Object> batch(String novel,long version,List<String> paths,int offset,int length,int budget) {
         if(paths==null || paths.isEmpty() || paths.size()>30 || new HashSet<>(paths).size()!=paths.size())
@@ -261,7 +277,9 @@ public class MemoryFileService {
             if(room<1024) { pending.addAll(existing.subList(index,existing.size()));break; }
             int share=Math.max(512,(room-128*(existing.size()-index))/(existing.size()-index));
             String path=existing.get(index);var row=rows.get(path);
-            results.add(page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share),Store.string(row,"kind").startsWith("legacy-")));
+            var file=page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share),Store.string(row,"kind").startsWith("legacy-"));
+            if("BUDGET_EXHAUSTED".equals(file.get("status"))) { pending.addAll(existing.subList(index,existing.size()));break; }
+            results.add(file);
         }
         response.put("hasMore",!pending.isEmpty() || results.stream().anyMatch(file->Boolean.TRUE.equals(file.get("hasMore"))));
         return response;
@@ -295,7 +313,8 @@ public class MemoryFileService {
             }
         }
         while(!matches.isEmpty() && bytes(json.write(matches))>budget-500) matches.remove(matches.size()-1);
-        if(matches.isEmpty() && count>offset) throw new IllegalStateException("工具剩余预算不足以返回搜索命中");
+        if(matches.isEmpty() && count>offset) return Map.of("status","BUDGET_EXHAUSTED","memoryVersion",version,
+                "nextOffset",offset,"hasMore",true,"instruction","本轮空间不足以返回搜索记录，请减少查询范围或等待上下文整理。");
         return Map.of("memoryVersion",version,"matches",matches,"total",count,"nextOffset",Math.min(count,offset+matches.size()),"hasMore",offset+matches.size()<count);
     }
     public JsonNode validate(JsonNode delta,String body) {

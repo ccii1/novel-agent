@@ -27,6 +27,7 @@ public class StoryReadTools {
     private int remainingBytes;
     private int requests;
     private final int maxRequests;
+    private final int contextResultBytes;
     public StoryReadTools(Map<String,Object> task,AgentContextService context,MemoryService memory,Store store,Json json) {
         this(task,context,memory,store,json,24000,60000,4);
     }
@@ -36,11 +37,13 @@ public class StoryReadTools {
     public StoryReadTools(Map<String,Object> task,AgentContextService context,MemoryService memory,Store store,Json json,int resultBytes,int totalBytes,int maxRequests) {
         if(resultBytes<1024 || totalBytes<resultBytes || maxRequests<1) throw new IllegalArgumentException("工具预算配置无效");
         this.task=task;this.context=context;this.memory=memory;this.store=store;this.json=json;
-        this.projection=new MemoryPromptProjection(json);this.resultBytes=resultBytes;this.remainingBytes=totalBytes;this.maxRequests=maxRequests;
+        this.projection=new MemoryPromptProjection(json);this.resultBytes=resultBytes;this.remainingBytes=totalBytes;this.maxRequests=maxRequests;this.contextResultBytes=totalBytes;
     }
     private synchronized String read(String name,Supplier<Object> action) {
         try {
             int callNumber=uses.incrementAndGet();
+            if(availableBytes()<512) return json.write(Map.of("status","BUDGET_EXHAUSTED","tool",name,
+                    "instruction","当前请求没有足够工具返回空间。根据已核对资料完成任务，必要资料不足时明确指出；后续模型请求将检查是否需要压缩。"));
             var novel=context.novel(task);
             Object result=action.get();
             if(Store.number(novel,"memory_version")!=Store.number(context.novel(task),"memory_version")) throw new IllegalStateException("工具读取期间记忆版本已经变化");
@@ -58,7 +61,11 @@ public class StoryReadTools {
                 limits.put("remainingBytes",remaining);
             } while(true);
             int limit=Math.min(resultBytes,remainingBytes);
-            if(bytes>limit) throw new IllegalStateException("工具"+name+"需要"+bytes+"字节，剩余预算"+limit+"字节；请使用更具体的关键词和分页参数");
+            if(bytes>limit) {
+                response=json.write(Map.of("status","BUDGET_EXHAUSTED","tool",name,"requiredBytes",bytes,"availableBytes",limit,
+                        "instruction","本次查询返回过多，请缩小 limit、length 或查询范围；原文需要继续核对，不能推断未读内容。"));
+                bytes=projection.bytes(response);
+            }
             remainingBytes-=bytes;
             store.event(Store.string(task,"novel_id"),Store.string(task,"id"),"AGENT_TOOL_USED",json.write(Map.of("tool",name,"toolCall",callNumber,"responseBytes",bytes,"remainingToolBytes",remainingBytes)),(String)task.get("execution_id"));
             return response;
@@ -69,7 +76,7 @@ public class StoryReadTools {
     private int availableBytes() { return Math.max(0,Math.min(resultBytes,remainingBytes)-512); }
     public synchronized void reserveRequestSpace(int requestBytes,int maxContext) {
         // 根据上一份完整请求的实际大小收紧工具预算，额外保留调用参数与消息包装空间。
-        remainingBytes=Math.min(remainingBytes,Math.max(0,maxContext-requestBytes-4096));
+        remainingBytes=Math.min(contextResultBytes,Math.max(0,maxContext-requestBytes-4096));
         requests++;
     }
     public String plan() { return plan(null); }
@@ -115,6 +122,10 @@ public class StoryReadTools {
         return read("search_memory",()->memory.files().search(Store.string(task,"novel_id"),Store.number(task,"memory_version"),query,
                 Objects.toString(directory,""),offset==null?0:offset,limit==null?10:limit,availableBytes()));
     }
+    @Tool(name="lookup_memory",description="按稳定标识或名称定位正式记忆文件，返回 FOUND、NOT_FOUND 或 AMBIGUOUS 和真实路径，不需要猜测文件名。",readOnly=true)
+    public String lookup(@ToolParam(name="entity",description="上下文提供的稳定标识或人物、伏笔、设定名称") String entity) {
+        return read("lookup_memory",()->memory.files().lookup(Store.string(task,"novel_id"),Store.number(task,"memory_version"),entity));
+    }
     @Tool(name="read_memory",description="根据逻辑路径分页读取 Markdown 记忆文件。返回原文、指纹和 nextOffset。准备修改时沿用返回的 hash。",readOnly=true)
     public String file(@ToolParam(name="path",description="目录、搜索结果或上下文返回的完整逻辑路径") String path,
             @ToolParam(name="offset",required=false,description="Unicode code point 起点，默认0") Integer offset,
@@ -133,16 +144,18 @@ public class StoryReadTools {
     public String candidate(@ToolParam(name="path",description="候选文件逻辑路径") String path,
             @ToolParam(name="offset",required=false,description="字符起点，默认0") Integer offset) {
         return read("read_candidate_memory",()-> {
+            memory.files().path(path);
             var payload=json.read(Store.string(task,"payload"));var delta=payload.has("delta")?payload.path("delta"):payload;
             for(var item:delta.path("files")) if(path.equals(item.path("path").asText())) {
                 String text=item.path("content").asText();int start=offset==null?0:offset,total=text.codePointCount(0,text.length());
                 if(start<0 || start>total) throw new IllegalArgumentException("候选文件读取范围无效");
                 int end=Math.min(total,start+Math.max(1,availableBytes()/8));
                 return Map.of("path",path,"content",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)),"nextOffset",end,"hasMore",end<total,
-                        "candidate",true,"targetPolicy",memory.files().editingPolicy(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path),
+                        "scope","candidate","status","FOUND","candidate",true,"targetPolicy",memory.files().editingPolicy(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path),
                         "instruction","此内容是未发布候选；targetPolicy.readOnly=true 时需要改写到普通主题目标。修正需返回完整候选集合，保留有效修改。");
             }
-            throw new IllegalArgumentException("候选记忆文件不存在："+path);
+            return Map.of("status","NOT_FOUND","scope","candidate","memoryVersion",task.get("memory_version"),"path",path,
+                    "instruction","当前候选集合没有此文件；正式版本使用 read_memory，候选路径从本任务提案获取。");
         });
     }
     @Tool(name="read_source",description="按章节、revision和正文片段标识读取当前或历史原文，用于核对记忆来源。",readOnly=true)

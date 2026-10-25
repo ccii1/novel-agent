@@ -36,6 +36,7 @@ public class ContextBudget {
         metadata.put("note","检索记录可能因预算省略，省略不表示事实不存在；资料不足时按关键词分页读取记忆。");
         ObjectNode omitted=metadata.putObject("omittedRecords");
         counts.forEach((pointer,count)->omitted.put(pointer,0));
+        ArrayNode deferred=metadata.putArray("deferredPaths");
         int bytes=bytes(result);
         while(true) {
             if(bytes<=limit) {
@@ -51,7 +52,30 @@ public class ContextBudget {
                 int tailBytes=bytes(records.get(records.size()-1));
                 if(tailBytes>largest) { selected=records;largest=tailBytes; }
             }
-            if(selected==null) throw new IllegalStateException("固定设定与章节目标需要"+bytes+"字节，超过本角色可用预算"+limit+"字节；尚未请求模型");
+            if(selected==null) {
+                var topics=result.path("requiredTopics");
+                if(topics.isObject() && !topics.isEmpty()) {
+                    String target=null;int size=0;
+                    var fields=topics.fields();
+                    while(fields.hasNext()) {
+                        var field=fields.next();int value=bytes(field.getValue());
+                        if(value>size) { target=field.getKey();size=value; }
+                    }
+                    ((ObjectNode)topics).remove(target);deferred.add(target);
+                    if(result.path("_loadedMemory").isArray()) {
+                        var loaded=(ArrayNode)result.path("_loadedMemory");
+                        for(int index=loaded.size()-1;index>=0;index--) if(target.equals(loaded.get(index).path("path").asText())) loaded.remove(index);
+                    }
+                    if(result.path("fileHashes").isObject()) ((ObjectNode)result.path("fileHashes")).remove(target);
+                    bytes=bytes(result);continue;
+                }
+                if(result.has("unresolvedTopics")) {
+                    result.remove("unresolvedTopics");
+                    metadata.put("topicLookup","本章主题候选未预加载，使用 search_memory 或 list_memory_files 查询。");
+                    bytes=bytes(result);continue;
+                }
+                throw new IllegalStateException("本章必需资料需要"+bytes+"字节，超过可用预算"+limit+"字节；请检查固定设定和本章目标的容量配置");
+            }
             bytes-=largest+(selected.size()>1?1:0);
             selected.remove(selected.size()-1);
         }

@@ -18,6 +18,7 @@ public class AgentService {
     private final AgentMetricsMapper metrics;
     private final org.springframework.core.env.Environment environment;
     public AgentService(List<NovelAgent> agents,ModelClient model,Store store,Json json,AgentMetricsMapper metrics,org.springframework.core.env.Environment environment) {
+        if(agents.size()>8) throw new IllegalStateException("业务 Agent 组件数量不能超过8个");
         Map<String,NovelAgent> registered=new TreeMap<>();
         for(var agent:agents) for(String kind:agent.kinds()) {
             if(registered.putIfAbsent(kind,agent)!=null) throw new IllegalStateException("Agent 任务类型重复："+kind);
@@ -43,10 +44,11 @@ public class AgentService {
         return result;
     }
     public List<Map<String,Object>> catalogue() {
-        return registry.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(entry -> {
-            var agent=entry.getValue();
-            return Map.<String,Object>of("kind",entry.getKey(),"agent",agent.getClass().getSimpleName(),
-                    "purpose",agent.purpose(),"contextFiles",agent.contextFiles(),"contextScope","task","runtime",runtime(entry.getKey()));
+        return registry.values().stream().distinct().sorted(Comparator.comparing(agent->agent.getClass().getSimpleName())).map(agent -> {
+            var kinds=agent.kinds().stream().sorted().toList();
+            String primary=kinds.contains("WRITE")?"WRITE":kinds.contains("CHECK_CHAPTER")?"CHECK_CHAPTER":kinds.contains("MEMORY")?"MEMORY":kinds.get(0);
+            return Map.<String,Object>of("kind",primary,"kinds",kinds,"agent",agent.getClass().getSimpleName(),
+                    "purpose",agent.purpose(),"contextFiles",agent.contextFiles(),"contextScope","task","runtime",runtime(primary));
         }).toList();
     }
     public dev.novel.agent.runtime.AgentRuntimeSpec runtime(String kind) {
@@ -54,7 +56,7 @@ public class AgentService {
         if(agent==null) throw new IllegalArgumentException("未知 Agent 类型："+kind);
         var spec=agent.runtime();
         int rounds=spec.tools().isEmpty()?1:environment.getProperty("novel.agent-tool-rounds."+kind.toLowerCase(Locale.ROOT),Integer.class,
-                environment.getProperty("novel.agent-tool-rounds.default",Integer.class,3));
+                environment.getProperty("novel.agent-tool-rounds.default",Integer.class,8));
         return new dev.novel.agent.runtime.AgentRuntimeSpec(spec.name(),spec.description(),spec.tools(),rounds);
     }
     public List<Map<String,Object>> metrics(String novelId) {

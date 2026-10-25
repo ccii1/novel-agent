@@ -24,6 +24,8 @@ public class SkillService {
             上游关于平台政策、签约、流量和收益的表述属于待核查资料；不得视为已验证事实或承诺。
             """;
     private final Properties origin = new Properties();
+    private final Map<String,String> sources=new LinkedHashMap<>();
+    private final Map<String,Snapshot> snapshots=new java.util.concurrent.ConcurrentHashMap<>();
     public record Snapshot(String instruction, String fingerprint, List<String> files, String version, String commit) {}
     public SkillService() {
         try (var input = new ClassPathResource(ROOT + "origin.properties").getInputStream()) {
@@ -34,8 +36,22 @@ public class SkillService {
         for (String reference : List.of("ai-detox-guide.md", "audit-dimensions.md", "battle-scene-guide.md",
                 "commercial-review.md", "dialogue-monitor.md", "fanqie-platform-rules.md", "pattern-detection.md"))
             verify("references/" + reference,read("references/" + reference));
+        sources.put("SKILL.md",read("SKILL.md"));
+        for(String reference:List.of("ai-detox-guide.md","audit-dimensions.md","battle-scene-guide.md",
+                "commercial-review.md","dialogue-monitor.md","fanqie-platform-rules.md","pattern-detection.md"))
+            sources.put("references/"+reference,read("references/"+reference));
     }
     public Snapshot load(String role, int chapter) {
+        String family=switch(role) {
+            case "REWRITE","REFLECT"->"WRITE";
+            case "MEMORY_REPAIR"->"MEMORY";
+            case "CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE"->"CHECK_CHAPTER";
+            case "RESEARCH_CHAT"->"RESEARCH";
+            default->role;
+        };
+        return snapshots.computeIfAbsent(family,this::compile);
+    }
+    private Snapshot compile(String role) {
         var files = new LinkedHashSet<String>();
         files.add("SKILL.md");
         switch (role) {
@@ -49,16 +65,17 @@ public class SkillService {
             case "CHECK_CHARACTER", "CHECK_PLOT", "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" -> references(files, "audit-dimensions.md");
             default -> throw new IllegalArgumentException("未知技能角色：" + role);
         }
-        if (chapter > 0 && chapter % 5 == 0) references(files, "pattern-detection.md");
-        if (chapter > 0 && chapter % 10 == 0) references(files, "audit-dimensions.md");
-        StringBuilder instruction = new StringBuilder(ADAPTATION);
+        String rules=read("runtime-rules.md");
+        StringBuilder provenance=new StringBuilder(rules);
         for (String file : files) {
-            String content = read(file);
+            String content = sources.get(file);
             verify(file,content);
-            instruction.append("\n技能文件：").append(file).append("\n").append(content);
+            provenance.append(file).append(content);
         }
-        instruction.append("\n当前任务以应用执行规则和批准的业务计划为准，输出任务要求的 JSON。\n");
-        return new Snapshot(instruction.toString(), digest(instruction.toString()), List.copyOf(files),
+        files.add("runtime-rules.md");
+        String instruction=ADAPTATION+"\n"+rules+"\n角色范围="+role+"；技能版本="+origin.getProperty("version")+
+                "；来源指纹="+digest(provenance.toString())+"。本轮只执行角色授权的检查和修改。";
+        return new Snapshot(instruction, digest(provenance+instruction), List.copyOf(files),
                 origin.getProperty("version"), origin.getProperty("commit"));
     }
     public Map<String,Object> status() {
@@ -79,7 +96,7 @@ public class SkillService {
             return content;
         } catch (IOException e) { throw new IllegalStateException("必需的技能文件无法读取：" + path, e); }
     }
-    static String digest(String content) {
+    public static String digest(String content) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8))); }
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException("JDK 无法提供 SHA-256", e); }
     }

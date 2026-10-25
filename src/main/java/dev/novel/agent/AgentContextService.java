@@ -54,12 +54,16 @@ public class AgentContextService {
         for(var count:packed.path("_contextBudget").path("omittedRecords")) omitted+=count.asInt();
         store.event((String)task.get("novel_id"),Store.string(task,"id"),"CONTEXT_PACKED",
                 json.write(Map.of("contextBytes",budget.bytes(packed),"limitBytes",available,"omittedRecords",omitted)),(String)task.get("execution_id"));
-        return json.write(packed);
+        return json.stable(packed);
     }
     public Map<String,Object> draft(Map<String,Object> task) {
         var draft=store.one("chapters.find",task.get("novel_id"),task.get("chapter_no"));
         if(Store.integer(draft,"revision")!=Store.integer(task,"revision"))
             throw new IllegalStateException("Agent 任务的正文修订版本已变化");
         return draft;
+    }
+    public String legacyReviewInput(Map<String,Object> task) {
+        return json.stable(Map.of("draft",draft(task),"reviews",store.list("tasks.reviews",task.get("novel_id"),
+                task.get("chapter_no"),task.get("revision"),task.get("memory_version"))));
     }
 }

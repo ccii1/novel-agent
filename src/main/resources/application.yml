@@ -51,7 +51,7 @@ novel:
   memory-directory: ${NOVEL_MEMORY_DIRECTORY:./data/books}
   memory-file-bytes: 16000
   memory-entry-bytes: 6000
-  review-mode: ${NOVEL_REVIEW_MODE:parallel}
+  review-mode: ${NOVEL_REVIEW_MODE:combined}
   redis:
     enabled: ${NOVEL_REDIS_ENABLED:false}
     address: ${NOVEL_REDIS_ADDRESS:redis://127.0.0.1:6379}
@@ -64,7 +64,7 @@ novel:
   agent-tool-total-bytes: ${NOVEL_TOOL_TOTAL_BYTES:60000}
   memory-initial-topic-bytes: 16000
   agent-tool-rounds:
-    default: 3
+    default: 8
     coordinate: 2
   model:
     billing-mode: metered
@@ -74,6 +74,8 @@ novel:
     input-per-million: ${NOVEL_INPUT_PRICE:0}
     output-per-million: ${NOVEL_OUTPUT_PRICE:0}
     max-output-tokens: ${NOVEL_MAX_OUTPUT:8192}
+    context-tokens: ${NOVEL_MODEL_CONTEXT_TOKENS:32768}
+    prompt-cache-key-enabled: ${NOVEL_PROMPT_CACHE_KEY_ENABLED:false}
     timeout-seconds: 180
     role-timeout-seconds:
       memory: 600

@@ -8,12 +8,13 @@ import type {Agent, Novel, Observation} from '../domain';
 
 export default function Observability(props: {novelId?: string; embedded?: boolean}) {
   const definitions=useApi<Agent[]>(['agents'],'/agents');
-  return <><ExecutionObservability {...props}/><Panel title="Agent 构建与权限"><details><summary>查看各角色的工具和推理轮数</summary><div className="task-grid">{definitions.data?.map(agent=><article className="plan-change-text" key={agent.kind}><strong>{roles[agent.kind]}</strong><p>{agent.purpose}</p><small>{agent.runtime?.name ?? agent.agent} · 最多 {agent.runtime?.maxIterations ?? 1} 轮推理</small><p>可用工具：{agent.runtime?.tools.join('、') || '使用任务提供的资料'}</p></article>)}</div><ErrorBox error={definitions.error}/></details></Panel></>;
+  return <><ExecutionObservability {...props}/><Panel title="Agent 构建与权限"><details><summary>查看 {definitions.data?.length ?? 0} 个 Agent 的工具和推理轮数</summary><div className="task-grid">{definitions.data?.map(agent=><article className="plan-change-text" key={agent.kind}><strong>{roles[agent.kind]}</strong><p>{agent.purpose}</p><small>{agent.runtime?.name ?? agent.agent} · 最多 {agent.runtime?.maxIterations ?? 1} 轮推理</small><p>支持操作：{agent.kinds.map(kind=>roles[kind] ?? kind).join('、')}</p><p>可用工具：{agent.runtime?.tools.join('、') || '使用任务提供的资料'}</p></article>)}</div><ErrorBox error={definitions.error}/></details></Panel></>;
 }
 function ExecutionObservability({novelId = '', embedded = false}: {novelId?: string; embedded?: boolean}) {
   const [filters,setFilters] = useState({novelId,chapter:'',kind:'',status:'',page:0});
   const [trace,setTrace] = useState<string | null>(null);
-  const agents = useApi<Agent[]>(['agents'], '/agents');
+  const catalogue = useApi<Agent[]>(['agents'], '/agents');
+  const agents={data:catalogue.data?.flatMap(agent=>agent.kinds.map(kind=>({...agent,kind})))};
   const books = useApi<Novel[]>(['novels'], '/novels/summaries');
   const parameters = new URLSearchParams(Object.entries({...filters, novelId:novelId || filters.novelId}).filter(([,value]) => value !== '').map(([key,value]) => [key,String(value)]));
   const query = useQuery({queryKey:['observability',parameters.toString()], queryFn:({signal}) => api<Observation>(`/observability?${parameters}`,signal), refetchInterval:3000, placeholderData:keepPreviousData});

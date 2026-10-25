@@ -105,7 +105,7 @@ flowchart TD
 
 ## 框架与执行层
 
-AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core` 与 `agentscope-extensions-model-openai`。该版本支持 Java 17。MyBatis Spring Boot Starter 使用 `3.0.5`，Redisson 使用 `3.52.0`。
+AgentScope Java 固定为 `2.0.4`，使用 `agentscope-core`、`agentscope-harness` 与 `agentscope-extensions-model-openai`。该版本支持 Java 17。HTTP 退避重试使用 Resilience4j Retry `2.3.0`，MyBatis Spring Boot Starter 使用 `3.0.5`，Redisson 使用 `3.52.0`。
 
 ```mermaid
 flowchart TD
@@ -127,9 +127,11 @@ flowchart TD
     Result --> Business
 ```
 
-各角色通过 `NovelAgent.runtime()` 声明名称、职责、工具权限与推理轮数。`AgentRuntimeFactory` 按角色声明构建独立的 `ReActAgent` 和 Toolkit，`AgentScopeExecutor` 负责传输与 Middleware 事件。创作角色可以查询相关记忆与人物关系，审核角色可以查询记忆和正文段落，协调角色可以选择正文、大纲或记忆处理角色。工具绑定当前任务的作品与版本，不能指定其他作品，工具失败会使任务失败。
+业务 Agent 共8个：选题研究、阶段规划、大纲修改、正文写作、综合审核、记忆整理、记忆审核、创作协调。写作组件同时处理创作与修改，记忆整理组件同时处理提取与修正；旧任务类型保留兼容入口。每次任务仍创建独立执行实例，作品可变状态由版本化业务数据提供。`AgentRuntimeFactory` 构建 `ReActAgent` 和授权 Toolkit，`AgentContextHook` 注入规则并接入 Harness 的 `ConversationCompactor`。工具绑定当前用户、作品和版本；文件未命中返回查询状态，权限与版本错误明确失败。
 
-`OpenAIChatModel` 负责消息格式、请求生成与模型响应处理。`AccountedTransport` 包装框架的 `JdkHttpTransport`，在真实请求发送前检查上下文并取得限流许可。资料读取角色默认最多3轮推理、4次模型请求，协调角色默认2轮推理、3次请求；通过 `novel.agent-tool-rounds.default` 和具体角色键（例如 `write`、`check_plot`）配置1至3轮，另保留一次最终输出请求。工具默认单次最多24000字节、累计最多60000字节，并根据完整请求剩余空间进一步收紧。多个主题文件可以在同一轮通过 `read_memory_batch` 读取，共用返回预算。未配置工具的角色最多1次模型请求，每次请求的框架尝试次数为1。`AgentCallAccounting` 按允许的请求次数和上下文上限预留任务预算，逐次保存请求、响应、用量、耗时及估算费用到 `model_call_turns`，最终结果和合计费用保存到 `model_calls`。数据库与 Redis 限流都按真实请求次数计算。工具响应不会成为任务最终检查点；完整 Agent 最终输出才可复用，重启期间未确定的调用需要人工核对。服务中断、人工审核和正文记忆事务由持久化业务流程管理。
+`OpenAIChatModel` 负责消息格式与生成参数。资料读取默认允许8轮推理和一次最终输出，协调角色默认2轮；`novel.agent-tool-rounds` 支持1至24轮。另为上下文压缩和 HTTP 重试各预留两次请求，所有真实请求都经过同一额度、限流和费用记录。工具单次默认24000字节，每次请求的工具空间最多60000字节，并根据当前完整请求剩余空间重新计算。工具查询与压缩不会自动授权正式修改。原始请求、响应、用量与费用保存到 `model_call_turns` 和 `model_calls`；AgentState 使用框架文件存储保存在 `data/agent-sessions`，按用户和任务隔离，结果不确定的外部调用仍需核对。
+
+Resilience4j 对免费服务返回的 HTTP 408、429、502、503、504 最多追加两次请求，等待间隔为1秒、2秒；每次尝试独立记录。付费服务的结果不确定请求保留原有费用核对流程，未知用量保持 null。
 
 MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处理任务认领与模型调用状态，`resources/mappers` 按小说、任务、章节、记忆、选题、费用、质量、修改申请和事件组织 SQL；`Store` 使用 `SqlSessionTemplate` 调用命名语句并提供事务入口。Mapper 参数通过 `#{...}` 绑定，业务服务通过命名操作访问数据。CLOB 转换和 Map 字段名称在 MyBatis 配置中统一处理，事务内部查询采用 `STATEMENT` 本地缓存范围。
 
@@ -162,26 +164,18 @@ flowchart TD
     Proposal --> Human["人工确认处理范围"]
     Human --> Queue["版本校验 · 创建持久化子任务"]
     Queue --> Outline["PlanChangeAgent"]
-    Queue --> Writer["RewriterAgent"]
+    Queue --> Writer["WriterAgent · 创作与修改"]
     Queue --> Memory["MemoryExtractionAgent · 修正记忆"]
     Writer --> Review["ReviewOrchestrator"]
-    Review --> Character["CharacterCheckAgent"]
-    Review --> Plot["PlotCheckAgent"]
-    Review --> Pacing["PacingCheckAgent"]
-    Review --> Style["StyleCheckAgent"]
-    Character --> Gather["按正文修订号与记忆版本汇合"]
-    Plot --> Gather
-    Pacing --> Gather
-    Style --> Gather
-    Gather -->|未通过| Reflection["ReflectionAgent · 统一修改计划"]
-    Reflection --> Approval["自动修改预算或人工审核"]
+    Review --> Gather["ChapterReviewAgent · 四个维度"]
+    Gather -->|未通过| Approval["审核报告生成修改要求 · 重大变更审批"]
     Approval --> Writer
     Gather -->|通过| Extract["MemoryExtractionAgent · 提取记忆"]
     Extract --> CheckMemory["MemoryCheckAgent"]
     CheckMemory --> Commit["正文与记忆事务提交"]
 ```
 
-联合审核模式由 `ChapterReviewAgent` 替代四项并行审核，结果继续使用相同的汇合和后续审批规则。接口：`GET /api/novels/{id}/coordination` 查看协调记录，`POST` 同地址提交 `{instructions}`，`POST /api/novels/{id}/coordination/{taskId}/approve` 确认委派。MySQL 使用 Flyway V4 创建逐次请求记录，H2 启动时自动创建。
+默认使用联合审核；已创建的历史审核轮次保留其参与操作集合。接口：`GET /api/novels/{id}/coordination` 查看协调记录，`POST` 同地址提交 `{instructions}`，`POST /api/novels/{id}/coordination/{taskId}/approve` 确认委派。MySQL 使用 Flyway V4 创建逐次请求记录，H2 启动时自动创建。
 
 协调入口按用户提交的修改要求执行，正常逐章连载继续由状态机推进。真实 `deepseek-flash` 验证中，协调 Agent 使用委派工具，经过2次请求形成建议；人工确认后，大纲修改 Agent 通过1次请求形成待审核建议。该成功链路估算费用0.090744元，模型请求的输入、输出 token 合计与任务汇总一致；复用完整检查点没有增加模型请求。120项检查和真实 Edge 页面操作通过，包括14项 MySQL 验证。实际平台账单仍按供应商记录核对。
 
@@ -189,7 +183,7 @@ flowchart TD
 
 项目固定使用 [fanqie-novel-skill](src/main/resources/skills/fanqie-novel-skill/SKILL.md) `v2.0.1`，作者 Jayce，来源为 `304769384-png/fanqie-novel-skill`，提交 `7d874e032d2de3dace74ae585cd2dbfbac2cde69`。上游文件原文随项目保存，来源及 SHA-256 记录在 [origin.properties](src/main/resources/skills/fanqie-novel-skill/origin.properties)。
 
-每次模型调用和结果恢复都会加载技能主文件及相应角色的参考资料，并校验文件指纹。缺少必需文件或内容与固定版本不一致时明确失败。模型调用记录保存技能版本、加载文件清单、内容指纹及实际请求正文；API key 通过请求头发送，独立保存在本机配置中。
+技能主文件及角色参考资料在组件初始化和快照构建时读取、校验并保存来源指纹，角色族复用不可变快照。`runtime-rules.md` 提供应用维护的运行指令，来源原文继续完整保留。模型调用与结果恢复记录技能版本、来源文件清单、来源及运行规则指纹和实际请求正文；章节周期要求通过任务资料提供。API key 通过请求头发送，独立保存在本机配置中。
 
 项目开发的固定读取规则写入 [AGENTS.md](AGENTS.md)。运行时通过 `SkillService` 加载技能，将写作规则、检查规则和数据库中的 Truth Files 提供给各角色。平台政策和收益依据经核实的官方资料判断；技能中的写作建议用于创作和检查。
 
@@ -220,17 +214,16 @@ flowchart TD
 
 阶段大纲包含 `stageGoal`、`coreMilestones`，以及每章的编号、标题、目标、出场人物和关联伏笔。人工可以按字段生成局部修改建议并确认保存，批准已保存大纲后开始正文生成。
 
-## 每章的 Plan–Execute–Check–Reflect 流程
+## 每章执行流程
 
-Plan 对应已批准的阶段及章节计划。Execute 生成正文，Check 独立检查正文，Reflect 仅在检查发现问题时执行。正文通过后还有一次独立的记忆检查。
+每章使用批准的章节计划生成正文，综合审核返回四个维度的结论和可执行修改要求。正文通过后生成并独立审核记忆修改，全部通过后提交章节和正式记忆。
 
 ```mermaid
 flowchart TD
     Context["读取批准的计划和当前版本的创作记忆"] --> Write["WRITE：生成章节草稿"]
-    Write --> Joint["正文审核：默认四项并行，可选联合审核"]
+    Write --> Joint["正文综合审核"]
     Joint --> Passed{"四个维度是否全部通过？"}
-    Passed -->|存在问题| Reflect["REFLECT：汇总问题和冲突意见，制定修改计划"]
-    Reflect --> Major{"是否涉及重大剧情变更？"}
+    Passed -->|存在问题| Major{"审核报告是否涉及重大剧情变更？"}
     Major -->|涉及| HumanMajor["AWAITING_CHANGE：人工批准修改要求和完整大纲"]
     Major -->|未涉及| Limit{"是否已修改三轮？"}
     Limit -->|达到上限| HumanHelp["AWAITING_HELP：人工提供修改要求"]
@@ -256,11 +249,6 @@ flowchart TD
 | `PLAN` | 阶段冲突、剧情节点和章节安排 | 阶段大纲 |
 | `WRITE` / `REWRITE` | 生成或统一修改章节 | 标题、正文 |
 | `CHECK_CHAPTER` | 联合检查人物、剧情、节奏与文风 | 四个维度结论、问题归属、原文证据、叙事结构和篇幅建议 |
-| `CHECK_CHARACTER` | 人物关系、动机、性格与知情范围 | 结论、正文证据和修改建议 |
-| `CHECK_PLOT` | 因果、时间线、世界规则、伏笔与大纲执行 | 结论、正文证据和修改建议 |
-| `CHECK_PACING` | 冲突推进、失败代价、信息揭示、高潮与缓和 | 结论、正文证据和修改建议 |
-| `CHECK_STYLE` | 文风、重复表达、语义完整性、字数与开篇吸引力 | 检查结论及程序统计的问题 |
-| `REFLECT` | 汇总检查意见，处理相互冲突的建议 | 统一修改计划、重大变更标记 |
 | `MEMORY` | 提取本章记忆增量 | 摘要、事实与关系变更 |
 | `MEMORY_REPAIR` | 根据检查意见与人工要求修正待审核记忆 | 完整的记忆增量，继续接受正文证据校验 |
 | `CHECK_MEMORY` | 核对记忆变更与正文、历史设定 | 检查结论及问题证据 |
@@ -269,27 +257,23 @@ flowchart TD
 
 ## 独立 Agent 与信息范围
 
-系统采用工作流式多 Agent 协作，`agent` 包提供12个独立 Spring 组件，处理14种任务。`ResearchAgent` 处理选题与选题讨论，`MemoryExtractionAgent` 处理记忆提取与修正，`ChapterReviewAgent` 负责正文联合审核。独立的人物、剧情、节奏及文风组件用于默认并行模式。`AgentService` 负责类型注册、响应恢复、分发和分析查询，启动时检查遗漏或重复的任务类型。
+系统采用8个业务 Agent 组件，`AgentService` 在启动时检查组件数量、任务类型重复和遗漏。一个组件可处理多个操作，执行时按任务隔离上下文与权限。`GET /api/agents` 按组件返回目录，`kinds` 列出它支持的操作；历史任务和费用仍按操作类型保留。
 
-默认 `novel.review-mode=parallel` 使用四项并行审核，正常章节从正文生成到记忆提交需要7次模型调用。设置环境变量 `NOVEL_REVIEW_MODE=combined` 后，正文一次调用检查四个维度，对应正常章节4次调用；每条问题标明 `dimension`，各维度与总体结论必须一致，节奏结构和文风程序统计继续保存。阶段规划及有问题时的修改调用另计。已经创建的检查任务继续按该轮原有模式执行，服务恢复不会混入另一种模式。
+默认 `novel.review-mode=combined`，正文一次调用检查四个维度，每条问题标明 `dimension`，各维度与总体结论必须一致，程序统计继续保存。单组记忆且全部一次通过时，每章4次主要调用；工具查询、压缩、重试、修改和记忆分组会增加实际调用数。已经创建的历史检查轮次继续按原操作集合完成。
 
-联合审核可以减少重复读取正文和规则、模型调用及报告汇总。四项并行审核的等待时间取决于最慢任务，调用数下降不能直接换算为同比耗时下降。联合审核存在同一次推理遗漏多个维度的风险，因此保留四项模式、结构校验和人工评价用于比较。正文审核与记忆审核保持独立，后者核对另外一次模型生成的记忆内容。比较方案与测量范围见 [Agent 审核评估](docs/agent-review-evaluation.md)。
+综合审核逐项输出人物、剧情、节奏、文风结论；正文审核与记忆审核分别检查各自的模型产物。结构校验、原文证据检查与人工评价持续保留。测量方法见 [Agent 审核评估](docs/agent-review-evaluation.md)。
 
 ```mermaid
 flowchart TD
     Registry["AgentService：任务类型注册表"] --> Planner["PlannerAgent：阶段计划"]
     Planner --> Approval["人工批准"]
     Approval --> Writer["WriterAgent：章节正文"]
-    Writer --> Mode{"审核模式"}
-    Mode -->|combined| Joint["ChapterReviewAgent：四个维度联合检查"]
-    Mode -->|parallel，默认| Parallel["人物、剧情、节奏、文风四个独立检查 Agent"]
-    Parallel --> Reports
+    Writer --> Joint["ChapterReviewAgent：四个维度联合检查"]
     Joint --> Reports["报告绑定正文修订和记忆版本"]
     Reports --> Decision{"全部通过？"}
-    Decision -->|否| Reflect["ReflectionAgent：分析问题与意见冲突"]
-    Reflect --> Gate["业务流程检查修改次数、预算与人工审批条件"]
-    Gate --> Rewrite["RewriterAgent：统一修改正文"]
-    Rewrite --> Mode
+    Decision -->|否| Gate["审核报告生成修改要求，检查预算与审批条件"]
+    Gate --> Rewrite["WriterAgent：统一修改正文"]
+    Rewrite --> Joint
     Decision -->|是| Extract["MemoryExtractionAgent：记忆增量"]
     Extract --> MemoryCheck["MemoryCheckAgent：正文证据检查"]
     MemoryCheck -->|一般问题，最多三次| Repair["MemoryExtractionAgent：MEMORY_REPAIR"]
@@ -302,13 +286,8 @@ flowchart TD
 | Agent | 额外输入范围 |
 | --- | --- |
 | PlannerAgent | 创作设定、历史计划、规划记忆、最近八章摘要、修改要求 |
-| WriterAgent / RewriterAgent | 基础故事资料、人物关系、知情范围、文风与对话要求；修改角色增加原正文和修改计划 |
-| CharacterCheckAgent | 基础故事资料、人物关系和知情范围、当前正文 |
-| PlotCheckAgent | 基础故事资料、当前正文 |
-| PacingCheckAgent | 基础故事资料、近期质量、对话及循环模式记录、当前正文统计 |
-| StyleCheckAgent | 基础故事资料、文风及对话记录、当前正文统计 |
+| WriterAgent | 基础故事资料、人物关系、知情范围、文风与对话要求；修改操作增加原正文和修改计划 |
 | ChapterReviewAgent | 人物、剧情、节奏与文风资料的并集，正文和统计只提供一次 |
-| ReflectionAgent | 基础故事资料、当前正文、四份独立检查报告 |
 | MemoryExtractionAgent / MemoryCheckAgent | 基础故事资料、人物关系、知情范围与正文；记忆检查增加待提交增量 |
 | ResearchAgent | 用户想法、已采集资料、当前方案与最近交流 |
 
@@ -369,7 +348,17 @@ flowchart LR
 
 `list_memory_files(directory, offset, limit)` 返回路径、标题、说明与指纹；`search_memory(query, directory, offset, limit)` 返回有限命中上下文；`read_memory(path, offset, length)` 返回正文范围、指纹、下一位置和未读取标记，位置按 Unicode code point 计算。`read_candidate_memory` 读取当前待审文件，`read_source` 按章节、revision 与片段读取原始证据。所有工具受用户、作品、任务版本和目录限制。
 
-工具默认单次最多24000字节、累计最多60000字节，运行时按完整请求剩余空间收紧；预算包含序列化转义与 `_toolBudget` 信息。通过 `NOVEL_TOOL_RESULT_BYTES`、`NOVEL_TOOL_TOTAL_BYTES` 分别配置单次与累计预算。结果向模型显示剩余字节和模型请求次数。单文件默认读取6000个 Unicode code point，可指定1至12000；目录默认15项、最多30项，搜索默认10项、最多20项。每次真实请求检查完整序列化大小；固定资料本身过大时，在发送前明确报错并保留已有用量。
+工具默认单次最多24000字节，当前请求的结果空间最多60000字节，运行时根据完整请求重新计算；预算包含序列化转义与 `_toolBudget` 信息。通过 `NOVEL_TOOL_RESULT_BYTES`、`NOVEL_TOOL_TOTAL_BYTES` 配置。单文件默认读取6000个 Unicode code point，可指定1至12000；目录默认15项、最多30项，搜索默认10项、最多20项。空间不足时工具返回 `BUDGET_EXHAUSTED`，后续模型请求由上下文 hook 判断是否需要压缩。
+
+`lookup_memory(entity)` 按稳定标识或名称返回真实文件路径，状态为 `FOUND`、`NOT_FOUND` 或 `AMBIGUOUS`。单文件与候选读取分别标记 `scope=published/candidate`，缺失时返回 `NOT_FOUND`；查询未命中不证明故事事实不存在。格式、权限、版本及文件损坏仍明确报错。
+
+### 上下文压缩与提示缓存
+
+`AgentContextHook` 在模型调用前排序工具定义，按配置 token 容量和请求大小判断是否需要压缩；token 数由 AgentScope `TokenCounterUtil` 估算，实际费用始终使用服务返回用量。`NOVEL_MODEL_CONTEXT_TOKENS` 默认32768，特定模型可以配置 `novel.context-models.<model>.tokens`；输出额度和2048 token 包装空间另行预留。120000字节继续作为应用请求保护上限。
+
+达到请求估算大小的75%或输入 token 预算的80%时，使用框架 `ConversationCompactor` 总结较早历史并保留近期完整工具调用组。系统规则保留，摘要记录任务目标、输出字段、已确认事实、来源与待办；最多两次压缩，压缩请求同样计费和限流。无法找到可压缩历史、压缩失败或压缩后必需资料仍超过容量时明确报告；原文继续保存在正式记忆与请求记录中。
+
+规则通过 `onSystemPrompt` hook 注入一次，技能快照按角色族复用，动态章节资料位于后续用户消息；JSON 对象字段和工具顺序固定。`PROMPT_PREFIX_READY` 记录前缀指纹，供应商返回的缓存 token 与命中率显示在用量日志。实际缓存命中由供应商决定，前缀复用不代表已经命中。支持该字段的服务可通过 `NOVEL_PROMPT_CACHE_KEY_ENABLED=true` 发送按用户、供应商、模型和规则生成的 `prompt_cache_key`，默认关闭以兼容本地代理。
 
 `read_memory_batch(paths, offset, length)` 支持最多30个不同路径，顺序表示读取优先级。一次读取版本清单，在共同预算内返回存在的文件原文、指纹、已读范围、`nextOffset` 和 `hasMore`。`missingPaths` 列出当前版本不存在的路径，Agent 可以查询目录或搜索确认；`pendingPaths` 列出尚未读取的已有文件。单个文件可以使用 `read_memory` 从继续位置获取后续内容。分页按实际字节计算能够容纳的字符数，保持 Unicode 完整。
 
@@ -385,7 +374,7 @@ flowchart LR
 
 单个主题文件默认最多16000个 UTF-8 字节，两个常驻短文件分别最多6000字节。参数为 `novel.memory-file-bytes` 和 `novel.memory-entry-bytes`。大文件应按照有意义的主题组织，并通过目录继续访问历史。
 
-`CHECK_MEMORY` 按共享证据组织文件修改，依据输入大小分组审核，再执行全文遗漏及跨文件检查。同一组的原文证据只提供一次，每组具有独立任务与调用记录；文件问题需要核对旧内容、关联人物和正文证据。修复后重新审核候选集合，保留三次自动修复、重要变更审批和章节费用限制。
+`CHECK_MEMORY` 按共享证据和资料大小组织修改。只有一组时，同一次审核核对文件依据、全文遗漏和跨文件一致性；多组时分别审核，再执行全文遗漏检查。同一组的原文证据只提供一次；文件问题需要核对旧内容、关联人物和正文证据。修复后重新审核完整候选集合，保留三次自动修复、重要变更审批和章节费用限制。
 
 全部通过后，在数据库事务外准备并持久化不可变文件，再在同一事务中登记文件清单、确认章节与摘要、切换 `memory_version`、推进进度并创建下一任务。正文 revision、基准版本或候选指纹发生变化时拒绝提交。准备完成但尚未发布的文件不对任务可见，发布版本中的未修改文件继续共享原文件。
 
@@ -463,7 +452,7 @@ sequenceDiagram
 
 阶段规划任务也带有章节编号，其费用计入对应章节额度。输入费用预留依据消息字节数估算；实际费用超过预留金额时，任务停止并要求核查供应商单价及 token 规则。
 
-一章直接通过时，写作、四个正文检查、记忆提取和记忆检查共执行七次模型调用。阶段规划和需要的 Reflect、Rewrite 另行计费。技能内容计入上下文检查和费用预留。
+默认流程单组记忆且一次通过时，写作、综合审核、记忆提取和记忆审核共四次主要模型调用。工具查询、分组、上下文压缩、重试、阶段规划和正文修改另行计费；所有请求都计入额度与用量记录。
 
 ### 暂停、失败与重启恢复
 

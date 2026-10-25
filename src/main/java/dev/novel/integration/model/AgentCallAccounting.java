@@ -65,6 +65,12 @@ final class AgentCallAccounting {
         long elapsed=Math.max(0,(System.nanoTime()-turnStarted)/1_000_000);latency+=elapsed;
         event("MODEL_RESPONSE_RECEIVED",Map.of("callId",callId,"latencyMs",elapsed,"httpStatus",response.getStatusCode(),"turn",turns));
         if(!response.isSuccessful()) {
+            if(selected.billingMode().equals("unmetered") && Set.of(408,429,502,503,504).contains(response.getStatusCode())) {
+                store.update("modelTurns.finish","REJECTED",response.getBody(),null,null,null,null,elapsed,turnId);
+                event("MODEL_RETRY_PENDING",Map.of("httpStatus",response.getStatusCode(),"turn",turns));
+                requestOpen=false;answered=false;
+                throw new RetryableModelRequest(response.getStatusCode());
+            }
             store.update("modelTurns.finish","UNCERTAIN",response.getBody(),null,null,null,null,elapsed,turnId);
             throw new IllegalStateException("模型 API 返回 HTTP "+response.getStatusCode()+"，请核对供应商费用");
         }
@@ -85,6 +91,8 @@ final class AgentCallAccounting {
     }
     void complete(String result) {
         if(!lastStopped) throw new IllegalStateException("Agent 未取得最终文本响应");
+        if(lastContent==null || !result.strip().equals(lastContent.strip()))
+            throw new IllegalStateException("Agent 输出与最后一次模型响应不一致，不能保存为最终结果");
         BigDecimal actual=cost(input,output);
         calls.observation(callId,latency,json.write(Map.of("prompt_tokens",input,"completion_tokens",output,"requests",turns)),allCached?cached:null);
         if(calls.complete("COMPLETE",actual,input,output,result,callId)!=1) throw new IllegalStateException("模型调用结算记录不存在");
@@ -92,6 +100,7 @@ final class AgentCallAccounting {
         var metadata=new LinkedHashMap<String,Object>();
         metadata.put("callId",callId);metadata.put("inputTokens",input);metadata.put("outputTokens",output);metadata.put("cachedInputTokens",allCached?cached:null);
         metadata.put("estimatedCost",actual);metadata.put("billingMode",selected.billingMode());metadata.put("requests",turns);
+        metadata.put("cacheHitRatio",allCached && input>0?BigDecimal.valueOf(cached).divide(BigDecimal.valueOf(input),4,RoundingMode.HALF_UP):null);
         event("MODEL_USAGE_RECORDED",metadata);
     }
     void failed(Exception failure) {

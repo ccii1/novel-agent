@@ -21,7 +21,7 @@ public class ChapterReviewAgent extends ReviewAgent {
     public ChapterReviewAgent(AgentContextService context,ModelClient model,Json json,ReviewValidator validator,ChapterQualityService quality,AgentOutputReader outputs) {
         super(context,model,json,validator);this.quality=quality;this.outputs=outputs;
     }
-    public Set<String> kinds() { return Set.of("CHECK_CHAPTER"); }
+    public Set<String> kinds() { return Set.of("CHECK_CHAPTER","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE"); }
     public String purpose() { return "联合审核人物关系、动机与知情范围；剧情因果、时间线、世界规则与伏笔；冲突推进、代价、战斗与叙事循环；文风、重复表达与语义完整性。四个维度逐项给出结论"; }
     public List<String> contextFiles() {
         return AgentInstructions.storyFiles("character_matrix.md","character_knowledge.md","progress_tracker.md","dialogue-monitor.md","pattern-detection.md","style_guide.md");

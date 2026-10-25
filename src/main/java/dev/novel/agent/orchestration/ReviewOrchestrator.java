@@ -14,7 +14,7 @@ public class ReviewOrchestrator {
     private final TaskScheduler scheduler;
     private final Json json;
     private final String mode;
-    public ReviewOrchestrator(Store store,TaskScheduler scheduler,Json json,@Value("${novel.review-mode:parallel}") String mode) {
+    public ReviewOrchestrator(Store store,TaskScheduler scheduler,Json json,@Value("${novel.review-mode:combined}") String mode) {
         if(!Set.of("parallel","combined").contains(mode)) throw new IllegalArgumentException("review-mode 必须为 combined 或 parallel");
         this.store=store;this.scheduler=scheduler;this.json=json;this.mode=mode;
     }

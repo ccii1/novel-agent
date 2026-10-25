@@ -23,9 +23,10 @@ public class WorkflowService {
     private final PlanChangeService planChanges;
     private final ReviewOrchestrator reviews;
     private final TaskScheduler scheduler;
+    private final ObservationService observations;
 
     public WorkflowService(Store store, Json json, MemoryService memory, ChapterQualityService quality,
-            ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler) {
+            ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler,ObservationService observations) {
         this.store = store;
         this.json = json;
         this.memory = memory;
@@ -34,6 +35,7 @@ public class WorkflowService {
         this.planChanges = planChanges;
         this.reviews = reviews;
         this.scheduler = scheduler;
+        this.observations=observations;
     }
 
     public String schedule(Map<String, Object> novel, String kind, int chapter, int revision, Object payload) {
@@ -43,7 +45,7 @@ public class WorkflowService {
     public void finished(Map<String, Object> task, JsonNode result) {
         MemoryFileService.Prepared prepared=null;
         var payload=json.read(Store.string(task,"payload"));
-        if("CHECK_MEMORY".equals(task.get("kind")) && "COVERAGE".equals(payload.path("reviewPhase").asText())
+        if("CHECK_MEMORY".equals(task.get("kind")) && Set.of("COVERAGE","ALL").contains(payload.path("reviewPhase").asText())
                 && result.path("approved").asBoolean() && (!result.path("majorChange").asBoolean() || payload.path("humanApproved").asBoolean())) {
             var novel=store.novel(Store.string(task,"novel_id"));
             if(!SUSPENDED.contains(novel.get("status")) && Store.number(novel,"memory_version")==Store.number(task,"memory_version")
@@ -58,6 +60,8 @@ public class WorkflowService {
         var publication=prepared;
         store.transaction(() -> {
             finishWithinTransaction(task, result,publication);
+            String status=Store.string(store.one("tasks.find",task.get("id")),"status");
+            if(task.get("execution_id")!=null) observations.finish(task,status,result,null);
             return null;
         });
     }
@@ -138,8 +142,16 @@ public class WorkflowService {
         var round = reviews.collect(novel, chapter, revision);
         // 等待同一版本的全部审核结果，单个 Agent 完成不会提前推进章节。
         if (!round.ready()) return;
-        state(novelId, round.approved() ? "EXTRACTING" : "REFLECTING");
-        schedule(novel, round.approved() ? "MEMORY" : "REFLECT", chapter, revision, Map.of());
+        if(round.approved()) {
+            state(novelId,"EXTRACTING");
+            schedule(novel,"MEMORY",chapter,revision,Map.of());
+        } else {
+            var reports=store.list("tasks.reviews",novelId,chapter,revision,novel.get("memory_version"));
+            var instructions=new java.util.ArrayList<Object>();
+            for(var report:reports) instructions.add(json.read(Store.string(report,"result")));
+            finishReflection(novel,task,json.tree(Map.of("majorChange",round.majorChange(),
+                    "instructions","逐项处理有原文依据的审核问题，保留已通过内容。审核报告："+json.write(instructions),"conflicts",java.util.List.of())));
+        }
     }
 
     private void finishReflection(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
@@ -174,7 +186,7 @@ public class WorkflowService {
                             payload.path("humanApproved").asBoolean());
                     return;
                 }
-                if(!"COVERAGE".equals(payload.path("reviewPhase").asText())) throw new IllegalStateException("未知记忆审核阶段");
+                if(!Set.of("COVERAGE","ALL").contains(payload.path("reviewPhase").asText())) throw new IllegalStateException("未知记忆审核阶段");
             }
             commitApprovedChapter(novel, task, memoryDelta(payload),prepared);
             return;
@@ -252,7 +264,7 @@ public class WorkflowService {
             var draft=store.one("chapters.find",novelId,source.get("chapter_no"));
             delta=memory.validateDelta(delta,Store.string(draft,"body"));
             memory.files().stage(source,delta);
-            return scheduleFileReview(novel,source,delta,attempt,"FILES",0,humanApproved);
+            return scheduleFileReview(novel,source,delta,attempt,"AUTO",0,humanApproved);
         }
         return store.enqueue(novelId, "CHECK_MEMORY", Store.integer(source, "chapter_no"),
                 Store.integer(source, "revision"), Store.number(source, "memory_version"),
@@ -266,6 +278,7 @@ public class WorkflowService {
         var previous=json.read(Store.string(source,"payload"));
         Object groups=previous.has("reviewGroups") && !("FILES".equals(phase) && index==0)?previous.path("reviewGroups"):memory.files().reviewGroups(novelId,Store.number(source,"memory_version"),delta,
                 Store.string(store.one("chapters.find",novelId,source.get("chapter_no")),"body"));
+        if("AUTO".equals(phase)) phase=json.tree(groups).size()==1?"ALL":"FILES";
         var covered=new java.util.HashSet<Integer>();
         for(var group:json.tree(groups)) {
             if(!group.isArray() || group.isEmpty()) throw new IllegalStateException("记忆审核分组不能为空");

@@ -102,12 +102,7 @@ public class TaskEngine {
             // HTTP 请求已经结束，用户范围必须从持久化任务恢复。
             UserScope.enter(Store.string(task, "user_id"));
             var result = agents.execute(task);
-            store.transaction(() -> {
-                workflow.finished(task, result);
-                String status = Store.string(store.one("tasks.find", task.get("id")), "status");
-                observations.finish(task, status, result, null);
-                return null;
-            });
+            workflow.finished(task, result);
         } catch (BudgetService.RateLimited limited) {
             deferTask(task, limited.getMessage());
         } catch (Exception failure) {

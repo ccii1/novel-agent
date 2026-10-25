@@ -17,6 +17,11 @@ public class Json {
         try { return mapper.readTree(value); }
         catch (JsonProcessingException e) { throw new IllegalArgumentException("JSON 格式无效", e); }
     }
+    public String stable(Object value) {
+        try { return mapper.writer().with(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .writeValueAsString(mapper.convertValue(value,Object.class)); }
+        catch(JsonProcessingException failure) { throw new IllegalArgumentException("JSON 序列化失败",failure); }
+    }
     public JsonNode tree(Object value) { return mapper.valueToTree(value); }
     public String text(JsonNode node, String field) {
         if (!node.hasNonNull(field) || !node.get(field).isTextual() || node.get(field).asText().isBlank()) {

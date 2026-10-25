@@ -43,7 +43,7 @@ public class AgentRuntimeFactory {
     public record Handle(ReActAgent agent,StoryReadTools tools) implements AutoCloseable {
         public void close() { agent.close(); }
     }
-    public Handle build(Map<String,Object> task,Model model,String system,GenerateOptions options,MiddlewareBase middleware) {
+    public Handle build(Map<String,Object> task,Model model,String system,GenerateOptions options,MiddlewareBase middleware,MiddlewareBase contextHook) {
         var spec=spec(Store.string(task,"kind"));
         var tools=new StoryReadTools(task,context,memory,store,json,toolResultBytes,totalToolBytes,spec.maxRequests());
         var toolkit=new Toolkit();
@@ -55,7 +55,9 @@ public class AgentRuntimeFactory {
         store.event((String)task.get("novel_id"),Store.string(task,"id"),"AGENT_RUNTIME_BUILT",json.write(spec),(String)task.get("execution_id"));
         var agent=ReActAgent.builder().name(spec.name()).description(spec.description()).sysPrompt(system)
                 .model(model).toolkit(toolkit).maxIters(spec.maxIterations()).generateOptions(options)
-                .toolExecutionConfig(ExecutionConfig.builder().maxAttempts(1).build()).middleware(middleware).build();
+                .stateStore(new io.agentscope.core.state.JsonFileAgentStateStore(java.nio.file.Path.of("data","agent-sessions")))
+                .defaultSessionId(Store.string(task,"id"))
+                .toolExecutionConfig(ExecutionConfig.builder().maxAttempts(1).build()).middleware(contextHook).middleware(middleware).build();
         return new Handle(agent,tools);
     }
 }
