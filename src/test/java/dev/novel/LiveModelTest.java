@@ -52,10 +52,7 @@ class LiveModelTest {
         assertThat(Store.number(store.novel(id),"memory_version")).isZero();
         assertThat(store.novel(id).get("status")).isIn("EXTRACTING","REFLECTING");
         if("EXTRACTING".equals(store.novel(id).get("status"))) {
-            run(next(id,"MEMORY"));run(next(id,"CHECK_MEMORY"));
-            for(int attempt=0;"EXTRACTING".equals(store.novel(id).get("status")) && attempt<WorkflowService.MEMORY_REPAIR_LIMIT;attempt++) {
-                run(next(id,"MEMORY_REPAIR"));run(next(id,"CHECK_MEMORY"));
-            }
+            run(next(id,"MEMORY"));
             assertThat(store.novel(id).get("status")).isIn("AWAITING_STAGE_REVIEW","AWAITING_HELP");
         }
     }

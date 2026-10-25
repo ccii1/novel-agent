@@ -33,7 +33,8 @@ public class AgentContextService {
     }
     public String context(Map<String,Object> task,List<String> files,String additionalInput) {
         var novel=novel(task);
-        var documents=truth.prompt(novel,Store.integer(task,"chapter_no"),files);
+        boolean preloadTopics=!Set.of("MEMORY","MEMORY_REPAIR","CHECK_MEMORY").contains(task.get("kind"));
+        var documents=truth.prompt(novel,Store.integer(task,"chapter_no"),files,preloadTopics);
         boolean pending=Store.string(novel,"plan").isBlank() || "PLAN".equals(task.get("kind"))
                 || Set.of("PLANNING","AWAITING_PLAN").contains(Store.string(novel,"status"));
         documents.put("_workflow",Map.of("source","DATABASE_WORKFLOW","status",Store.string(novel,"status"),

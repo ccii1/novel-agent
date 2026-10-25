@@ -126,7 +126,7 @@ public class TaskLogFormatter {
             case "MEMORY_REPAIR" -> "记忆修正";
             case "REFLECT" -> "修改方案分析";
             case "MEMORY" -> "记忆提取";
-            case "CHECK_MEMORY" -> "记忆检查";
+            case "CHECK_MEMORY" -> "记忆文件校验";
             case "RESEARCH" -> "选题研究";
             case "RESEARCH_CHAT" -> "选题讨论";
             default -> kind;

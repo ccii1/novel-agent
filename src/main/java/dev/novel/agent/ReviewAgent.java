@@ -32,7 +32,7 @@ public abstract class ReviewAgent implements NovelAgent {
                 "approved=true 时 issues 必须为空；只有改变核心剧情、人物重要转变、关键伏笔答案或阶段结局才设置 majorChange=true。"+
                 "证据不足时不得声称存在矛盾。每个问题填写 quoteSource=BODY 和 quotePath=/paragraphs/p0 等已提供的段落路径，选择至少4个字符的段落；"+
                 "quote 可省略，由程序读取所选段落的完整原文，禁止编造路径。比较两处表达时选择其中一段，reason 说明比较理由。"+
-                "记忆审核引用待审核记忆时，按该任务的 quoteSource 和 quotePath 规则标明来源。"+additionalSchema()+
+                additionalSchema()+
                 "；上下文="+context.context(task,contextFiles(),draftInput+additional)+"；正文="+draftInput+additional);
         result=validateReview(task,result,body);
         validateAdditional(result,body);

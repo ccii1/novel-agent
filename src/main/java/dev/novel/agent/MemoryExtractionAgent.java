@@ -3,6 +3,7 @@ package dev.novel.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import dev.novel.integration.model.ModelClient;
 import dev.novel.service.MemoryService;
+import dev.novel.service.MemoryPatchService;
 import dev.novel.support.Json;
 import dev.novel.repository.Store;
 import dev.novel.support.EvidenceMatcher;
@@ -15,41 +16,42 @@ public class MemoryExtractionAgent implements NovelAgent {
     private final AgentContextService context;
     private final ModelClient model;
     private final MemoryService memory;
+    private final MemoryPatchService patches;
     private final Json json;
     private final EvidenceMatcher evidence;
-    public MemoryExtractionAgent(AgentContextService context,ModelClient model,MemoryService memory,Json json,EvidenceMatcher evidence) { this.context=context;this.model=model;this.memory=memory;this.json=json;this.evidence=evidence; }
-    public Set<String> kinds() { return Set.of("MEMORY","MEMORY_REPAIR"); }
-    public String purpose() { return "根据已审核正文整理人物、规则、伏笔、支线等 Markdown 主题记忆，并记录来源"; }
-    public List<String> contextFiles() { return AgentInstructions.storyFiles(); }
+    public MemoryExtractionAgent(AgentContextService context,ModelClient model,MemoryService memory,MemoryPatchService patches,Json json,EvidenceMatcher evidence) {
+        this.context=context;this.model=model;this.memory=memory;this.patches=patches;this.json=json;this.evidence=evidence;
+    }
+    public Set<String> kinds() { return Set.of("MEMORY","MEMORY_REPAIR","CHECK_MEMORY"); }
+    public String purpose() { return "提取已审核正文产生的记忆变化，由程序应用局部修改并校验文件"; }
+    public List<String> contextFiles() { return List.of("current_state.md","handoff_current.md"); }
     public JsonNode execute(Map<String,Object> task) throws Exception {
         var draft=context.draft(task);
-        String draftInput=json.write(Map.of("title",draft.get("title"),"paragraphs",evidence.paragraphs((String)draft.get("body"))));
+        String body=Store.string(draft,"body"),novel=Store.string(task,"novel_id");
+        long version=Store.number(task,"memory_version");
         var payload=json.read(Store.string(task,"payload"));
-        boolean repairing="MEMORY_REPAIR".equals(task.get("kind"));
-        var repair=repairing?Map.of("instructions",payload.path("instructions"),"review",payload.path("review"),
-                "pending",payload.path("delta").has("files")?memory.files().repairContext(Store.string(task,"novel_id"),Store.number(task,"memory_version"),payload.path("delta")):payload.path("delta")):Map.of();
+        // 已保存的候选和人工编辑使用本地校验，不产生审核模型调用。
+        if("CHECK_MEMORY".equals(task.get("kind"))) {
+            var delta=memory.validateDelta(payload.has("delta")?payload.path("delta"):payload,body);
+            if(delta.has("files")) memory.files().validateBase(novel,version,delta);
+            return delta;
+        }
+        String input=json.write(Map.of("title",draft.get("title"),"paragraphs",evidence.paragraphs(body)));
+        var instructions=Map.of("instructions",payload.path("instructions"),"previousIssues",payload.path("review").path("issues"),
+                "previousError",payload.path("retryFailure"));
         var result=model.call(task,AgentInstructions.SYSTEM+purpose(),
-                "输出 {summary:string,files:[{path:string,expectedHash:string,content:string,description:string,evidencePaths:[string]}]}。"+
-                "summary 不超过600字。content 是完整 Markdown 文件，开头为 YAML front matter，必须包含 id、type、name 和 aliases；后接标题与主题正文。"+
-                "新文件使用与主题对应的稳定标识。读取已有文件时只使用目录、搜索结果或上下文提供的真实路径，不要猜测路径。type 使用 character/world/hook/arc/stage/chapter/relation/issue；事件文件使用 chapter，current_state.md 使用 state，handoff_current.md 使用 handoff。"+
-                "先读取已有当前主题文件；仅当前主题沿用原有 id、path 及未变化的有效内容。expectedHash 使用上下文 fileHashes 或 read_memory 返回的 hash；新文件填写空字符串。"+
-                "editPolicy.readOnly=true 的文件只能读取，不在 files 中输出。editPolicy.kind=historical-source 或目录 legacy=true 表示历史来源文件，其中 memory-record 代码围栏及 JSON 只用于核对，不得复制到输出 content。"+
-                "历史来源需要更新时，把仍然有效的事实整理到对应的当前主题；已存在当前主题时更新它，新主题使用独立的稳定 id 和 path，不能复用历史来源文件的 id 或 path。"+
-                "关系文件的 front matter id 是主题文件标识，与关系块中的 subject、predicate、object 分别维护；创建当前关系主题时同样不得复用历史来源的 id。"+
-                "人物和伏笔应按实体维护当前主题，保留来源文件链接、原始章节与获知顺序；事实、推测、计划及已解除状态分别表述。完整历史来源由程序保留。"+
-                "每章必须更新 current_state.md 和 handoff_current.md；每个文件最多16000个UTF-8字节，这两个短文件最多6000字节。"+
-                "MEMORY.md、各目录 INDEX.md 和 chapters/ 文件由程序维护，不在 files 中输出。每项 description 说明本章变化与影响，最多800字符。"+
-                "evidencePaths 引用本章实际支持修改的 /paragraphs/p0 等路径；在正文中记录章节、revision、片段标识及事件来源。不得编造引用。"+
-                "物品转移、关系和认知变化要同步更新相关人物文件；世界事实、人物推测和未来计划分别表达。历史事件通过章节记录追溯。"+
-                "人物关系另外维护 relations/ 下的 Markdown 文件，包含 story-relations 代码围栏，内容为 JSON 数组；每项包含 subject、predicate、object、detail、evidence 字符串和 deleted 布尔值。"+
-                "subject、object 使用稳定的人物名称；predicate 使用稳定关系类型。每条关系只在一个关系文件维护，解除关系保留该项并设置 deleted=true；evidence 记录正文证据。人物文件使用链接引用关系文件。"+
-                "伏笔文件明确记录 OPEN/ADVANCING/RESOLVED/CANCELLED 状态，处理计划有指定章节时记录 dueChapter 与来源，description 保留状态和计划关键词供目录搜索。"+
-                (repairing?"本次修正保持正文与大纲。files 是修正后完整的候选集合，将整体替换原候选列表。读取原候选，保留仍然有效的全部修改，始终包含 current_state.md 和 handoff_current.md。"+
-                        "原候选若指向只读历史路径，需将有效内容整理到对应当前主题，并从完整候选集合中排除历史路径；新主题使用独立 id 和 path，expectedHash 为空。"+
-                        "使用 read_candidate_memory 读取原候选正文；原候选只是待审核提案，不表示其目标路径允许写入。修正要求="+json.write(repair):"")+
-                (payload.path("retryFailure").asText().isBlank()?"":"上次任务校验错误="+json.write(payload.path("retryFailure"))+"。核对错误中指出的真实文件与标识，解决该问题后再输出完整候选，不重复同一无效修改。")+
-                "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);
-        var normalized=memory.validateDelta(result,(String)draft.get("body"));
-        return normalized;
+                "只提取本章已发生且影响后续写作的变化：地点、伤势、物品转移、人物知情、能力消耗和伏笔进展。每项事实只记录一次，其他主题使用链接。"+
+                "输出 {summary:string,patches:[{path:string,expectedHash:string,content:null,edits:[{oldText:string,newText:string}],description:string,evidencePaths:[string]}]}。"+
+                "summary最多600字，patches最多12项，总输出最多32000个UTF-8字节。不要重新讲述正文，不记录本章没有变化的事实。"+
+                "读取需要更新的当前主题，使用工具返回的真实 path 和 hash。已有文件 content 必须为 null；oldText 是文件中唯一匹配的连续原文，newText 只修改对应状态，包含必要章节来源。所有 edits 基于同一份原文且不能重叠。"+
+                "未修改内容由程序逐字保留，禁止整篇替换人物文件。新增信息可通过替换包含标题的唯一片段插入。"+
+                "新主题 expectedHash为空，edits=[]，content为完整Markdown，YAML front matter含独立稳定 id、type、name、aliases。目录类型为 characters/character、world/world、hooks/hook、arcs/arc、relations/relation、issues/issue。"+
+                "历史来源 legacy=true 或 readOnly=true 仅供读取；需要更新时创建独立当前主题，保留来源链接。不得复用历史 id/path。"+
+                "关系在同一主题的 story-relations 代码围栏中使用JSON数组，条目包含subject、predicate、object、detail、evidence和deleted；沿用现有关系类型，不重复建立同一关系。"+
+                "每章更新 current_state.md 和 handoff_current.md；仅维护当前状态和近期交接，不复制人物档案。MEMORY.md、INDEX.md、chapters/由程序生成。"+
+                "evidencePaths必须指向正文实际支持变化的 /paragraphs/p0 等路径；推测与事实分别表述，不根据未提及推断痊愈、恢复次数或解除威胁。"+
+                "修正资料="+json.write(instructions)+"；上下文="+context.context(task,contextFiles(),input+json.write(instructions))+
+                "；正文revision="+draft.get("revision")+"；正文="+input);
+        return patches.materialize(novel,version,result,body);
     }
 }

@@ -46,6 +46,8 @@ class AgentRuntimeIntegrationTest {
         return id;
     }
     @Test void rolesDeclareIndependentToolPermissionsAndIterationLimits() {
+        assertThat(agents.catalogue()).hasSize(6);
+        assertThat(agents.catalogue()).extracting(value->value.get("agent")).doesNotContain("MemoryCheckAgent","PlanChangeAgent");
         assertThat(agents.runtime("COORDINATE").tools()).contains("delegate_outline","delegate_memory","delegate_draft");
         assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","lookup_memory","read_source","read_candidate_memory","read_memory_batch");
         assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","lookup_memory","read_source","read_candidate_memory","read_memory_batch");

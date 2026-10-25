@@ -65,7 +65,7 @@ class MarkdownMemoryIntegrationTest {
     }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
-    void filesBecomeVisibleOnlyAfterAllFileReviewsAndCoveragePass(boolean grouped) {
+    void validatedMemoryCommitsAtomicallyWithoutAdditionalModelReview(boolean grouped) {
         String id=novel();var delta=delta(id);
         files.validateBase(id,0,delta);
         var extraction=source(id);
@@ -74,19 +74,10 @@ class MarkdownMemoryIntegrationTest {
             extraction=store.one("tasks.find",extraction.get("id"));
         }
         String check=workflow.scheduleMemoryCheck(store.novel(id),extraction,delta,0);
-        var groups=json.read(Store.string(store.one("tasks.find",check),"payload")).path("reviewGroups");
-        var covered=new HashSet<Integer>();groups.forEach(group->group.forEach(item->assertThat(covered.add(item.asInt())).isTrue()));
-        assertThat(covered).containsExactlyInAnyOrder(0,1,2,3);
-        assertThat(groups.size()).isLessThan(delta.path("files").size());
-        int reviews=groups.size()==1?1:groups.size()+1;
-        for(int index=0;index<reviews;index++) {
-            var task=store.one("tasks.find",check);var payload=json.read(Store.string(task,"payload"));
-            assertThat(payload.path("reviewPhase").asText()).isEqualTo(groups.size()==1?"ALL":index<groups.size()?"FILES":"COVERAGE");
-            assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
-            assertThat(dispatch.claim(check)).isEqualTo(1);
-            workflow.finished(store.one("tasks.find",check),json.read("{\"approved\":true,\"majorChange\":false,\"issues\":[]}"));
-            if(index+1<reviews) check=Store.string(db.one("SELECT * FROM tasks WHERE novel_id=? AND kind='CHECK_MEMORY' AND status='WAITING'",id),"id");
-        }
+        assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
+        assertThat(dispatch.claim(check)).isEqualTo(1);
+        workflow.finished(store.one("tasks.find",check),delta);
+        assertThat(db.list("SELECT * FROM tasks WHERE novel_id=? AND kind='MEMORY_REPAIR'",id)).isEmpty();
         assertThat(store.novel(id)).containsEntry("status","AWAITING_STAGE_REVIEW");
         assertThat(Store.number(store.novel(id),"memory_version")).isEqualTo(1);
         assertThat(files.readFull(id,1,"characters/char_001.md")).contains("已经交出铜钥匙");
@@ -104,21 +95,12 @@ class MarkdownMemoryIntegrationTest {
         assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
         assertThat(store.one("chapters.find",id,1).get("status")).isEqualTo("DRAFT");
     }
-    @Test void groupedReviewIncludesCompleteCandidateDirectoryAndOriginalFileIndices() {
+    @Test void candidateReadPreservesOriginalFileIndices() {
         String id=novel();var delta=delta(id);
-        var input=json.tree(files.reviewGroupInput(id,0,delta,List.of(2,3),BODY));
-        assertThat(input.path("files")).hasSize(2);
-        assertThat(input.path("reviewedIndices")).containsExactly(json.tree(2),json.tree(3));
-        assertThat(input.path("totalCandidateFiles").asInt()).isEqualTo(4);
-        assertThat(input.path("candidateCatalog")).hasSize(4);
-        var omitted=input.path("candidateCatalog").get(0);
-        assertThat(omitted.path("path").asText()).isEqualTo("characters/char_001.md");
-        assertThat(omitted.path("quotePath").asText()).isEqualTo("/files/0/content");
-        assertThat(omitted.path("hash").asText()).isEqualTo(SkillService.digest(delta.path("files").get(0).path("content").asText()));
         var extraction=source(id);extraction.put("payload",json.write(Map.of("delta",delta)));
         var tool=new StoryReadTools(extraction,context,memory,store,json);
-        var candidate=json.read(tool.candidate(omitted.path("path").asText(),0));
-        assertThat(candidate.path("quotePath")).isEqualTo(omitted.path("quotePath"));
+        var candidate=json.read(tool.candidate("characters/char_001.md",0));
+        assertThat(candidate.path("quotePath").asText()).isEqualTo("/files/0/content");
         assertThat(candidate.path("content").asText()).contains("已经交出铜钥匙");
     }
     @Test void checksReferencesStableIdsConflictsAndPublishedFileIntegrity() throws Exception {

@@ -27,6 +27,12 @@ public final class AgentOutputs {
     public record MemoryDelta(@NotBlank @Size(max=1200) String summary,@NotNull List<@NotNull @Valid Fact> facts,
             @NotNull List<@NotNull @Valid Relation> relations) {}
     public record MemoryFiles(@NotBlank @Size(max=1200) String summary,@NotNull List<@NotNull @Valid MemoryFile> files) {}
+    public record MemoryPatches(@NotBlank @Size(max=1200) String summary,
+            @NotEmpty @Size(max=12) List<@NotNull @Valid MemoryPatch> patches) {}
+    public record MemoryPatch(@NotBlank String path,@NotNull String expectedHash,String content,
+            @NotNull @Size(max=12) List<@NotNull @Valid MemoryEdit> edits,
+            @NotBlank @Size(max=800) String description,@NotEmpty List<@NotBlank String> evidencePaths) {}
+    public record MemoryEdit(@NotBlank String oldText,@NotNull String newText) {}
     public record MemoryFile(@NotBlank String path,@NotNull String expectedHash,@NotBlank String content,
             @NotBlank @Size(max=800) String description,@NotEmpty List<@NotBlank String> evidencePaths) {}
     public record Fact(@NotBlank @Size(max=350) String key,@NotBlank @Pattern(regexp="WORLD|CHARACTER|EVENT|FORESHADOW") String kind,

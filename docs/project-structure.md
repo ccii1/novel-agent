@@ -49,7 +49,7 @@ flowchart TD
 
 `src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 保留固定版本的上游原文；`runtime-rules.md` 提供应用运行规则，`SkillService` 校验来源并按角色族缓存快照。
 
-业务 Agent 共8个：`ResearchAgent`、`PlannerAgent`、`PlanChangeAgent`、`WriterAgent`、`ChapterReviewAgent`、`MemoryExtractionAgent`、`MemoryCheckAgent`、`CoordinatorAgent`。写作与修改、记忆提取与修正分别复用组件；目录按组件显示，操作类型和历史记录分别保存。
+业务 Agent 共6个：`ResearchAgent`、`PlannerAgent`、`WriterAgent`、`ChapterReviewAgent`、`MemoryExtractionAgent`、`CoordinatorAgent`。规划与大纲修改、写作与修改、记忆提取与人工修正分别复用组件。`MemoryPatchService` 应用局部修改，文件校验完成后事务提交；目录按组件显示，历史记录保留。
 
 `AgentContextHook` 使用 AgentScope Harness `ConversationCompactor` 总结执行历史，保留系统规则与近期完整工具调用组。规则通过 `onSystemPrompt` 注入；稳定技能前缀、排序后的工具和 JSON 字段用于提示复用。`AgentScopeExecutor.AccountedTransport` 使用 Resilience4j 处理允许重试的免费服务 HTTP 响应，压缩和重试请求全部经过 `AgentCallAccounting`。
 
@@ -89,8 +89,8 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | --- | --- |
 | 版本、预算及并发事务 | `DomainIntegrationTest` |
 | Agent 运行实例与工具范围 | `AgentRuntimeIntegrationTest` |
-| 记忆证据、审核与自动修复 | `MemoryEvidenceIntegrationTest`、`MemoryRepairIntegrationTest` |
-| Markdown 文件、分组审核、历史迁移与 HTTP 读取 | `MarkdownMemoryIntegrationTest`、`MarkdownMemoryMySqlTest` |
+| 记忆证据、局部修改与本地校验 | `MemoryEvidenceIntegrationTest`、`MemoryPatchIntegrationTest` |
+| Markdown 文件、事务提交、历史迁移与 HTTP 读取 | `MarkdownMemoryIntegrationTest`、`MarkdownMemoryMySqlTest`、`MemoryPatchIntegrationTest` |
 | Markdown 真实模型流程 | `LiveMarkdownMemoryTest`，显式配置服务后启用 |
 | 正文引用证据 | `ReviewEvidenceIntegrationTest` |
 | 中断执行与持久化恢复 | `ObservationIntegrationTest` |

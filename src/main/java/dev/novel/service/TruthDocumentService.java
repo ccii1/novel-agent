@@ -26,6 +26,9 @@ public class TruthDocumentService {
                 "chapter_summaries.md","character_matrix.md","character_knowledge.md","progress_tracker.md","dialogue-monitor.md","pattern-detection.md","book_rules.md","style_guide.md"));
     }
     public Map<String,Object> prompt(Map<String,Object> novel,int chapter,List<String> requestedFiles) {
+        return prompt(novel,chapter,requestedFiles,true);
+    }
+    public Map<String,Object> prompt(Map<String,Object> novel,int chapter,List<String> requestedFiles,boolean preloadTopics) {
         String id=Store.string(novel,"id");long version=Store.number(novel,"memory_version");
         var files=memory.files();files.ensure(id,version);
         var result=new LinkedHashMap<String,Object>();
@@ -58,7 +61,7 @@ public class TruthDocumentService {
             item.path("characters").forEach(term->terms.add(term.asText()));item.path("foreshadowIds").forEach(term->terms.add(term.asText()));
         }});
         var manifest=files.manifest(id,version);
-        boolean includeTopics=requestedFiles.contains("current_state.md") || requestedFiles.contains("character_matrix.md");
+        boolean includeTopics=preloadTopics && (requestedFiles.contains("current_state.md") || requestedFiles.contains("character_matrix.md"));
         if(includeTopics) result.putAll(topics.resolve(files,id,version,terms,manifest));
         var selected=json.tree(result.getOrDefault("requiredTopics",Map.of()));
         var hashes=new LinkedHashMap<String,String>();

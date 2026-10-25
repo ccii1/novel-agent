@@ -218,17 +218,6 @@ public class MemoryFileService {
         ensure(novel,version);var row=mapper.file(novel,version,path(target));
         return editPolicy(target,row!=null && Store.string(row,"kind").startsWith("legacy-"));
     }
-    public Map<String,Object> repairContext(String novel,long version,JsonNode delta) {
-        var rows=new HashMap<String,Map<String,Object>>();
-        manifest(novel,version).forEach(row->rows.put(Store.string(row,"path"),row));
-        var targets=new ArrayList<Map<String,Object>>();
-        for(var file:delta.path("files")) {
-            String path=file.path("path").asText();var existing=rows.get(path);
-            targets.add(Map.of("path",path,"editPolicy",editPolicy(path,existing!=null && Store.string(existing,"kind").startsWith("legacy-"))));
-        }
-        return Map.of("proposal",coverage(delta),"targets",targets,"completeReplacement",true,
-                "instruction","返回修正后的完整 files 集合。保留有效修改，替换只读目标；原候选不会自动合并，正式文件不受候选列表移除影响。所有候选将重新审核。");
-    }
     public Map<String,Object> read(String novel,long version,String path,int offset,int length,int budget) {
         ensure(novel,version);var row=mapper.file(novel,version,path(path));
         if(row==null) return Map.of("status","NOT_FOUND","scope","published","memoryVersion",version,"path",path,
@@ -434,78 +423,9 @@ public class MemoryFileService {
     public void commit(String novel,int chapter,int revision,long version,JsonNode delta) {
         publish(prepare(novel,chapter,revision,version,delta));
     }
-    public Map<String,Object> reviewInput(String novel,long base,JsonNode delta,int index,String body) {
-        if(index<0 || index>=delta.path("files").size()) throw new IllegalArgumentException("记忆审核分组不存在");
-        var change=delta.path("files").get(index);String path=change.path("path").asText();
-        String previous=hash(novel,base,path).isEmpty()?"":readFull(novel,base,path);
-        String next=change.path("content").asText();
-        String diff=diff(path,previous,next);
-        Map<String,String> sources=new LinkedHashMap<>();var paragraphs=evidence.paragraphs(body);
-        for(var reference:change.path("evidencePaths")) sources.put(reference.asText(),paragraphs.get(reference.asText().substring("/paragraphs/".length())));
-        return Map.of("fileIndex",index,"path",path,"quoteSource","MEMORY","quotePath","/files/"+index+"/content",
-                "description",change.path("description"),"diff",diff,"evidence",sources,
-                "instruction","根据来源检查修改，必要时读取人物、伏笔与关联主题文件；问题引用 /files/"+index+"/content 或正文路径。");
-    }
     private String diff(String path,String before,String after) {
         var original=before.lines().toList();
         return String.join("\n",UnifiedDiffUtils.generateUnifiedDiff(path,path,original,DiffUtils.diff(original,after.lines().toList()),3));
-    }
-    public List<List<Integer>> reviewGroups(String novel,long base,JsonNode delta,String body) {
-        var pending=new LinkedHashSet<Integer>();
-        for(int index=0;index<delta.path("files").size();index++) pending.add(index);
-        var groups=new ArrayList<List<Integer>>();
-        while(!pending.isEmpty()) {
-            var connected=new ArrayList<Integer>();var queue=new ArrayDeque<Integer>();
-            int first=pending.iterator().next();pending.remove(first);queue.add(first);
-            while(!queue.isEmpty()) {
-                int index=queue.remove();connected.add(index);
-                Set<String> sources=new HashSet<>();delta.path("files").get(index).path("evidencePaths").forEach(value->sources.add(value.asText()));
-                var related=new ArrayList<Integer>();
-                for(int other:pending) for(var source:delta.path("files").get(other).path("evidencePaths"))
-                    if(sources.contains(source.asText())) { related.add(other);break; }
-                related.forEach(other->{pending.remove(other);queue.add(other);});
-            }
-            var batch=new ArrayList<Integer>();
-            for(int index:connected) {
-                var trial=new ArrayList<>(batch);trial.add(index);
-                if(!batch.isEmpty() && bytes(json.write(reviewGroupInput(novel,base,delta,trial,body)))>24000) {
-                    groups.add(List.copyOf(batch));batch.clear();
-                }
-                batch.add(index);
-            }
-            if(!batch.isEmpty()) groups.add(List.copyOf(batch));
-        }
-        return List.copyOf(groups);
-    }
-    public Object reviewGroupInput(String novel,long base,JsonNode delta,List<Integer> indices,String body) {
-        var changes=new ArrayList<Map<String,Object>>();var sources=new LinkedHashMap<String,Object>();
-        for(int index:indices) {
-            var single=new LinkedHashMap<>(reviewInput(novel,base,delta,index,body));
-            var evidence=json.tree(single.remove("evidence"));
-            evidence.fields().forEachRemaining(entry->sources.put(entry.getKey(),entry.getValue()));
-            single.put("evidenceRefs",delta.path("files").get(index).path("evidencePaths"));changes.add(single);
-        }
-        return Map.of("files",changes,"reviewedIndices",List.copyOf(indices),"totalCandidateFiles",delta.path("files").size(),
-                "candidateCatalog",candidateCatalog(delta),"evidenceCatalog",sources,
-                "instruction","files 仅包含当前组的修改详情，candidateCatalog 是本次完整候选目录。其他组的候选通过 read_candidate_memory 核对；正式文件仍是发布前版本，不能据此声称候选缺失。正文证据按引用共享。");
-    }
-    public List<Map<String,Object>> candidateCatalog(JsonNode delta) {
-        var catalog=new ArrayList<Map<String,Object>>();
-        for(int index=0;index<delta.path("files").size();index++) {
-            var item=delta.path("files").get(index);
-            catalog.add(Map.of("index",index,"path",item.path("path").asText(),"hash",SkillService.digest(item.path("content").asText()),
-                    "quoteSource","MEMORY","quotePath","/files/"+index+"/content","description",item.path("description").asText()));
-        }
-        return List.copyOf(catalog);
-    }
-    public Object coverage(JsonNode delta) {
-        var changes=new ArrayList<Map<String,Object>>();
-        for(int index=0;index<delta.path("files").size();index++) {
-            var item=delta.path("files").get(index);
-            changes.add(Map.of("index",index,"path",item.path("path"),"quoteSource","MEMORY","quotePath","/files/"+index+"/content",
-                    "description",item.path("description"),"evidencePaths",item.path("evidencePaths"),"headings",markdown.parse(item.path("content").asText()).headings()));
-        }
-        return Map.of("summary",delta.path("summary"),"changes",changes,"instruction","检查正文的重要变化是否都有文件记录，核对跨文件关联；必要时读取候选文件或原有主题。不能仅根据修改说明确认内容正确。");
     }
     public Map<String,String> export(String novel,long version) {
         var result=new TreeMap<String,String>();for(var row:manifest(novel,version)) result.put(Store.string(row,"path"),content(novel,row));return result;

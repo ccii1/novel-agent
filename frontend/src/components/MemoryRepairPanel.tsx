@@ -40,7 +40,7 @@ export default function MemoryRepairPanel({novel, pending}: {novel: Novel; pendi
           <label>{relation.subject} · {relation.predicate} · {relation.object}<textarea rows={3} value={relation.detail ?? ''} onChange={event => setDraft({...draft,relations:draft.relations.map((item,current) => current === index ? {...item,detail:event.target.value} : item)})}/></label>
           <label>正文证据<textarea rows={2} value={relation.evidence} onChange={event => setDraft({...draft,relations:draft.relations.map((item,current) => current === index ? {...item,evidence:event.target.value} : item)})}/></label>
         </div>)}
-        <button type="button" className="secondary" disabled={action.isPending || !instructions.trim()} onClick={() => submit(draft)}>提交编辑后的记忆审核</button>
+        <button type="button" className="secondary" disabled={action.isPending || !instructions.trim()} onClick={() => submit(draft)}>校验并提交编辑后的记忆</button>
       </details>
       <ErrorBox error={action.error}/>
     </form>

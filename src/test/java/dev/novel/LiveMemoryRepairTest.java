@@ -30,7 +30,7 @@ class LiveMemoryRepairTest {
     @Autowired AgentService agents;
     @Autowired ModelCatalog catalog;
     @Autowired Json json;
-    @Test @Timeout(900) void realMemoryRepairAndReviewPreserveRecordedChapterAndPlan() throws Exception {
+    @Test @Timeout(900) void realMemoryPatchPreservesRecordedChapterAndPlan() throws Exception {
         assertThat(catalog.resolve("local","gpt-5.6-terra","MEMORY_REPAIR").billingMode()).isEqualTo("unmetered");
         assertThat(catalog.resolve("local","gpt-5.6-terra","MEMORY_REPAIR").ready()).isTrue();
         var recorded=json.read(Files.readString(Path.of(".work/combined-review-case.json")));
@@ -38,14 +38,11 @@ class LiveMemoryRepairTest {
         int chapter=recorded.path("chapter").asInt();
         db.update("UPDATE novels SET chapter_no=?,status='CHECKING_MEMORY',plan=? WHERE id=?",chapter,json.write(recorded.path("plan")),id);
         db.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,?,1,0,?,?,'DRAFT',0)",id,chapter,recorded.path("title").asText(),recorded.path("body").asText());
-        String original=store.enqueue(id,"CHECK_MEMORY",chapter,0,0,"memory-live:"+UUID.randomUUID(),recorded.path("delta"));
-        db.update("UPDATE tasks SET status='RUNNING' WHERE id=?",original);
-        workflow.finished(store.one("tasks.find",original),recorded.path("review"));
-        for(int step=0;step<32 && java.util.Set.of("EXTRACTING","CHECKING_MEMORY").contains(store.novel(id).get("status"));step++) {
-            execute(id,"EXTRACTING".equals(store.novel(id).get("status"))?"MEMORY_REPAIR":"CHECK_MEMORY");
-        }
+        store.enqueue(id,"MEMORY_REPAIR",chapter,0,0,"memory-live:"+UUID.randomUUID(),
+                Map.of("instructions","提取本章必要变化，保留人物推测的确定程度。"));
+        execute(id,"MEMORY_REPAIR");
         var novel=store.novel(id);
-        assertThat(novel.get("status")).isIn("WRITING","AWAITING_STAGE_REVIEW","AWAITING_HELP");
+        assertThat(novel.get("status")).isIn("WRITING","AWAITING_STAGE_REVIEW");
         assertThat(store.one("chapters.find",id,chapter)).containsEntry("body",recorded.path("body").asText()).containsEntry("revision",0);
         assertThat(json.read(Store.string(novel,"plan"))).isEqualTo(recorded.path("plan"));
         var calls=db.list("SELECT t.kind,c.input_tokens,c.output_tokens,c.actual,c.latency_ms FROM model_calls c JOIN tasks t ON t.id=c.task_id WHERE c.novel_id=?",id);

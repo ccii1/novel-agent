@@ -37,18 +37,22 @@ class SkillIntegrationTest {
     @Test void everyRoleLoadsPinnedMainSkillAndRoleReferences() {
         for(String role:List.of("RESEARCH","PLAN","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE","CHECK_CHAPTER","REFLECT","MEMORY","MEMORY_REPAIR","CHECK_MEMORY")) {
             var snapshot=skills.load(role,10);
-            assertThat(snapshot.files()).contains("SKILL.md","references/pattern-detection.md","references/audit-dimensions.md");
+            assertThat(snapshot.files()).contains("SKILL.md","runtime-rules.md");
+            if(role.startsWith("CHECK_") || role.equals("MEMORY") || role.equals("MEMORY_REPAIR"))
+                assertThat(snapshot.files()).contains("references/audit-dimensions.md");
             assertThat(snapshot.version()).isEqualTo("2.0.1");
             assertThat(snapshot.commit()).isEqualTo("7d874e032d2de3dace74ae585cd2dbfbac2cde69");
-            assertThat(snapshot.instruction()).contains("Truth Files","2000至2500","当前任务以应用执行规则");
+            assertThat(snapshot.instruction()).contains("Truth Files","2000至2500","应用执行规则");
             assertThat(snapshot.fingerprint()).hasSize(64);
             assertThat(snapshot.instruction().getBytes(StandardCharsets.UTF_8).length).isLessThan(120000);
         }
     }
-    @Test void roleAndReviewWindowDetermineReferenceFingerprint() {
+    @Test void roleFamiliesReuseStableReferenceFingerprint() {
         var normal=skills.load("CHECK_STYLE",4);var review=skills.load("CHECK_STYLE",10);
-        assertThat(normal.files()).contains("references/ai-detox-guide.md").doesNotContain("references/pattern-detection.md");
-        assertThat(normal.fingerprint()).isNotEqualTo(review.fingerprint());
+        assertThat(normal.files()).contains("references/ai-detox-guide.md","references/pattern-detection.md");
+        assertThat(normal.fingerprint()).isEqualTo(review.fingerprint());
+        assertThat(skills.load("CHECK_CHAPTER",4).fingerprint()).isEqualTo(normal.fingerprint());
+        assertThat(skills.load("MEMORY",4).fingerprint()).isNotEqualTo(normal.fingerprint());
         assertThat(skills.load("CHECK_STYLE",4).fingerprint()).isEqualTo(normal.fingerprint());
         assertThatThrownBy(()->skills.load("UNSUPPORTED",1)).isInstanceOf(IllegalArgumentException.class);
     }

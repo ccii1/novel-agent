@@ -18,7 +18,7 @@ public class AgentService {
     private final AgentMetricsMapper metrics;
     private final org.springframework.core.env.Environment environment;
     public AgentService(List<NovelAgent> agents,ModelClient model,Store store,Json json,AgentMetricsMapper metrics,org.springframework.core.env.Environment environment) {
-        if(agents.size()>8) throw new IllegalStateException("业务 Agent 组件数量不能超过8个");
+        if(agents.size()>6) throw new IllegalStateException("业务 Agent 组件数量不能超过6个");
         Map<String,NovelAgent> registered=new TreeMap<>();
         for(var agent:agents) for(String kind:agent.kinds()) {
             if(registered.putIfAbsent(kind,agent)!=null) throw new IllegalStateException("Agent 任务类型重复："+kind);
@@ -35,7 +35,7 @@ public class AgentService {
         String kind=Store.string(task,"kind");
         var agent=registry.get(kind);
         if(agent==null) throw new IllegalArgumentException("未知 Agent 类型："+kind);
-        if(task.get("result")!=null) { model.validateCheckpoint(task);return json.read((String)task.get("result")); }
+        if(task.get("result")!=null && !"CHECK_MEMORY".equals(kind)) { model.validateCheckpoint(task);return json.read((String)task.get("result")); }
         String identity=agent.getClass().getSimpleName();
         store.event((String)task.get("novel_id"),(String)task.get("id"),"AGENT_STARTED",json.write(Map.of("agent",identity,"kind",kind,
                 "revision",task.get("revision"),"memoryVersion",task.get("memory_version"),"contextFiles",agent.contextFiles())),(String)task.get("execution_id"));

@@ -124,7 +124,7 @@ class ResponseContractIntegrationTest {
     @Test void exposesTypedCatalogueAndConciseValidationErrors() throws Exception {
         var http = AuthHttp.owner(port);
         var agents = json.read(http.request("/api/agents", null).body());
-        assertThat(agents.size()).isEqualTo(16);
+        assertThat(agents.size()).isEqualTo(6);
         assertThat(agents.get(0).path("runtime").path("maxIterations").asInt()).isPositive();
         assertThat(agents.get(0).path("runtime").path("tools").isArray()).isTrue();
         var invalid = http.request("/api/novels", "{}");
