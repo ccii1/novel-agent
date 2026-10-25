@@ -1,6 +1,6 @@
 # 项目结构与代码导航
 
-核查版本：1.16.0；日期：2026-10-23。
+核查版本：1.19.0；日期：2026-10-25。
 
 ## 执行关系
 
@@ -33,11 +33,11 @@ flowchart TD
 | `service/MemoryFileService` | Markdown 文件、候选目录、差异、版本清单及发布 | `prepare`、`publish`、`read`、`search` |
 | `engine` | 认领任务、线程执行、恢复及错误处理 | `TaskEngine` |
 | `agent` | 各创作角色、共享写作与审核行为、上下文组织 | `NovelAgent`、`PlannerAgent`、`ChapterAuthorAgent`、`ReviewAgent` |
-| `agent/ContextBudget` | 角色资料的字节预算、检索记录选择与省略说明 | `AgentContextService.pack` |
+| `agent/ContextBudget` | 初始资料选择、主题延后加载及加载清单维护 | `AgentContextService.pack` |
 | `agent/orchestration` | 审核角色集合、模式及结果汇集 | `ReviewOrchestrator`、`AgentRoles` |
 | `agent/runtime` | 按任务构建 Agent、授权工具及受限委派 | `AgentRuntimeFactory`、`StoryReadTools` |
 | `agent/validation` | JSON 类型、Bean Validation、大纲及引用证据检查 | `AgentOutputReader`、`PlanValidator`、`ReviewValidator` |
-| `integration/model` | 供应商选择、HTTP 传输、逐次费用及限流 | `ModelClient`、`AgentCallAccounting`、`AgentScopeExecutor` |
+| `integration/model` | 供应商选择、规则 hook、上下文压缩、HTTP 重试及逐次用量 | `ModelClient`、`AgentContextHook`、`AgentCallAccounting`、`AgentScopeExecutor` |
 | `integration/cache` | Redis 记忆快照与关系查询缓存 | `MemoryProjectionCache` |
 | `integration/graph` | 按作品版本发布 Neo4j 关系投影与查询，支持进程内 TinkerGraph | `StoryGraph`、`Neo4jStoryGraph` |
 | `integration/storage` | 当前数据库类型及描述 | `DatabaseStorage` |
@@ -47,7 +47,11 @@ flowchart TD
 | `support` | JSON、响应字段映射、原文证据匹配与日志格式 | `Json`、`ResponseMapper`、`EvidenceMatcher` |
 | `tools` | 需要主动运行的维护程序 | `MigrateH2ToMySql` |
 
-`src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 是固定版本的上游技能资料，应用适配规则在 `SkillService` 中维护。
+`src/main/resources/mappers` 保存 SQL；`schema.sql` 用于 H2 初始化与幂等升级；`db/migration/mysql` 保存 MySQL Flyway 迁移。`skills/fanqie-novel-skill` 保留固定版本的上游原文；`runtime-rules.md` 提供应用运行规则，`SkillService` 校验来源并按角色族缓存快照。
+
+业务 Agent 共8个：`ResearchAgent`、`PlannerAgent`、`PlanChangeAgent`、`WriterAgent`、`ChapterReviewAgent`、`MemoryExtractionAgent`、`MemoryCheckAgent`、`CoordinatorAgent`。写作与修改、记忆提取与修正分别复用组件；目录按组件显示，操作类型和历史记录分别保存。
+
+`AgentContextHook` 使用 AgentScope Harness `ConversationCompactor` 总结执行历史，保留系统规则与近期完整工具调用组。规则通过 `onSystemPrompt` 注入；稳定技能前缀、排序后的工具和 JSON 字段用于提示复用。`AgentScopeExecutor.AccountedTransport` 使用 Resilience4j 处理允许重试的免费服务 HTTP 响应，压缩和重试请求全部经过 `AgentCallAccounting`。
 
 `MemoryFileService` 保存不可变 Markdown 文件，`MemoryFileMapper` 保存发布清单和指纹；新版本共享未变化文件。`MemoryMarkdown` 使用 CommonMark 和 YAML 库处理格式，差异使用 java-diff-utils。`MemoryFileController` 提供分页、搜索与读取接口，`MemoryFileHealthService` 检查已发布文件。`StoryGraph` 读取 Markdown 中的明确关系记录，包含 `story-relations` 与历史关系附录；`Neo4jStoryGraph` 按用户、作品和版本建立图投影，使用唯一约束和参数化 Cypher 查询。`Neo4jConfiguration` 读取本机连接文件并检查连接，`/api/status` 显示当前查询组件。
 
@@ -61,7 +65,7 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 
 思考强度由 `ModelCatalog` 校验服务支持的等级并解析作品、任务或服务默认配置，`AgentScopeExecutor` 通过 SDK 参数发送 `reasoning_effort`。业务选择保存在作品和任务中，实际发送值保存在每次模型请求中；`ModelSelect` 共用于作品、选题与重试入口。`ModelSelectionTest` 验证继承和重试，`LiveReasoningEffortTest` 在显式启用后验证真实本地服务与调用持久化。
 
-阅读主流程时从 `WorkflowService.finished` 进入。记忆修改依次完成文件差异审核与全文遗漏检查；文件在事务外准备，清单、章节进度和下一任务共同提交。`TaskEngine` 负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
+阅读主流程时从 `WorkflowService.finished` 进入。默认综合审核直接生成正文修改要求；记忆单组使用 `ALL` 同时核对文件与遗漏，多组使用 `FILES` 后接 `COVERAGE`。文件在事务外准备，清单、章节进度、下一任务和执行结果共同提交。`TaskEngine` 负责认领、执行、限流等待和失败记录，工作线程始终清理任务所属用户。
 
 | 位置 | 用途 |
 | --- | --- |
@@ -72,6 +76,7 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | `.run` | IDEA 前后端运行配置 |
 | `config` | 本地凭据与部署配置；敏感文件由 Git 忽略 |
 | `data` | 实际运行数据与日志 |
+| `data/agent-sessions` | 框架持久化的 Agent 工作状态，按用户和任务隔离 |
 | `.work` | 独立验证数据库、日志与临时验证程序，由 Git 忽略 |
 | 根目录 `start*.ps1` | 应用与本机依赖启动入口 |
 | `migrate-mysql.ps1` | 编译后调用迁移主类，核对并迁移全部业务表 |
@@ -96,3 +101,5 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | 长期记忆增长与有界工具往返 | `ContextBudgetIntegrationTest`、`LiveToolContextTest` |
 
 本地学习路线保存在 `C:/Users/cc/Documents/Obsidian Vault/小说agent/学习路线与代码阅读指南.md`，流程图见 [多 Agent 流程](multi-agent-workflow.md)。
+
+1.19.0 已通过前端构建、后端编译和打包。上述测试为验证入口，本次按用户安排暂停执行；完整连载、自动压缩和实际缓存命中效果尚待验证。

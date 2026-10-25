@@ -390,41 +390,25 @@ flowchart LR
 
 ## 多任务并发与持久化编排
 
-`TaskEngine` 每500毫秒检查可执行任务，默认使用4个工作线程。多部小说独立推进，同一部小说按章节依赖生成；某章生成完成后，四个正文检查任务可以并行执行。
+`TaskEngine` 每500毫秒检查可执行任务，默认使用4个工作线程。多部小说可以并发推进，同一部小说按章节依赖执行；草稿完成后默认登记一次综合审核任务。
 
 ```mermaid
 sequenceDiagram
     participant Workflow as WorkflowService
     participant DB as 关系数据库
     participant Engine as TaskEngine
-    participant Character as 人物检查任务
-    participant Plot as 剧情检查任务
-    participant Pacing as 节奏检查任务
-    participant Style as 文风检查任务
-    Workflow->>DB: 保存草稿及统计，并登记四个 WAITING 检查任务
+    participant Review as ChapterReviewAgent
+    Workflow->>DB: 保存草稿及统计，登记 CHECK_CHAPTER
     Engine->>DB: 选择任务，条件更新为 RUNNING
-    par 工作线程执行人物检查
-        Engine->>Character: 执行 CHECK_CHARACTER
-        Character-->>Workflow: 检查报告
-        Workflow->>DB: 保存报告和 DONE 状态
-    and 工作线程执行剧情检查
-        Engine->>Plot: 执行 CHECK_PLOT
-        Plot-->>Workflow: 检查报告
-        Workflow->>DB: 保存报告和 DONE 状态
-    and 工作线程执行节奏检查
-        Engine->>Pacing: 执行 CHECK_PACING
-        Pacing-->>Workflow: 检查报告
-        Workflow->>DB: 保存报告和 DONE 状态
-    and 工作线程执行文风检查
-        Engine->>Style: 执行 CHECK_STYLE
-        Style-->>Workflow: 检查报告与统计问题
-        Workflow->>DB: 保存报告和 DONE 状态
-    end
+    Engine->>Review: 核对当前正文的四个维度
+    Review-->>Workflow: 维度结论、原文证据与修改要求
     Workflow->>DB: 在小说记录锁保护下读取本轮报告
-    alt 四个任务完成且全部通过
-        Workflow->>DB: 登记 MEMORY 任务
-    else 四个任务完成且存在问题
-        Workflow->>DB: 登记 REFLECT 任务
+    alt 全部维度通过
+        Workflow->>DB: 保存审核与执行结果，登记 MEMORY
+    else 存在普通问题且未达到修改限制
+        Workflow->>DB: 保存修改要求，登记 REWRITE
+    else 重大变更或达到修改限制
+        Workflow->>DB: 保存修改要求，等待人工确认
     end
 ```
 
@@ -432,7 +416,7 @@ sequenceDiagram
 
 任务记录包含作品、任务类型、章节、修改轮次、记忆版本、输入、输出和错误。`task_key` 由作品、阶段、章节、修改轮次、记忆版本和任务类型组成，数据库唯一约束与应用检查共同防止重复登记同一步骤。
 
-流程结果提交时锁定对应小说记录，串行判断本轮是否已经完成，再登记下一步任务。正文检查之间可以并行，影响同一小说进度的状态提交受数据库事务保护。
+流程结果提交时锁定对应小说记录，核对正文、记忆和任务版本，再登记下一步任务。影响同一小说进度的状态提交受数据库事务保护。详细职责、记忆审核阶段和运行 hook 见 [小说 Agent 流程与职责](docs/multi-agent-workflow.md)。
 
 ### 费用与速率限制
 

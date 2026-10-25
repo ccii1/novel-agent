@@ -1,6 +1,6 @@
 # 小说 Agent 流程与职责
 
-依据版本：1.16.0；核查日期：2026-10-23。
+依据版本：1.19.0；核查日期：2026-10-25。
 
 ## 用户身份与隔离
 
@@ -17,16 +17,15 @@ flowchart TD
     Write --> Review["章节审核：人物、剧情、节奏、文风"]
     Review --> ReviewResult{"全部审核通过？"}
     ReviewResult -->|通过| Extract["MemoryExtractionAgent：提取待确认记忆"]
-    ReviewResult -->|需要修改| Reflect["ReflectionAgent：汇总修改要求"]
-    Reflect --> Boundary{"重大变更或达到自动修改限制？"}
-    Boundary -->|否| Rewrite["RewriterAgent：修改正文"]
+    ReviewResult -->|需要修改| Boundary{"重大变更或达到自动修改限制？"}
+    Boundary -->|否| Rewrite["WriterAgent：依据审核报告修改正文"]
     Boundary -->|是| HumanDraft["人工提供修改要求并确认范围"]
     HumanDraft --> Rewrite
     Rewrite --> Review
     Extract --> MemoryCheck["MemoryCheckAgent：审核待确认记忆"]
     MemoryCheck --> MemoryResult{"记忆审核结果"}
     MemoryResult -->|通过且满足批准条件| Commit["事务提交：正式记忆、章节确认、创作进度"]
-    MemoryResult -->|允许自动修复| Repair["MemoryRepairAgent：修复待确认记忆"]
+    MemoryResult -->|允许自动修复| Repair["MemoryExtractionAgent：修正候选记忆"]
     Repair --> MemoryCheck
     MemoryResult -->|重要变更或达到修复限制| HumanMemory["人工确认或修改待确认记忆"]
     HumanMemory --> MemoryCheck
@@ -46,33 +45,28 @@ flowchart TD
 | --- | --- | --- |
 | ResearchAgent | `RESEARCH`、`RESEARCH_CHAT` | 生成选题方案，结合用户反馈继续讨论 |
 | PlannerAgent | `PLAN` | 生成阶段目标、核心剧情节点及连续章节安排 |
-| WriterAgent / RewriterAgent | `WRITE`、`REWRITE` | 创作或修改当前章节正文 |
-| CharacterCheckAgent | `CHECK_CHARACTER` | 检查人物行为、状态与信息边界 |
-| PlotCheckAgent | `CHECK_PLOT` | 检查因果、剧情连续性与伏笔安排 |
-| PacingCheckAgent | `CHECK_PACING` | 检查冲突、节奏与叙事表现 |
-| StyleCheckAgent | `CHECK_STYLE` | 检查表达、文风与写作规则 |
+| WriterAgent | `WRITE`、`REWRITE` | 创作或修改当前章节正文 |
 | ChapterReviewAgent | `CHECK_CHAPTER` | 联合检查人物、剧情、节奏、文风 |
-| ReflectionAgent | `REFLECT` | 汇总审核意见，生成统一修改要求并标记重大变更 |
 | MemoryExtractionAgent | `MEMORY`、`MEMORY_REPAIR` | 整理或修复 Markdown 主题文件、本章摘要与来源 |
 | MemoryCheckAgent | `CHECK_MEMORY` | 逐项审核文件修改，检查本章遗漏及跨文件一致性 |
 | PlanChangeAgent | `PLAN_CHANGE` | 为选定大纲字段生成局部修改建议与影响分析 |
 | CoordinatorAgent | `COORDINATE` | 分析用户修改要求，选择正文、大纲或记忆处理角色 |
 
-表中的角色名称表示执行时的职责。WriterAgent 与 RewriterAgent 由 `ChapterAuthorAgent` 组件处理，记忆提取与修复由 `MemoryExtractionAgent` 组件处理，多种审核角色由 `ReviewAgent` 组件提供。每个任务均创建独立的 Agent 执行实例与上下文。
+表中共8个业务 Agent，启动时检查数量上限。`ChapterAuthorAgent` 和 `ReviewAgent` 提供共享行为；一个组件可以处理多个操作，每个任务创建独立执行实例和上下文。`GET /api/agents` 按组件提供目录，`kinds` 列出支持的操作。历史专项审核任务由综合审核组件接收，历史 `REFLECT` 由写作组件兼容处理。
 
 ## 章节审核与修改
 
-默认模式为 `parallel`，四个审核任务独立排队，由工作线程并发执行。实际并发数量受可用线程与供应商限流约束。四项审核使用同一章节版本与记忆版本，`ReviewOrchestrator` 等待本轮结果完整后决定后续任务。
-
-配置 `NOVEL_REVIEW_MODE=combined` 时，由一个 `ChapterReviewAgent` 联合检查四个方面。已经创建的审核轮次保持原有模式。
+默认 `NOVEL_REVIEW_MODE=combined`，一个 `ChapterReviewAgent` 检查人物、剧情、节奏和文风，分别输出维度结论与问题归属。审核绑定正文 revision 与记忆版本，`ReviewOrchestrator` 核对本轮结果后决定后续任务。已经创建的历史审核轮次保持原操作集合。
 
 - 全部通过：进入记忆提取。
-- 存在问题：进入 `ReflectionAgent`，形成统一正文修改要求。
+- 存在问题：业务流程直接使用审核报告生成正文修改要求。
 - 普通修改：创建 `REWRITE`，完成后重新审核正文。
 - 涉及重大变更：进入 `AWAITING_CHANGE`，等待人工确认。
 - 正文自动修改达到三轮：进入 `AWAITING_HELP`，等待人工提供要求。
 
 审核证据通过正文段落路径等信息定位，由程序校验引用来源；不符合证据规则的输出会使任务失败，并保留模型响应。
+
+一章单组记忆且全部一次通过时包含4次主要调用：正文创作、综合审核、记忆整理、记忆审核。工具查询、正文修改、记忆分组、压缩和请求重试增加的调用单独记录，阶段规划按阶段执行。
 
 ## 记忆处理与人物关系
 
@@ -92,11 +86,15 @@ flowchart LR
 
 整理结果包含摘要与文件修改，文件按人物、世界规则、伏笔、支线、阶段和章节组织。稳定标识、别名与正文来源写入 Markdown；推测、人物认知、计划和已确认事实分别表达。
 
+记忆审核按共享证据和输入大小组织候选文件。只有一组时使用 `ALL`，同时检查文件修改、全文遗漏及跨文件一致性；多组时依次执行 `FILES`，最后执行 `COVERAGE`。所有阶段绑定同一份候选指纹，任何修正都返回完整候选集合并重新审核。
+
 记忆审核发现表述问题时，自动修复对象是待确认记忆，正文与大纲保持当前版本。最多自动修复三轮；重要变更或超过限制后，在概况页面提供人工处理入口，可以提交修改要求，也可以直接编辑记忆后重新审核。
 
 正式提交前再次检查章节编号、正文 revision、memoryVersion、候选指纹和旧文件指纹。文件在事务外准备，发布清单、章节确认、进度及下一任务在同一数据库事务中完成。
 
 写作上下文包含短入口、当前状态、交接与本章明确相关的主题文件。Agent 通过授权的文件目录、关键词搜索、范围读取及正文来源工具补充资料，查询范围绑定当前用户、作品与任务版本。
+
+`lookup_memory` 按稳定标识或名称返回真实路径与 `FOUND`、`NOT_FOUND`、`AMBIGUOUS` 状态。正式读取标记 `scope=published`，候选读取标记 `scope=candidate`；未命中允许继续查询。历史来源和程序生成文件通过 `editPolicy` 标记只读，版本冲突、权限错误及正式文件损坏明确失败。
 
 人物关系与知情范围保存在 Markdown，关系文件使用 `story-relations` JSON 代码围栏提供明确的图记录，人物文件通过链接引用。启用 Neo4j 后，首次查询一个已发布版本时建立独立图投影，后续在数据库中执行限定深度查询；用户、作品和版本分别隔离，关系解除与历史修改通过新版本保留。旧关系附录继续支持读取。关闭 Neo4j 时使用进程内 TinkerGraph。
 
@@ -133,7 +131,8 @@ flowchart TD
     Engine --> Registry["AgentService：按任务类型选择角色"]
     Registry --> Factory["AgentRuntimeFactory：独立 ReActAgent 与 Toolkit"]
     Factory --> Model["AgentScope：模型推理与工具调用"]
-    Model --> Accounting["逐次请求：限流、预算与费用记录"]
+    Model --> Hooks["AgentContextHook：统一规则、工具排序与上下文压缩"]
+    Hooks --> Accounting["逐次请求：限流、预算与费用记录"]
     Accounting --> Provider["模型供应商"]
     Model --> Result["输出结构与业务证据检查"]
     Result --> Workflow["WorkflowService：事务更新与后续任务"]
@@ -142,11 +141,23 @@ flowchart TD
     Reviews --> Tasks
 ```
 
-AgentScope Java 2.0.4 负责 Agent 构建、推理、Toolkit 与生命周期事件。各角色声明独立职责、工具权限和推理轮数；`ModelClient` 加载固定写作技能、对应参考资料及任务上下文。
+AgentScope Java 2.0.4 负责推理、Toolkit、生命周期和 AgentState 存储；上下文压缩使用 Harness 的 `ConversationCompactor`，临时 HTTP 错误的退避重试使用 Resilience4j。各组件声明职责和授权工具，`ModelClient` 提供可复用规则前缀与任务上下文。
 
-`WorkflowService` 决定正文、审核、记忆和下一章之间的状态变化。`ReviewOrchestrator` 管理审核角色、审核模式和结果汇集。协调委派经人工确认后创建后台任务；并行审核通过持久化调度执行。
+`WorkflowService` 决定正文、审核、记忆和下一章之间的状态变化。`ReviewOrchestrator` 管理审核操作集合与结果汇集。协调委派经人工确认后创建后台任务；任务通过数据库认领执行，业务状态在事务中推进。
 
-资料读取角色默认最多三轮推理、四次模型请求，协调角色默认两轮推理、三次请求；角色轮数可配置，费用按允许请求次数预留。工具默认单次最多24000字节、累计最多60000字节，受完整请求120000字节及剩余空间限制。`read_memory_batch` 在共享预算内读取多份文件，明确返回继续位置及未读路径。初始资料通过稳定标识、名称和 YAML 别名选择主题，历史来源按本章条目定位，`_loadedMemory` 说明已有资料范围；工具结果的 `_toolBudget` 显示剩余字节及模型请求次数。没有工具的角色最多一次模型请求，每次请求的框架尝试次数为一次。
+资料读取默认允许8轮推理和一次最终输出，协调操作默认2轮；可配置1至24轮。另为压缩和 HTTP 重试各预留两次请求，全部请求共用限流、费用和记录。无工具操作的一次主要调用也受同一记录与重试规则约束。
+
+工具单次默认24000字节，每次请求可使用的工具结果空间最多60000字节，随当前请求剩余空间重新计算。`read_memory_batch` 返回继续位置、未读路径及缺失路径。初始资料按稳定标识、名称和 YAML 别名选择主题，容量不足时延后加载完整主题并更新 `_loadedMemory`；工具空间不足返回 `BUDGET_EXHAUSTED`。
+
+## 上下文与规则复用
+
+技能来源原文及对应 references 保留并校验，`runtime-rules.md` 提供应用运行规则。角色族共享不可变技能快照，系统规则通过 `onSystemPrompt` hook 注入，章节、正文及候选等动态资料放在后续消息。JSON 对象字段与工具顺序固定，`PROMPT_PREFIX_READY` 记录前缀指纹。
+
+模型调用前，hook 按请求估算字节与 token 数判断是否需要压缩。达到120000字节保护上限的75%或输入 token 预算的80%时，框架总结较早执行历史并保留近期完整工具调用组。系统规则保留，摘要包含目标、输出字段、已核对事实、来源和下一操作；证据引用仍需要原文。每个任务最多压缩两次，压缩请求也保存用量。无法压缩或压缩后仍超过容量时明确报告。
+
+token 数采用框架估算；模型容量通过 `NOVEL_MODEL_CONTEXT_TOKENS` 或 `novel.context-models.<model>.tokens` 配置，输出额度与包装空间另行预留。实际缓存命中取自供应商返回值，日志显示缓存 token 和命中率；可选启用 `NOVEL_PROMPT_CACHE_KEY_ENABLED`，前缀复用本身不代表缓存命中。
+
+免费服务返回 HTTP 408、429、502、503、504 时，Resilience4j 最多追加两次请求，等待间隔为1秒、2秒。付费请求结果不确定时保留费用核对流程。权限、版本和数据损坏错误直接报告。
 
 ## 持久化、恢复与观测
 
@@ -158,6 +169,7 @@ AgentScope Java 2.0.4 负责 Agent 构建、推理、Toolkit 与生命周期事�
 | Agent 执行事件与耗时 | 数据库保存，前端执行记录与 Agent 看板查询 |
 | 单次 HTTP 请求与用量 | `model_call_turns` 保存请求、响应、token、缓存用量、时间及估算费用 |
 | 任务级模型调用 | `model_calls` 保存最终响应检查点与合计用量、费用 |
+| Agent 工作状态 | 框架保存到 `data/agent-sessions`，按用户与任务隔离 |
 | 共享限流与记忆缓存 | Redisson / Redis；数据库保存正式业务状态 |
 
 完整的最终 Agent 输出可以作为检查点复用。中断调用的费用无法确认时，任务需要人工核对费用后才能重新执行。失败任务可以重新选择模型，原执行记录与费用继续保留。
@@ -165,6 +177,8 @@ AgentScope Java 2.0.4 负责 Agent 构建、推理、Toolkit 与生命周期事�
 MySQL 与已有 H2 数据均有适配；已有作品数据是否使用 MySQL，取决于启动配置与迁移状态。现有作品数据尚未完成 MySQL 迁移。API key、运行数据库与日志保存在 Git 忽略范围内。
 
 前端通过状态快照和事件编号自动同步变化。执行详情可以查看输入、输出、错误与逐次调用信息；Agent 看板提供角色权限、耗时、token 与费用记录。费用根据供应商配置和返回用量估算，供应商账单用于最终核对。
+
+1.19.0 已通过前端构建、后端编译与打包。按用户安排暂停测试执行，完整连载、压缩及缓存效果尚待验证；工作状态文件不代表结果不确定的外部调用可以直接重放。
 
 ## 人工处理位置
 
@@ -187,4 +201,5 @@ MySQL 与已有 H2 数据均有适配；已有作品数据是否使用 MySQL，�
 - `src/main/java/dev/novel/agent/orchestration/ReviewOrchestrator.java`：审核模式、任务与结果汇集。
 - `src/main/java/dev/novel/agent/runtime/AgentRuntimeFactory.java`：独立 Agent 与工具构建。
 - `src/main/java/dev/novel/agent/runtime/StoryReadTools.java`：查询与委派工具。
+- `src/main/java/dev/novel/integration/model/AgentContextHook.java`：规则注入、工具排序与上下文压缩。
 - `src/main/java/dev/novel/engine/TaskEngine.java`：后台任务执行与恢复。
