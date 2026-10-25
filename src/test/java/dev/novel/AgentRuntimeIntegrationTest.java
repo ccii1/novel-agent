@@ -25,6 +25,17 @@ class AgentRuntimeIntegrationTest {
     @Autowired ReviewOrchestrator reviews;
     @Autowired Json json;
     @Autowired BudgetService budget;
+
+    @Test void memoryRetryPreservesPayloadAndIncludesThePreviousValidationFailure() {
+        String id=novel();
+        String taskId=store.enqueue(id,"MEMORY",1,0,0,UUID.randomUUID().toString(),Map.of("note","保留现有要求"));
+        db.update("UPDATE tasks SET status='ERROR',error=? WHERE id=?","记忆标识重复，需要核对历史来源",taskId);
+        db.update("UPDATE novels SET status='ERROR',resume_status='EXTRACTING' WHERE id=?",id);
+        String next=projects.retry(taskId);
+        var payload=json.read(Store.string(store.one("tasks.find",next),"payload"));
+        assertThat(payload.path("note").asText()).isEqualTo("保留现有要求");
+        assertThat(payload.path("retryFailure").asText()).isEqualTo("记忆标识重复，需要核对历史来源");
+    }
     @Autowired WorkflowService workflow;
     @Autowired dev.novel.repository.mapper.ModelCallMapper calls;
     private String novel() {

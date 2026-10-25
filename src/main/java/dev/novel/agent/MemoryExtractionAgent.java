@@ -35,6 +35,7 @@ public class MemoryExtractionAgent implements NovelAgent {
                 "先读取已有当前主题文件；仅当前主题沿用原有 id、path 及未变化的有效内容。expectedHash 使用上下文 fileHashes 或 read_memory 返回的 hash；新文件填写空字符串。"+
                 "editPolicy.readOnly=true 的文件只能读取，不在 files 中输出。editPolicy.kind=historical-source 或目录 legacy=true 表示历史来源文件，其中 memory-record 代码围栏及 JSON 只用于核对，不得复制到输出 content。"+
                 "历史来源需要更新时，把仍然有效的事实整理到对应的当前主题；已存在当前主题时更新它，新主题使用独立的稳定 id 和 path，不能复用历史来源文件的 id 或 path。"+
+                "关系文件的 front matter id 是主题文件标识，与关系块中的 subject、predicate、object 分别维护；创建当前关系主题时同样不得复用历史来源的 id。"+
                 "人物和伏笔应按实体维护当前主题，保留来源文件链接、原始章节与获知顺序；事实、推测、计划及已解除状态分别表述。完整历史来源由程序保留。"+
                 "每章必须更新 current_state.md 和 handoff_current.md；每个文件最多16000个UTF-8字节，这两个短文件最多6000字节。"+
                 "MEMORY.md、各目录 INDEX.md 和 chapters/ 文件由程序维护，不在 files 中输出。每项 description 说明本章变化与影响，最多800字符。"+
@@ -46,6 +47,7 @@ public class MemoryExtractionAgent implements NovelAgent {
                 (repairing?"本次修正保持正文与大纲。files 是修正后完整的候选集合，将整体替换原候选列表。读取原候选，保留仍然有效的全部修改，始终包含 current_state.md 和 handoff_current.md。"+
                         "原候选若指向只读历史路径，需将有效内容整理到对应当前主题，并从完整候选集合中排除历史路径；新主题使用独立 id 和 path，expectedHash 为空。"+
                         "使用 read_candidate_memory 读取原候选正文；原候选只是待审核提案，不表示其目标路径允许写入。修正要求="+json.write(repair):"")+
+                (payload.path("retryFailure").asText().isBlank()?"":"上次任务校验错误="+json.write(payload.path("retryFailure"))+"。核对错误中指出的真实文件与标识，解决该问题后再输出完整候选，不重复同一无效修改。")+
                 "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);
         var normalized=memory.validateDelta(result,(String)draft.get("body"));
         return normalized;

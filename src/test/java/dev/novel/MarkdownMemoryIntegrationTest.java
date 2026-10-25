@@ -133,6 +133,20 @@ class MarkdownMemoryIntegrationTest {
         Files.writeString(physical,Files.readString(physical)+"修改");
         assertThatThrownBy(()->files.readFull(id,1,"characters/char_001.md")).hasMessageContaining("长度");
     }
+    @Test void currentTopicsRequireIndependentIdsFromReadOnlyHistoricalSources() {
+        String id=novel();
+        memory.commit(id,1,1,json.tree(Map.of("summary","核对钥匙","facts",List.of(Map.of("key","old-hero","kind","CHARACTER",
+                "name","林舟","detail","保留历史记录","evidence","林舟把铜钥匙交给陈岚。")),"relations",List.of())));
+        db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);
+        var delta=delta(id);
+        for(var file:delta.path("files")) ((com.fasterxml.jackson.databind.node.ObjectNode)file)
+                .put("expectedHash",files.hash(id,1,file.path("path").asText()));
+        var duplicate=delta.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)duplicate.path("files").get(0)).put("content",
+                markdown.create("old-hero","character","林舟",List.of(),"已经交出铜钥匙。"));
+        assertThatThrownBy(()->files.validateBase(id,1,duplicate)).hasMessageContaining("同一记忆标识","old-hero","只读历史来源","独立 id");
+        assertThatCode(()->files.validateBase(id,1,delta)).doesNotThrowAnyException();
+    }
     @Test void searchPagingUnicodeAndHttpUseTheSameVersionedFiles() throws Exception {
         String id=novel();var delta=delta(id);memory.commit(id,1,1,delta);
         db.update("UPDATE novels SET memory_version=1 WHERE id=?",id);

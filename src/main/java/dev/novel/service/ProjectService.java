@@ -189,9 +189,15 @@ public class ProjectService {
                         chosenModel,Store.string(task,"kind"),reasoningEffort);
                 if(!choice.ready()) throw new IllegalArgumentException("所选模型服务尚未配置完成");
             }
+            var retryPayload=json.read((String)task.get("payload")).deepCopy();
+            if(Set.of("MEMORY","MEMORY_REPAIR").contains(task.get("kind"))) {
+                if(!(retryPayload instanceof com.fasterxml.jackson.databind.node.ObjectNode object))
+                    throw new IllegalStateException("记忆任务的重试资料必须为对象");
+                object.put("retryFailure",Store.string(task,"error"));
+            }
             store.update("tasks.cancel",taskId);
             String next=store.enqueue(novelId,(String)task.get("kind"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),Store.number(task,"memory_version"),
-                    task.get("task_key")+":retry:"+UUID.randomUUID(),json.read((String)task.get("payload")));
+                    task.get("task_key")+":retry:"+UUID.randomUUID(),retryPayload);
             if(task.get("research_id")!=null) store.update("tasks.linkResearch",task.get("research_id"),next);
             if(choice!=null) store.update("tasks.modelChoice",choice.provider(),choice.model(),next);
             else if(task.get("provider")!=null) store.update("tasks.modelChoice",task.get("provider"),task.get("model_name"),next);

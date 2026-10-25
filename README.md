@@ -356,6 +356,8 @@ flowchart LR
 
 每组记忆审核提供完整 `candidateCatalog`、`totalCandidateFiles` 与当前 `reviewedIndices`；当前组的 `files` 只包含本组修改详情。其他组候选通过 `read_candidate_memory` 核对，引用保持原始候选序号。正式文件在发布前保持旧版本，审核比较对应候选内容与正式来源。
 
+记忆提取或修正任务重试时，任务资料包含 `retryFailure`，提供上次失败的校验信息。新主题使用独立文件标识，历史来源的标识与路径保持只读；关系文件的主题标识与关系块的 `subject`、`predicate`、`object` 分别维护。标识冲突会明确指出已有文件及其编辑限制。
+
 ### 上下文压缩与提示缓存
 
 `AgentContextHook` 在模型调用前排序工具定义，按配置 token 容量和请求大小判断是否需要压缩；token 数由 AgentScope `TokenCounterUtil` 估算，实际费用始终使用服务返回用量。`NOVEL_MODEL_CONTEXT_TOKENS` 默认32768，特定模型可以配置 `novel.context-models.<model>.tokens`；输出额度和2048 token 包装空间另行预留。120000字节继续作为应用请求保护上限。

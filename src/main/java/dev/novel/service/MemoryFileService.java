@@ -383,7 +383,12 @@ public class MemoryFileService {
                 if(!available.contains(path(target))) throw new IllegalArgumentException("记忆文件链接不存在："+destination);
             }
             String previous=ids.putIfAbsent(document.id(),path);
-            if(previous!=null) throw new IllegalArgumentException("同一记忆标识已经保存在文件："+previous);
+            if(previous!=null) {
+                var source=mapper.file(novel,base,previous);
+                boolean historical=source!=null && Store.string(source,"kind").startsWith("legacy-");
+                throw new IllegalArgumentException("同一记忆标识 "+document.id()+" 已经保存在文件："+previous+
+                        (historical?"；该标识属于只读历史来源，新主题 "+path+" 需要使用独立 id，并保留历史来源链接。":"；请更新已有当前主题，保留其 id 和 path。"));
+            }
         }
         return delta;
     }
