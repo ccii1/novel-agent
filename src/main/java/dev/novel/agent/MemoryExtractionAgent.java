@@ -31,7 +31,7 @@ public class MemoryExtractionAgent implements NovelAgent {
         var result=model.call(task,AgentInstructions.SYSTEM+purpose(),
                 "输出 {summary:string,files:[{path:string,expectedHash:string,content:string,description:string,evidencePaths:[string]}]}。"+
                 "summary 不超过600字。content 是完整 Markdown 文件，开头为 YAML front matter，必须包含 id、type、name 和 aliases；后接标题与主题正文。"+
-                "文件使用稳定标识，例如 characters/char_001.md、world/city_rule.md、hooks/hook_001.md、arcs/arc_001.md。type 使用 character/world/hook/arc/stage/chapter/relation/issue；事件文件使用 chapter，current_state.md 使用 state，handoff_current.md 使用 handoff。"+
+                "新文件使用与主题对应的稳定标识。读取已有文件时只使用目录、搜索结果或上下文提供的真实路径，不要猜测路径。type 使用 character/world/hook/arc/stage/chapter/relation/issue；事件文件使用 chapter，current_state.md 使用 state，handoff_current.md 使用 handoff。"+
                 "先读取已有当前主题文件；仅当前主题沿用原有 id、path 及未变化的有效内容。expectedHash 使用上下文 fileHashes 或 read_memory 返回的 hash；新文件填写空字符串。"+
                 "editPolicy.readOnly=true 的文件只能读取，不在 files 中输出。editPolicy.kind=historical-source 或目录 legacy=true 表示历史来源文件，其中 memory-record 代码围栏及 JSON 只用于核对，不得复制到输出 content。"+
                 "历史来源需要更新时，把仍然有效的事实整理到对应的当前主题；已存在当前主题时更新它，新主题使用独立的稳定 id 和 path，不能复用历史来源文件的 id 或 path。"+

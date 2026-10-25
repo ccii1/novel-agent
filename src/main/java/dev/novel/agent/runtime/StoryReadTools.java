@@ -116,13 +116,13 @@ public class StoryReadTools {
                 Objects.toString(directory,""),offset==null?0:offset,limit==null?10:limit,availableBytes()));
     }
     @Tool(name="read_memory",description="根据逻辑路径分页读取 Markdown 记忆文件。返回原文、指纹和 nextOffset。准备修改时沿用返回的 hash。",readOnly=true)
-    public String file(@ToolParam(name="path",description="目录返回的完整逻辑路径，例如 characters/char_001.md") String path,
+    public String file(@ToolParam(name="path",description="目录、搜索结果或上下文返回的完整逻辑路径") String path,
             @ToolParam(name="offset",required=false,description="Unicode code point 起点，默认0") Integer offset,
             @ToolParam(name="length",required=false,description="读取字符数1至12000，默认6000") Integer length) {
         return read("read_memory",()->memory.files().read(Store.string(task,"novel_id"),Store.number(task,"memory_version"),path,
                 offset==null?0:offset,length==null?6000:length,availableBytes()));
     }
-    @Tool(name="read_memory_batch",description="批量读取已知路径的 Markdown 文件，共用字节预算；返回每份文件的指纹、已读范围和继续位置。",readOnly=true)
+    @Tool(name="read_memory_batch",description="批量读取目录、搜索或上下文提供的路径，共用字节预算；missingPaths 列出当前版本不存在的路径。",readOnly=true)
     public String batch(@ToolParam(name="paths",description="目录或上下文提供的逻辑路径列表，最多30个，顺序表示优先级") List<String> paths,
             @ToolParam(name="offset",required=false,description="各文件的 Unicode 起点，默认0；单独续读时使用 read_memory") Integer offset,
             @ToolParam(name="length",required=false,description="每份文件读取1至12000个字符，默认6000") Integer length) {

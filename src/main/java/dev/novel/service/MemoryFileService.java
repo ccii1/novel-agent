@@ -246,15 +246,21 @@ public class MemoryFileService {
             throw new IllegalArgumentException("批量读取需要1至30个不同路径");
         if(offset<0 || length<1 || length>12000) throw new IllegalArgumentException("批量读取范围无效");
         var rows=new HashMap<String,Map<String,Object>>();manifest(novel,version).forEach(row->rows.put(Store.string(row,"path"),row));
-        for(String name:paths) if(!rows.containsKey(path(name))) throw new IllegalArgumentException("批量读取文件不存在："+name);
+        var existing=new ArrayList<String>();var missing=new ArrayList<String>();
+        for(String name:paths) {
+            String checked=path(name);
+            if(rows.containsKey(checked)) existing.add(checked); else missing.add(checked);
+        }
         var results=new ArrayList<Map<String,Object>>();var pending=new ArrayList<String>();
         var response=new LinkedHashMap<String,Object>();
         response.put("memoryVersion",version);response.put("files",results);response.put("pendingPaths",pending);
-        for(int index=0;index<paths.size();index++) {
+        response.put("missingPaths",missing);
+        if(!missing.isEmpty()) response.put("instruction","missingPaths 在当前版本中不存在。使用 list_memory_files 或 search_memory 查找真实路径；不得根据路径推断文件内容。");
+        for(int index=0;index<existing.size();index++) {
             int room=budget-bytes(json.write(json.write(response)))-512;
-            if(room<1024) { pending.addAll(paths.subList(index,paths.size()));break; }
-            int share=Math.max(512,(room-128*(paths.size()-index))/(paths.size()-index));
-            String path=paths.get(index);var row=rows.get(path);
+            if(room<1024) { pending.addAll(existing.subList(index,existing.size()));break; }
+            int share=Math.max(512,(room-128*(existing.size()-index))/(existing.size()-index));
+            String path=existing.get(index);var row=rows.get(path);
             results.add(page(path,version,Store.string(row,"fingerprint"),content(novel,row),offset,length,Math.min(room,share),Store.string(row,"kind").startsWith("legacy-")));
         }
         response.put("hasMore",!pending.isEmpty() || results.stream().anyMatch(file->Boolean.TRUE.equals(file.get("hasMore"))));

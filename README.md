@@ -371,7 +371,7 @@ flowchart LR
 
 工具默认单次最多24000字节、累计最多60000字节，运行时按完整请求剩余空间收紧；预算包含序列化转义与 `_toolBudget` 信息。通过 `NOVEL_TOOL_RESULT_BYTES`、`NOVEL_TOOL_TOTAL_BYTES` 分别配置单次与累计预算。结果向模型显示剩余字节和模型请求次数。单文件默认读取6000个 Unicode code point，可指定1至12000；目录默认15项、最多30项，搜索默认10项、最多20项。每次真实请求检查完整序列化大小；固定资料本身过大时，在发送前明确报错并保留已有用量。
 
-`read_memory_batch(paths, offset, length)` 支持最多30个不同路径，顺序表示读取优先级。一次读取版本清单并验证全部路径，再在共同预算内返回各文件原文、指纹、已读范围、`nextOffset` 和 `hasMore`。`pendingPaths` 明确列出尚未读取的文件；单个文件可以使用 `read_memory` 从继续位置获取后续内容。分页按实际字节计算能够容纳的字符数，保持 Unicode 完整。
+`read_memory_batch(paths, offset, length)` 支持最多30个不同路径，顺序表示读取优先级。一次读取版本清单，在共同预算内返回存在的文件原文、指纹、已读范围、`nextOffset` 和 `hasMore`。`missingPaths` 列出当前版本不存在的路径，Agent 可以查询目录或搜索确认；`pendingPaths` 列出尚未读取的已有文件。单个文件可以使用 `read_memory` 从继续位置获取后续内容。分页按实际字节计算能够容纳的字符数，保持 Unicode 完整。
 
 本章人物和伏笔通过稳定标识、名称及 YAML 别名匹配。明确的当前主题在初始预算内自动提供；同名或别名冲突保留候选，历史来源按本章条目提供路径、指纹和章节，供模型直接批量读取。本章主题预算通过 `novel.memory-initial-topic-bytes` 配置，默认16000字节。`_loadedMemory` 显示已经完整提供的文件及范围，模型据此减少重复读取。别名由 YAML 库解析，派生别名缓存使用文件指纹作为键并限制容量；正式记忆继续由已发布文件版本提供。
 
