@@ -71,13 +71,14 @@ class MarkdownMemoryIntegrationTest {
         var covered=new HashSet<Integer>();groups.forEach(group->group.forEach(item->assertThat(covered.add(item.asInt())).isTrue()));
         assertThat(covered).containsExactlyInAnyOrder(0,1,2,3);
         assertThat(groups.size()).isLessThan(delta.path("files").size());
-        for(int index=0;index<groups.size()+1;index++) {
+        int reviews=groups.size()==1?1:groups.size()+1;
+        for(int index=0;index<reviews;index++) {
             var task=store.one("tasks.find",check);var payload=json.read(Store.string(task,"payload"));
-            assertThat(payload.path("reviewPhase").asText()).isEqualTo(index<groups.size()?"FILES":"COVERAGE");
+            assertThat(payload.path("reviewPhase").asText()).isEqualTo(groups.size()==1?"ALL":index<groups.size()?"FILES":"COVERAGE");
             assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
             assertThat(dispatch.claim(check)).isEqualTo(1);
             workflow.finished(store.one("tasks.find",check),json.read("{\"approved\":true,\"majorChange\":false,\"issues\":[]}"));
-            if(index<groups.size()) check=Store.string(db.one("SELECT * FROM tasks WHERE novel_id=? AND kind='CHECK_MEMORY' AND status='WAITING'",id),"id");
+            if(index+1<reviews) check=Store.string(db.one("SELECT * FROM tasks WHERE novel_id=? AND kind='CHECK_MEMORY' AND status='WAITING'",id),"id");
         }
         assertThat(store.novel(id)).containsEntry("status","AWAITING_STAGE_REVIEW");
         assertThat(Store.number(store.novel(id),"memory_version")).isEqualTo(1);

@@ -654,6 +654,8 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 
 `MySqlIntegrationTest` 和 `MarkdownMemoryMySqlTest` 默认关闭，设置 `NOVEL_MYSQL_TEST=true` 后读取本地 MySQL 配置，共用专用库 `novel_agent_test`。每个测试类通过 MySQL advisory lock 独占该库，使用 Flyway clean 清理该库，再由应用迁移初始化；此名称仅用于测试。`MemoryCacheIntegrationTest` 受 `NOVEL_REDIS_TEST=true` 控制，Redis 测试可通过 `NOVEL_REDIS_ADDRESS` 指向独立端口，使用独立 key 范围。完整历史数据迁移尚未执行。
 
+2026-10-25 恢复运行验证：`ContextBudgetIntegrationTest`、`MarkdownMemoryIntegrationTest`、`ReviewEvidenceIntegrationTest`、`AgentRuntimeIntegrationTest` 共44项通过、2项跳过，覆盖上下文预算、记忆发布、原文证据、工具权限、综合审核及工具空间耗尽后继续执行。真实后端使用本地 `gpt-6-luna`、`high` 执行第10章修改与综合审核，已观察到两次自动压缩后继续请求；完整章节提交与长期连载效果仍需结合后续结果判断。
+
 测试记忆、AgentState 和日志统一放在忽略目录 `.work/tests/`；JUnit 关闭并行执行，测试类持有文件锁，结束后清理本类新增的记忆及会话文件。UI 验证资料通过 `novel.tests.keep-files=true` 保留，`mvnw.cmd clean` 清理整个 `.work/tests/`。正式 AgentState 目录通过 `NOVEL_AGENT_STATE_DIRECTORY` 配置，默认 `data/agent-sessions`。
 
 启动脚本检查服务端口后，将运行包复制到固定的 `.work/runtime/novel-agent.jar`。候选记忆保存在任务结果和模型响应中，发布时才生成不可变记忆文件；历史版本继续由数据库清单引用。构建上下文时复用本次读取的记忆入口、文件清单、大纲与质量记录。

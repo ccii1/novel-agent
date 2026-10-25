@@ -35,12 +35,14 @@ class AgentRuntimeIntegrationTest {
     }
     @Test void rolesDeclareIndependentToolPermissionsAndIterationLimits() {
         assertThat(agents.runtime("COORDINATE").tools()).contains("delegate_outline","delegate_memory","delegate_draft");
-        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","read_source","read_candidate_memory","read_memory_batch");
-        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","read_source","read_candidate_memory","read_memory_batch");
+        assertThat(agents.runtime("WRITE").tools()).containsExactlyInAnyOrder("read_memory","read_relations","list_memory_files","search_memory","lookup_memory","read_source","read_candidate_memory","read_memory_batch");
+        assertThat(agents.runtime("CHECK_PLOT").tools()).containsExactlyInAnyOrder("read_memory","read_paragraph","list_memory_files","search_memory","lookup_memory","read_source","read_candidate_memory","read_memory_batch");
         assertThat(agents.runtime("MEMORY").tools()).doesNotContain("delegate_draft","delegate_outline");
-        assertThat(agents.runtime("COORDINATE").maxRequests()).isEqualTo(3);
-        assertThat(agents.runtime("RESEARCH").maxRequests()).isEqualTo(1);
-        assertThat(agents.runtime("WRITE").maxRequests()).isEqualTo(4);
+        assertThat(agents.runtime("COORDINATE").maxIterations()).isEqualTo(2);
+        assertThat(agents.runtime("WRITE").maxIterations()).isEqualTo(8);
+        assertThat(agents.runtime("COORDINATE").maxRequests()).isEqualTo(7);
+        assertThat(agents.runtime("RESEARCH").maxRequests()).isEqualTo(5);
+        assertThat(agents.runtime("WRITE").maxRequests()).isEqualTo(13);
     }
     @Test void toolsReadActualParagraphAndRejectStaleVersions() {
         String id=novel();
@@ -89,12 +91,14 @@ class AgentRuntimeIntegrationTest {
         assertThat(last.path("toolCall").asInt()).isEqualTo(10);
         assertThat(last.path("remainingToolBytes").asInt()).isPositive();
     }
-    @Test void cumulativeToolBytesStillStopReadsAndPreserveTheError() {
+    @Test void cumulativeToolBytesReportExhaustionAndNextRequestRestoresSpace() {
         String id=novel();String taskId=store.enqueue(id,"CHECK_PLOT",1,0,0,UUID.randomUUID().toString(),Map.of());
         var tools=new StoryReadTools(store.one("tasks.find",taskId),context,memory,store,json,1024);
-        assertThatThrownBy(()->{for(int index=0;index<100;index++) tools.paragraph("p1");})
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("剩余预算");
-        assertThatThrownBy(tools::check).hasMessageContaining("剩余预算");
+        for(int index=0;index<100;index++) tools.paragraph("p1");
+        assertThat(json.read(tools.paragraph("p1")).path("status").asText()).isEqualTo("BUDGET_EXHAUSTED");
+        tools.check();
+        tools.reserveRequestSpace(40000,120000);
+        assertThat(json.read(tools.paragraph("p1")).path("text").asText()).isEqualTo("红印仍未干透。");
     }
     @Test void defaultReadReturnsMoreTextAndReportsRemainingRequestAndByteBudgets() {
         String id=novel();
@@ -130,18 +134,20 @@ class AgentRuntimeIntegrationTest {
         String original=memory.files().readFull(id,1,path);
         assertThat(original).startsWith(first.path("content").asText()+next.path("content").asText());
         tools.check();
-        assertThatThrownBy(()->tools.batch(List.of(paths.get(0),"characters/missing.md"),0,10)).hasMessageContaining("不存在");
+        var missing=json.read(tools.batch(List.of(paths.get(0),"characters/missing.md"),0,10));
+        assertThat(missing.path("missingPaths")).containsExactly(json.tree("characters/missing.md"));
     }
     @Test void requestHeadroomStillRestrictsToolReads() {
         String id=novel();String taskId=store.enqueue(id,"CHECK_PLOT",1,0,0,UUID.randomUUID().toString(),Map.of());
         var tools=new StoryReadTools(store.one("tasks.find",taskId),context,memory,store,json);
         tools.reserveRequestSpace(119900,120000);
-        assertThatThrownBy(()->tools.paragraph("p1")).hasMessageContaining("剩余预算0字节");
+        assertThat(json.read(tools.paragraph("p1")).path("status").asText()).isEqualTo("BUDGET_EXHAUSTED");
+        tools.check();
     }
     @Test void reviewRoundRequiresAllRolesAndSameRevision() {
         String id=novel();var novel=store.novel(id);
         reviews.start(novel,1,0);reviews.start(novel,1,0);
-        assertThat(store.list("tasks.chapterChecks",id,1,0,0)).hasSize(4);
+        assertThat(store.list("tasks.chapterChecks",id,1,0,0)).singleElement().satisfies(row->assertThat(row).containsEntry("kind","CHECK_CHAPTER"));
         assertThat(reviews.collect(novel,1,0).ready()).isFalse();
         assertThat(reviews.collect(novel,1,1).completed()).isEmpty();
     }
