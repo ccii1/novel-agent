@@ -16,6 +16,7 @@ public final class AgentOutputs {
             @NotNull List<@NotBlank String> characters,@NotNull List<@NotBlank String> foreshadowIds,
             String sceneType,Boolean climax) {}
     public record Chapter(@NotBlank String title,@NotBlank String body) {}
+    public record ChapterGeneration(@NotBlank @Pattern(regexp="GENERATED|BLOCKED") String status,String reason) {}
     public record Review(@NotNull Boolean approved,@NotNull Boolean majorChange,Boolean planConflict,
             @NotNull List<@NotNull @Valid Issue> issues) {}
     public record Dimensions(@NotNull Boolean character,@NotNull Boolean plot,@NotNull Boolean pacing,@NotNull Boolean style) {}

@@ -30,7 +30,8 @@ public class ChapterReviewAgent extends ReviewAgent {
         return "额外输出 planConflict:boolean。仅当当前批准计划内部矛盾，或计划要求与已确立的世界规则、能力次数直接冲突且正文修改无法解决时为 true；"+
                 "此时 approved=false，给出对应原文证据，等待计划审批；普通正文质量问题为 false。"+
                 "额外输出 dimensions:{character:boolean,plot:boolean,pacing:boolean,style:boolean}，true 表示该维度通过；每条 issue 额外填写 dimension=CHARACTER/PLOT/PACING/STYLE。"+
-                "未通过的每个维度至少有一条对应问题；全部维度通过才能 approved=true。额外输出 narrative:{opening:string,activity:string,ending:string,resolution:string,pattern:string,climax:boolean,combat:boolean}。";
+                "未通过的每个维度至少有一条对应问题；全部维度通过才能 approved=true。额外输出 narrative:{opening:string,activity:string,ending:string,resolution:string,pattern:string,climax:boolean,combat:boolean}。"+
+                "climax 和 combat 只允许 JSON true 或 false，表示当前材料是否呈现高潮或战斗；未识别时为 false，无法评估的原因写入其他文字字段。";
     }
     protected String additionalInput(Map<String,Object> task,String body) {
         return "；实际统计="+json.write(quality.measure(body))+"。篇幅仅记录整理建议，不能仅因字数差异提出问题。前三章关注开篇，每五章检查循环，每十章完整审计。";

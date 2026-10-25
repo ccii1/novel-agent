@@ -141,6 +141,8 @@ MyBatis 负责全部业务数据库访问。`repository/mapper` 中的接口处�
 
 ## Agent 输出与上下文处理
 
+任务上下文的 `_workflow.planStatus` 由系统业务状态提供，写作按已批准的章纲执行。规划文字和历史交接中的提案备注不改变审批状态。写作输出使用 `status=GENERATED` 并提供 `title`、`body`；无法生成时使用 `status=BLOCKED` 和 `reason`，该结果在保存草稿前被拒绝。审核的 `Narrative.climax`、`Narrative.combat` 使用 JSON 布尔值，类型校验错误包含具体字段路径和期望类型。
+
 `dto/AgentOutputs` 使用 Java record 声明大纲、正文、检查报告、节奏、修改计划、记忆增量及选题结构。`AgentOutputReader` 使用 Jackson 映射和 Bean Validation 检查字段类型、必填项、嵌套列表、文本长度和取值范围。布尔字段接收 JSON boolean，章节编号接收 JSON integer，文本字段接收 JSON string；字段类型不匹配时明确失败。额外字段继续保存在原始响应中，任务结果仍使用 JSON 提交给工作流。
 
 `PlanValidator` 检查章节数量与连续编号，`ReviewValidator` 检查报告结论及正文原文证据，记忆模块检查事实 key、关系 key 与证据，选题模块检查引用是否来自已采集资料。结构检查和业务校验分别维护，不增加隐式模型重试。

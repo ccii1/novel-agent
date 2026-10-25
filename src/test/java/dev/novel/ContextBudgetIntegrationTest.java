@@ -23,6 +23,21 @@ class ContextBudgetIntegrationTest {
     @Autowired ContextBudget budget;
     @Autowired TruthDocumentService truth;
 
+    @Test void workflowApprovalRemainsExplicitWhenThePlanContainsProposalWording() {
+        String id=novel();
+        var plan=(com.fasterxml.jackson.databind.node.ObjectNode)json.read(Store.string(store.novel(id),"plan"));
+        plan.put("stageGoal","待人工审核的阶段规划提案：调查封条来源");
+        store.update("novels.awaitPlan",json.write(plan),id);
+        String taskId=store.enqueue(id,"WRITE",1001,0,0,UUID.randomUUID().toString(),Map.of());
+        var task=store.one("tasks.find",taskId);
+        assertThat(json.read(context.context(task,AgentInstructions.storyFiles())).path("_workflow").path("planStatus").asText())
+                .isEqualTo("PENDING_APPROVAL");
+        projects.approvePlan(id,null);
+        var approved=json.read(context.context(task,AgentInstructions.storyFiles()));
+        assertThat(approved.path("_workflow").path("planStatus").asText()).isEqualTo("APPROVED");
+        assertThat(approved.path("outline.md").path("stageGoal").asText()).contains("待人工审核");
+    }
+
     private String novel() {
         String id=projects.create("长期连载预算验证","林舟调查钥匙来源","人物必须保留知识边界",4,BigDecimal.TEN,BigDecimal.ONE);
         store.update("tasks.cancelNovel",id);

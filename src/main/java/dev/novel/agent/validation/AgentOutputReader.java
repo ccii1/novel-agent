@@ -38,7 +38,12 @@ public class AgentOutputReader {
         final T output;
         try { output=mapper.treeToValue(node,type); }
         catch(JsonProcessingException error) {
-            throw new IllegalArgumentException("Agent 输出字段类型无效："+type.getSimpleName(),error);
+            String path=error instanceof JsonMappingException mapping?mapping.getPath().stream()
+                    .map(reference->reference.getFieldName()!=null?reference.getFieldName():"["+reference.getIndex()+"]")
+                    .collect(Collectors.joining(".")):"";
+            String expected=error instanceof com.fasterxml.jackson.databind.exc.MismatchedInputException mismatch
+                    && mismatch.getTargetType()!=null?"，期望 "+mismatch.getTargetType().getSimpleName():"";
+            throw new IllegalArgumentException("Agent 输出字段类型无效："+type.getSimpleName()+(path.isEmpty()?"":"."+path)+expected,error);
         }
         var violations=validator.validate(output);
         if(!violations.isEmpty()) {

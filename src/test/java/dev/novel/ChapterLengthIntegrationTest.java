@@ -25,11 +25,30 @@ import static org.assertj.core.api.Assertions.*;
 class ChapterLengthIntegrationTest {
     @Autowired ChapterQualityService quality;
     @Autowired AgentOutputReader outputs;
+    @Autowired dev.novel.agent.validation.ChapterOutputValidator chapters;
     @Autowired ProjectService projects;
     @Autowired WorkflowService workflow;
     @Autowired Store store;
     @Autowired TaskDispatchMapper dispatch;
     @Autowired Json json;
+
+    @ParameterizedTest
+    @ValueSource(strings={"climax","combat"})
+    void narrativeBooleanErrorsIdentifyTheExactField(String field) {
+        var narrative=json.tree(Map.of("opening","开篇说明","activity","行动说明","ending","结尾说明","resolution","结果说明",
+                "pattern","模式说明","climax",false,"combat",false));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)narrative).put(field,"无法评估");
+        assertThatThrownBy(()->outputs.read(narrative,AgentOutputs.Narrative.class))
+                .hasMessageContaining("Narrative."+field,"Boolean");
+    }
+    @Test void blockedGenerationCannotBeAcceptedAsAChapter() {
+        var blocked=json.tree(Map.of("status","BLOCKED","reason","缺少批准章纲","title","执行说明","body","本轮未生成小说正文。"));
+        assertThatThrownBy(()->chapters.validate(blocked)).hasMessageContaining("正文未生成","缺少批准章纲");
+        assertThatThrownBy(()->chapters.validate(json.tree(Map.of("title","密信","body","林舟检查封条。"))))
+                .hasMessageContaining("status");
+        assertThat(chapters.validate(json.tree(Map.of("status","GENERATED","title","密信","body","林舟检查封条。"))).body())
+                .isEqualTo("林舟检查封条。");
+    }
 
     @ParameterizedTest
     @ValueSource(ints={1200,4500})

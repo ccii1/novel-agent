@@ -32,7 +32,12 @@ public class AgentContextService {
         return context(task,files,"");
     }
     public String context(Map<String,Object> task,List<String> files,String additionalInput) {
-        var documents=truth.prompt(novel(task),Store.integer(task,"chapter_no"),files);
+        var novel=novel(task);
+        var documents=truth.prompt(novel,Store.integer(task,"chapter_no"),files);
+        boolean pending=Store.string(novel,"plan").isBlank() || "PLAN".equals(task.get("kind"))
+                || Set.of("PLANNING","AWAITING_PLAN").contains(Store.string(novel,"status"));
+        documents.put("_workflow",Map.of("source","DATABASE_WORKFLOW","status",Store.string(novel,"status"),
+                "stageNo",novel.get("stage_no"),"taskKind",task.get("kind"),"planStatus",pending?"PENDING_APPROVAL":"APPROVED"));
         if(Set.of("WRITE","REWRITE").contains(task.get("kind"))) {
             var previous=store.list("chapters.previous",task.get("novel_id"),Store.integer(task,"chapter_no")-1);
             if(!previous.isEmpty()) {
