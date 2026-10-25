@@ -5,6 +5,7 @@ import dev.novel.agent.orchestration.ReviewOrchestrator;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import org.springframework.stereotype.Service;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -26,7 +27,7 @@ public class WorkflowService {
     private final ObservationService observations;
 
     public WorkflowService(Store store, Json json, MemoryService memory, ChapterQualityService quality,
-            ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler,ObservationService observations) {
+                           ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler, ObservationService observations) {
         this.store = store;
         this.json = json;
         this.memory = memory;
@@ -35,7 +36,7 @@ public class WorkflowService {
         this.planChanges = planChanges;
         this.reviews = reviews;
         this.scheduler = scheduler;
-        this.observations=observations;
+        this.observations = observations;
     }
 
     public String schedule(Map<String, Object> novel, String kind, int chapter, int revision, Object payload) {
@@ -43,28 +44,30 @@ public class WorkflowService {
     }
 
     public void finished(Map<String, Object> task, JsonNode result) {
-        MemoryFileService.Prepared prepared=null;
-        if(Set.of("MEMORY","MEMORY_REPAIR","CHECK_MEMORY").contains(task.get("kind"))) {
-            var novel=store.novel(Store.string(task,"novel_id"));
-            if(!SUSPENDED.contains(novel.get("status")) && Store.number(novel,"memory_version")==Store.number(task,"memory_version")
-                    && "RUNNING".equals(store.one("tasks.find",task.get("id")).get("status"))) {
-                var draft=store.one("chapters.find",task.get("novel_id"),task.get("chapter_no"));
-                var delta=memory.validateDelta(result,Store.string(draft,"body"));
-                if(Store.integer(draft,"revision")!=Store.integer(task,"revision")) throw new IllegalStateException("记忆修改对应的正文版本已经变化");
-                if(delta.has("files")) prepared=memory.files().prepare(Store.string(task,"novel_id"),Store.integer(task,"chapter_no"),Store.integer(task,"revision"),
-                        Store.number(task,"memory_version")+1,delta);
+        MemoryFileService.Prepared prepared = null;
+        if (Set.of("MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY").contains(task.get("kind"))) {
+            var novel = store.novel(Store.string(task, "novel_id"));
+            if (!SUSPENDED.contains(novel.get("status")) && Store.number(novel, "memory_version") == Store.number(task, "memory_version")
+                    && "RUNNING".equals(store.one("tasks.find", task.get("id")).get("status"))) {
+                var draft = store.one("chapters.find", task.get("novel_id"), task.get("chapter_no"));
+                var delta = memory.validateDelta(result, Store.string(draft, "body"));
+                if (Store.integer(draft, "revision") != Store.integer(task, "revision"))
+                    throw new IllegalStateException("记忆修改对应的正文版本已经变化");
+                if (delta.has("files"))
+                    prepared = memory.files().prepare(Store.string(task, "novel_id"), Store.integer(task, "chapter_no"), Store.integer(task, "revision"),
+                            Store.number(task, "memory_version") + 1, delta);
             }
         }
-        var publication=prepared;
+        var publication = prepared;
         store.transaction(() -> {
-            finishWithinTransaction(task, result,publication);
-            String status=Store.string(store.one("tasks.find",task.get("id")),"status");
-            if(task.get("execution_id")!=null) observations.finish(task,status,result,null);
+            finishWithinTransaction(task, result, publication);
+            String status = Store.string(store.one("tasks.find", task.get("id")), "status");
+            if (task.get("execution_id") != null) observations.finish(task, status, result, null);
             return null;
         });
     }
 
-    private void finishWithinTransaction(Map<String, Object> task, JsonNode result,MemoryFileService.Prepared prepared) {
+    private void finishWithinTransaction(Map<String, Object> task, JsonNode result, MemoryFileService.Prepared prepared) {
         String taskId = Store.string(task, "id");
         String novelId = (String) task.get("novel_id");
         String kind = Store.string(task, "kind");
@@ -96,7 +99,7 @@ public class WorkflowService {
             case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE", "CHECK_CHAPTER" ->
                     finishChapterReview(novel, task, result);
             case "REFLECT" -> finishReflection(novel, task, result);
-            case "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" -> commitApprovedChapter(novel,task,result,prepared);
+            case "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" -> commitApprovedChapter(novel, task, result, prepared);
             default -> throw new IllegalArgumentException("未知流程步骤：" + kind);
         }
     }
@@ -138,16 +141,16 @@ public class WorkflowService {
         var round = reviews.collect(novel, chapter, revision);
         // 等待同一版本的全部审核结果，单个 Agent 完成不会提前推进章节。
         if (!round.ready()) return;
-        if(round.approved()) {
-            state(novelId,"EXTRACTING");
-            schedule(novel,"MEMORY",chapter,revision,Map.of());
+        if (round.approved()) {
+            state(novelId, "EXTRACTING");
+            schedule(novel, "MEMORY", chapter, revision, Map.of());
         } else {
-            var reports=store.list("tasks.reviews",novelId,chapter,revision,novel.get("memory_version"));
-            var instructions=new java.util.ArrayList<Object>();
-            for(var report:reports) instructions.add(json.read(Store.string(report,"result")));
-            finishReflection(novel,task,json.tree(Map.of("majorChange",round.majorChange(),
-                    "planConflict",round.planConflict(),
-                    "instructions","逐项处理有原文依据的审核问题，保留已通过内容。审核报告："+json.write(instructions),"conflicts",java.util.List.of())));
+            var reports = store.list("tasks.reviews", novelId, chapter, revision, novel.get("memory_version"));
+            var instructions = new java.util.ArrayList<Object>();
+            for (var report : reports) instructions.add(json.read(Store.string(report, "result")));
+            finishReflection(novel, task, json.tree(Map.of("majorChange", round.majorChange(),
+                    "planConflict", round.planConflict(),
+                    "instructions", "逐项处理有原文依据的审核问题，保留已通过内容。审核报告：" + json.write(instructions), "conflicts", java.util.List.of())));
         }
     }
 
@@ -155,7 +158,7 @@ public class WorkflowService {
         String novelId = Store.string(novel, "id");
         int chapter = Store.integer(task, "chapter_no");
         int revision = Store.integer(task, "revision");
-        var round=reviews.collect(novel,chapter,revision);
+        var round = reviews.collect(novel, chapter, revision);
         boolean major = result.path("majorChange").asBoolean() || round.majorChange();
         store.update("novels.reflection", json.write(result), novelId);
         if (major || result.path("planConflict").asBoolean() || round.planConflict()) {
@@ -168,7 +171,7 @@ public class WorkflowService {
         }
     }
 
-    private void commitApprovedChapter(Map<String, Object> novel, Map<String, Object> task, JsonNode pending,MemoryFileService.Prepared prepared) {
+    private void commitApprovedChapter(Map<String, Object> novel, Map<String, Object> task, JsonNode pending, MemoryFileService.Prepared prepared) {
         String novelId = Store.string(novel, "id");
         int chapter = Store.integer(task, "chapter_no");
         var draft = store.one("chapters.find", novelId, chapter);
@@ -179,8 +182,8 @@ public class WorkflowService {
         var delta = memory.validateDelta(pending, Store.string(draft, "body"));
         long nextVersion = Store.number(novel, "memory_version") + 1;
         // 本方法仍处于 finished 的事务内，记忆、章节、进度及下一任务共同提交。
-        if(delta.has("files")) {
-            if(prepared==null || prepared.base()!=Store.number(novel,"memory_version") || !prepared.delta().equals(json.write(delta)))
+        if (delta.has("files")) {
+            if (prepared == null || prepared.base() != Store.number(novel, "memory_version") || !prepared.delta().equals(json.write(delta)))
                 throw new IllegalStateException("记忆文件尚未完成准备或与审核内容不同");
             memory.files().publish(prepared);
         } else memory.commit(novelId, chapter, nextVersion, delta);
@@ -208,7 +211,7 @@ public class WorkflowService {
     }
 
     public String repairMemory(Map<String, Object> novel, Map<String, Object> source, JsonNode delta,
-            JsonNode review, String instructions, int attempt) {
+                               JsonNode review, String instructions, int attempt) {
         String novelId = Store.string(novel, "id");
         state(novelId, "EXTRACTING");
         String id = store.enqueue(novelId, "MEMORY_REPAIR", Store.integer(source, "chapter_no"),
@@ -222,10 +225,10 @@ public class WorkflowService {
     public String scheduleMemoryCheck(Map<String, Object> novel, Map<String, Object> source, JsonNode delta, int attempt) {
         String novelId = Store.string(novel, "id");
         state(novelId, "CHECKING_MEMORY");
-        if(delta.has("files")) {
-            var draft=store.one("chapters.find",novelId,source.get("chapter_no"));
-            delta=memory.validateDelta(delta,Store.string(draft,"body"));
-            memory.files().validateBase(novelId,Store.number(source,"memory_version"),delta);
+        if (delta.has("files")) {
+            var draft = store.one("chapters.find", novelId, source.get("chapter_no"));
+            delta = memory.validateDelta(delta, Store.string(draft, "body"));
+            memory.files().validateBase(novelId, Store.number(source, "memory_version"), delta);
         }
         return store.enqueue(novelId, "CHECK_MEMORY", Store.integer(source, "chapter_no"),
                 Store.integer(source, "revision"), Store.number(source, "memory_version"),

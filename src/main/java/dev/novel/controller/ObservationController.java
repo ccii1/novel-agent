@@ -23,9 +23,9 @@ public class ObservationController {
     }
 
     @GetMapping
-    public ObservationDashboardResponse dashboard(@RequestParam(required=false) String novelId,
-            @RequestParam(required=false) Integer chapter, @RequestParam(required=false) String kind,
-            @RequestParam(required=false) String status, @RequestParam(defaultValue="0") int page) {
+    public ObservationDashboardResponse dashboard(@RequestParam(required = false) String novelId,
+                                                  @RequestParam(required = false) Integer chapter, @RequestParam(required = false) String kind,
+                                                  @RequestParam(required = false) String status, @RequestParam(defaultValue = "0") int page) {
         return responses.to(observations.dashboard(novelId, chapter, kind, status, page), ObservationDashboardResponse.class);
     }
 

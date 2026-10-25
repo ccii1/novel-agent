@@ -23,7 +23,7 @@ public class SystemController {
     private final StoryGraph graph;
 
     public SystemController(TaskEngine engine, ModelClient model, SkillService skills,
-            ModelRateLimiter limiter, DatabaseStorage storage, ResponseMapper responses, StoryGraph graph) {
+                            ModelRateLimiter limiter, DatabaseStorage storage, ResponseMapper responses, StoryGraph graph) {
         this.engine = engine;
         this.model = model;
         this.skills = skills;

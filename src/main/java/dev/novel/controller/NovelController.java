@@ -11,9 +11,11 @@ import dev.novel.support.ResponseMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+
 import static dev.novel.dto.response.CommonResponses.ActionResponse.SUCCESS;
 
 @RestController
@@ -26,7 +28,7 @@ public class NovelController {
     private final ResponseMapper responses;
 
     public NovelController(WorkspaceService workspace, ProjectService projects,
-            ChapterQualityService quality, TruthDocumentService truth, ResponseMapper responses) {
+                           ChapterQualityService quality, TruthDocumentService truth, ResponseMapper responses) {
         this.workspace = workspace;
         this.projects = projects;
         this.quality = quality;
@@ -49,12 +51,14 @@ public class NovelController {
     public Map<String, String> truth(@PathVariable String id) {
         return truth.files(id);
     }
+
     @GetMapping("/novels/{id}/truth-files/export")
     public ResponseEntity<byte[]> exportTruth(@PathVariable String id) {
         String disposition = ContentDisposition.attachment().filename("truth-files-" + id + ".zip").build().toString();
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition).body(truth.archive(id));
     }
+
     @GetMapping("/novels")
     public List<NovelResponse> novels() {
         return responses.list(workspace.novels(), NovelResponse.class);
@@ -93,8 +97,8 @@ public class NovelController {
     }
 
     @PostMapping("/novels/{id}/approve-plan")
-    public ActionResponse approve(@PathVariable String id, @RequestBody(required=false) JsonNode plan,
-            @RequestParam(defaultValue="false") boolean useCurrentPlan) {
+    public ActionResponse approve(@PathVariable String id, @RequestBody(required = false) JsonNode plan,
+                                  @RequestParam(defaultValue = "false") boolean useCurrentPlan) {
         projects.approvePlan(id, useCurrentPlan ? null : plan);
         return SUCCESS;
     }
@@ -124,7 +128,7 @@ public class NovelController {
     }
 
     @PostMapping("/tasks/{id}/retry")
-    public CreatedResponse retry(@PathVariable String id, @Valid @RequestBody(required=false) RetryTask request) {
+    public CreatedResponse retry(@PathVariable String id, @Valid @RequestBody(required = false) RetryTask request) {
         return new CreatedResponse(projects.retry(id,
                 request == null ? null : request.provider(), request == null ? null : request.model(), request == null ? null : request.reasoningEffort()));
     }
@@ -141,8 +145,8 @@ public class NovelController {
     }
 
     @GetMapping("/novels/{id}/graph")
-    public GraphResponse graph(@PathVariable String id, @RequestParam(defaultValue="") List<String> characters,
-            @RequestParam(defaultValue="2") int depth) {
+    public GraphResponse graph(@PathVariable String id, @RequestParam(defaultValue = "") List<String> characters,
+                               @RequestParam(defaultValue = "2") int depth) {
         return responses.to(workspace.graph(id, characters, depth), GraphResponse.class);
     }
 
@@ -161,7 +165,8 @@ public class NovelController {
         projects.approveEdit(id, request.acknowledgePublished());
         return SUCCESS;
     }
-    @GetMapping(value="/novels/{id}/export", produces="text/plain;charset=UTF-8")
+
+    @GetMapping(value = "/novels/{id}/export", produces = "text/plain;charset=UTF-8")
     public ResponseEntity<String> export(@PathVariable String id) {
         var manuscript = workspace.manuscript(id);
         String disposition = ContentDisposition.attachment()

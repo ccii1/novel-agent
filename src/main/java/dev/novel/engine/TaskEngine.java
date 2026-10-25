@@ -19,6 +19,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -39,8 +40,8 @@ public class TaskEngine {
     private boolean enabled;
 
     public TaskEngine(Store store, TaskDispatchMapper dispatchMapper, ModelCallMapper calls,
-            AgentService agents, WorkflowService workflow, ObservationService observations, TaskProgressService progress,
-            @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers, @Value("${novel.workers}") int limit) {
+                      AgentService agents, WorkflowService workflow, ObservationService observations, TaskProgressService progress,
+                      @Qualifier("novelTaskExecutor") AsyncTaskExecutor workers, @Value("${novel.workers}") int limit) {
         if (limit < 1 || limit > 32) throw new IllegalArgumentException("workers 应为1至32");
         this.store = store;
         this.agents = agents;
@@ -52,6 +53,7 @@ public class TaskEngine {
         this.observations = observations;
         this.progress = progress;
     }
+
     @EventListener(ApplicationReadyEvent.class)
     public void recover() {
         // 当前恢复逻辑面向单实例，未知调用先核对费用，不能直接发送新的模型请求。
@@ -76,7 +78,7 @@ public class TaskEngine {
         ready = true;
     }
 
-    @Scheduled(fixedDelay=500)
+    @Scheduled(fixedDelay = 500)
     public void dispatch() {
         if (!ready || !enabled) return;
         while (active.get() < limit) {
@@ -122,6 +124,7 @@ public class TaskEngine {
             return null;
         });
     }
+
     private Map<String, Object> claim() {
         return store.transaction(() -> {
             var task = dispatchMapper.nextCandidate();
@@ -160,7 +163,8 @@ public class TaskEngine {
         long visible = UserScope.current() == null ? active.get() : Store.number(store.one("tasks.activeCount"), "active");
         return Map.of("workers", limit, "active", visible, "ready", ready);
     }
-    @Scheduled(fixedDelay=15000, initialDelay=15000)
+
+    @Scheduled(fixedDelay = 15000, initialDelay = 15000)
     public void logRunning() {
         if (!ready || !enabled) return;
         for (var running : store.list("tasks.running")) {

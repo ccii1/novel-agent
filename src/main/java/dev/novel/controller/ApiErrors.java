@@ -3,7 +3,9 @@ package dev.novel.controller;
 import org.springframework.http.*;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.*;
+
 import dev.novel.integration.model.ModelServiceException;
 import dev.novel.dto.response.CommonResponses.ErrorResponse;
 import org.slf4j.Logger;
@@ -11,15 +13,16 @@ import org.slf4j.LoggerFactory;
 
 @RestControllerAdvice
 public class ApiErrors {
-    private static final Logger log=LoggerFactory.getLogger(ApiErrors.class);
+    private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
+
     @ExceptionHandler(ModelServiceException.class)
     public ResponseEntity<ErrorResponse> modelService(ModelServiceException error) {
-        var status=switch(error.reason()) {
+        var status = switch (error.reason()) {
             case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
             case INTERRUPTED -> HttpStatus.SERVICE_UNAVAILABLE;
             default -> HttpStatus.BAD_GATEWAY;
         };
-        log.warn("event=MODEL_LIST_FAILED provider={} reason={} message={}",error.provider(),error.reason(),error.getMessage());
+        log.warn("event=MODEL_LIST_FAILED provider={} reason={} message={}", error.provider(), error.reason(), error.getMessage());
         return ResponseEntity.status(status).body(new ErrorResponse(
                 error.getMessage(), error.provider(), "MODEL_SERVICE_" + error.reason().name()));
     }

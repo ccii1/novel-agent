@@ -32,7 +32,7 @@ public class PlanChangeController {
 
     @PostMapping("/{changeId}/approve")
     public ActionResponse approve(@PathVariable String id, @PathVariable String changeId,
-            @RequestBody PlanChangeApproval approval) {
+                                  @RequestBody PlanChangeApproval approval) {
         changes.approve(id, changeId, approval.acknowledgeCore(), approval.acknowledgeCompleted());
         return ActionResponse.SUCCESS;
     }

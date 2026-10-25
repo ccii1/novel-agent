@@ -5,6 +5,7 @@ import dev.novel.dto.response.SystemResponses.AgentResponse;
 import dev.novel.service.AgentService;
 import dev.novel.support.ResponseMapper;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
@@ -24,7 +25,7 @@ public class AgentController {
     }
 
     @GetMapping("/metrics")
-    public List<AgentMetricsResponse> metrics(@RequestParam(required=false) String novelId) {
+    public List<AgentMetricsResponse> metrics(@RequestParam(required = false) String novelId) {
         return responses.list(agents.metrics(novelId), AgentMetricsResponse.class);
     }
 }
