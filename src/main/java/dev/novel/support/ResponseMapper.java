@@ -3,6 +3,7 @@ package dev.novel.support;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+
 import java.util.List;
 import java.util.Map;
 
