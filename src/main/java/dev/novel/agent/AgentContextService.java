@@ -45,8 +45,8 @@ public class AgentContextService {
     public String pack(Map<String,Object> task,Map<String,Object> documents,String additionalInput) {
         String kind=Store.string(task,"kind");
         int chapter=Store.integer(task,"chapter_no");
-        // 技能、指令与工具历史分别预留空间，历史记忆只能使用剩余预算。
-        int available=maxContext-budget.bytes(skills.load(kind,chapter).instruction())-12000-maxContext/4-budget.bytes(additionalInput);
+        // 初始资料优先使用可用空间，工具结果按每次实际请求的剩余空间限制。
+        int available=maxContext-budget.bytes(skills.load(kind,chapter).instruction())-12000-4096-budget.bytes(additionalInput);
         if(available<1024) throw new IllegalStateException("必需正文、任务资料与固定技能超过当前上下文预算，尚未请求模型");
         boolean fullPlan=Set.of("PLAN","PLAN_CHANGE","COORDINATE").contains(kind);
         var packed=budget.pack(documents,available,fullPlan,chapter);

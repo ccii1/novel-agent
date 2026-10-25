@@ -364,7 +364,7 @@ flowchart LR
 - 每次加载短入口，并按角色提供当前状态、交接、批准的大纲与质量记录。
 - 本章明确匹配的人物或伏笔主题直接加载；同名历史记录提供有限入口并要求继续核查。
 - 人物与伏笔目录、章节摘要和历史证据按需读取，不在初始请求中拼接全书资料。
-- `ContextBudget` 为固定技能、必需正文、任务资料与工具历史预留空间。必需文件超过预算时明确失败，不截断文件尾部。
+- `ContextBudget` 为固定技能、必需正文、任务资料和请求包装预留空间。初始资料优先使用可用空间，工具历史按每次实际请求的剩余空间限制。必需文件超过预算时明确失败，不截断文件尾部。
 - 完整请求继续受120000字节限制，包括所有工具消息；每次请求记录实际大小和返回用量。
 
 `list_memory_files(directory, offset, limit)` 返回路径、标题、说明与指纹；`search_memory(query, directory, offset, limit)` 返回有限命中上下文；`read_memory(path, offset, length)` 返回正文范围、指纹、下一位置和未读取标记，位置按 Unicode code point 计算。`read_candidate_memory` 读取当前待审文件，`read_source` 按章节、revision 与片段读取原始证据。所有工具受用户、作品、任务版本和目录限制。
