@@ -48,7 +48,6 @@ public class MemoryExtractionAgent implements NovelAgent {
                         "使用 read_candidate_memory 读取原候选正文；原候选只是待审核提案，不表示其目标路径允许写入。修正要求="+json.write(repair):"")+
                 "上下文="+context.context(task,contextFiles(),draftInput+json.write(repair))+"；当前正文revision="+draft.get("revision")+"；正文="+draftInput);
         var normalized=memory.validateDelta(result,(String)draft.get("body"));
-        if(normalized.has("files")) memory.files().stage(task,normalized);
         return normalized;
     }
 }

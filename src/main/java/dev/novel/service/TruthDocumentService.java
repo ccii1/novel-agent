@@ -29,18 +29,22 @@ public class TruthDocumentService {
         String id=Store.string(novel,"id");long version=Store.number(novel,"memory_version");
         var files=memory.files();files.ensure(id,version);
         var result=new LinkedHashMap<String,Object>();
+        var plan=Store.string(novel,"plan").isBlank()?json.read("{}"):json.read(Store.string(novel,"plan"));
+        var metrics=new HashMap<Integer,List<Map<String,Object>>>();
+        java.util.function.IntFunction<List<Map<String,Object>>> recent=limit->metrics.computeIfAbsent(limit,key->quality.recent(id,chapter,key));
         result.put("MEMORY.md",files.readFull(id,version,"MEMORY.md"));
         for(String name:requestedFiles) {
             Object value=switch(name) {
-                case "MEMORY.md","current_state.md","handoff_current.md" -> files.readFull(id,version,name);
+                case "MEMORY.md" -> result.get("MEMORY.md");
+                case "current_state.md","handoff_current.md" -> files.readFull(id,version,name);
                 case "story_bible.md" -> Map.of("title",novel.get("title"),"premise",novel.get("premise"),"bible",novel.get("bible"));
-                case "outline.md" -> Store.string(novel,"plan").isBlank()?Map.of():json.read(Store.string(novel,"plan"));
+                case "outline.md" -> plan;
                 case "pending_hooks.md" -> Map.of("directory","hooks/","instruction","读取本章指定、到期与相关的伏笔文件；目录支持分页，未读取不代表不存在。");
                 case "character_matrix.md","character_knowledge.md" -> Map.of("directory","characters/","instruction","人物关系与知情范围保存在人物主题文件，读取出场人物并核对获知时间。");
                 case "chapter_summaries.md" -> Map.of("directory","chapters/","instruction","根据章节编号读取历史记录，需要证据时使用 read_source。");
-                case "progress_tracker.md" -> Map.of("stage",novel.get("stage_no"),"nextChapter",chapter,"recentMetrics",quality.recent(id,chapter,5));
-                case "dialogue-monitor.md" -> Map.of("recentMetrics",quality.recent(id,chapter,5),"ratioDefinition","含引号的非空行数 / 全部非空行数");
-                case "pattern-detection.md" -> Map.of("reviewDue",chapter%5==0,"fullReviewDue",chapter%10==0,"recentMetrics",quality.recent(id,chapter,chapter%10==0?9:5));
+                case "progress_tracker.md" -> Map.of("stage",novel.get("stage_no"),"nextChapter",chapter,"recentMetrics",recent.apply(5));
+                case "dialogue-monitor.md" -> Map.of("recentMetrics",recent.apply(5),"ratioDefinition","含引号的非空行数 / 全部非空行数");
+                case "pattern-detection.md" -> Map.of("reviewDue",chapter%5==0,"fullReviewDue",chapter%10==0,"recentMetrics",recent.apply(chapter%10==0?9:5));
                 case "book_rules.md" -> Map.of("approval","重大剧情变更等待人工批准");
                 case "style_guide.md" -> Map.of("targetCharacters","2000至2500","lengthPolicy","参考篇幅；先保存完整草稿，字数单独记录整理建议，依据具体内容问题修改。","dialogueLimit",0.4);
                 default -> throw new IllegalArgumentException("未知 Agent 上下文文件："+name);
@@ -49,14 +53,13 @@ public class TruthDocumentService {
         }
         result.put("memoryVersion",version);
         result.put("memoryTools","requiredTopics 与 _loadedMemory 标明已经提供的原文及范围，完整加载的文件无需再次读取。unresolvedTopics 提供本章候选路径，优先 read_memory_batch 批量获取；路径未知时再使用 search_memory 或 list_memory_files。read_memory 按 nextOffset 继续读取；read_source 核对正文。必需资料缺失时明确报告，不能仅依据目录判断事实。");
-        var plan=Store.string(novel,"plan").isBlank()?json.read("{}"):json.read(Store.string(novel,"plan"));
         var terms=new LinkedHashSet<String>();
         plan.path("chapters").forEach(item->{if(item.path("number").asInt()==chapter) {
             item.path("characters").forEach(term->terms.add(term.asText()));item.path("foreshadowIds").forEach(term->terms.add(term.asText()));
         }});
         var manifest=files.manifest(id,version);
         boolean includeTopics=requestedFiles.contains("current_state.md") || requestedFiles.contains("character_matrix.md");
-        if(includeTopics) result.putAll(topics.resolve(files,id,version,terms));
+        if(includeTopics) result.putAll(topics.resolve(files,id,version,terms,manifest));
         var selected=json.tree(result.getOrDefault("requiredTopics",Map.of()));
         var hashes=new LinkedHashMap<String,String>();
         var loaded=new ArrayList<Map<String,Object>>();

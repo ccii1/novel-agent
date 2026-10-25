@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
         "spring.datasource.url=jdbc:h2:mem:markdown-memory;DB_CLOSE_DELAY=-1","novel.engine-enabled=false",
-        "novel.memory-directory=./.work/markdown-memory-tests"})
+        "novel.memory-directory=./.work/tests/books/markdown"})
 class MarkdownMemoryIntegrationTest {
     @Autowired Store store;
     @Autowired TestDatabase db;
@@ -65,7 +65,7 @@ class MarkdownMemoryIntegrationTest {
     }
     @Test void filesBecomeVisibleOnlyAfterAllFileReviewsAndCoveragePass() {
         String id=novel();var delta=delta(id);
-        files.stage(source(id),delta);
+        files.validateBase(id,0,delta);
         String check=workflow.scheduleMemoryCheck(store.novel(id),source(id),delta,0);
         var groups=json.read(Store.string(store.one("tasks.find",check),"payload")).path("reviewGroups");
         var covered=new HashSet<Integer>();groups.forEach(group->group.forEach(item->assertThat(covered.add(item.asInt())).isTrue()));
@@ -104,7 +104,7 @@ class MarkdownMemoryIntegrationTest {
         assertThatThrownBy(()->memory.validateDelta(invalid,BODY)).hasMessageContaining("证据不存在");
         memory.commit(id,1,1,delta);
         var row=manifests.file(id,1,"characters/char_001.md");
-        Path physical=Path.of(".work/markdown-memory-tests",id,"memory",Store.string(row,"physical_path"));
+        Path physical=Path.of(".work/tests/books/markdown",id,"memory",Store.string(row,"physical_path"));
         Files.writeString(physical,Files.readString(physical)+"修改");
         assertThatThrownBy(()->files.readFull(id,1,"characters/char_001.md")).hasMessageContaining("长度");
     }

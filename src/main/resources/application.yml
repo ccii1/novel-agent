@@ -49,6 +49,7 @@ novel:
     config-file: ${NOVEL_NEO4J_CONFIG:./config/neo4j-local.json}
     namespace: ${NOVEL_NEO4J_NAMESPACE:novel-agent}
   memory-directory: ${NOVEL_MEMORY_DIRECTORY:./data/books}
+  agent-state-directory: ${NOVEL_AGENT_STATE_DIRECTORY:./data/agent-sessions}
   memory-file-bytes: 16000
   memory-entry-bytes: 6000
   review-mode: ${NOVEL_REVIEW_MODE:combined}

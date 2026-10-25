@@ -15,7 +15,7 @@ import java.util.*;
 
 @EnabledIfEnvironmentVariable(named="NOVEL_MARKDOWN_UI_FIXTURE",matches="true")
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:file:./.work/markdown-ui;DB_CLOSE_ON_EXIT=FALSE",
-        "novel.engine-enabled=false","novel.memory-directory=./.work/markdown-ui-files"})
+        "novel.engine-enabled=false","novel.tests.keep-files=true","novel.memory-directory=./.work/tests/books/markdown-ui"})
 class MarkdownMemoryUiFixtureTest {
     @Autowired Store store;
     @Autowired TestDatabase db;

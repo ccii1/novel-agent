@@ -327,7 +327,7 @@ flowchart LR
 | 当前正文 | `chapters` | 阅读、检查和导出 |
 | 正文修改历史 | `chapter_history` | 保留被替换的正文版本 |
 | 主题记忆与来源 | `data/books/<novelId>/memory/versions/` 中的 Markdown | 文件搜索、阅读与导出 |
-| 候选修改 | `staging/<taskId>/` 和任务结果 | 修改预览、审核与恢复 |
+| 候选修改 | 数据库中的任务结果及模型响应 | 修改预览、审核与恢复 |
 | 发布清单与文件指纹 | `memory_file_versions`、`memory_files` | 固定任务版本，解析逻辑路径 |
 | 阶段大纲 | `novels.plan` | 控制当前阶段剧情 |
 | 任务和调用记录 | `tasks`、`model_calls`、`events` | 恢复执行、核对费用和追踪问题 |
@@ -652,7 +652,11 @@ Get-Content -LiteralPath 'D:\java_learning\novel-agent\data\logs\novel-agent.log
 
 本机 Edge 通过 Playwright 在独立测试服务切换全部9个作品页面，核对渲染内容与浏览器错误；1440×1000及390×844尺寸检查通过，手机尺寸没有整页横向溢出。Browser plugin not available，因此使用本机 Playwright；未使用截图，不评价视觉设计。Neo4j 的 Bolt 登录、独立节点写入、读取及删除通过，小说业务仍未接入 Neo4j。原有8096端口服务及其作品数据保持原状。
 
-`MySqlIntegrationTest` 默认关闭，设置 `NOVEL_MYSQL_TEST=true` 后读取本地 MySQL 配置，并创建唯一的 `novel_agent_test_` 数据库。`MemoryCacheIntegrationTest` 受 `NOVEL_REDIS_TEST=true` 控制，Redis 测试可通过 `NOVEL_REDIS_ADDRESS` 指向独立端口，使用独立 key 范围。验证日志和独立 H2 文件保存在忽略目录 `.work/`；完整历史数据迁移尚未执行。
+`MySqlIntegrationTest` 和 `MarkdownMemoryMySqlTest` 默认关闭，设置 `NOVEL_MYSQL_TEST=true` 后读取本地 MySQL 配置，共用专用库 `novel_agent_test`。每个测试类通过 MySQL advisory lock 独占该库，使用 Flyway clean 清理该库，再由应用迁移初始化；此名称仅用于测试。`MemoryCacheIntegrationTest` 受 `NOVEL_REDIS_TEST=true` 控制，Redis 测试可通过 `NOVEL_REDIS_ADDRESS` 指向独立端口，使用独立 key 范围。完整历史数据迁移尚未执行。
+
+测试记忆、AgentState 和日志统一放在忽略目录 `.work/tests/`；JUnit 关闭并行执行，测试类持有文件锁，结束后清理本类新增的记忆及会话文件。UI 验证资料通过 `novel.tests.keep-files=true` 保留，`mvnw.cmd clean` 清理整个 `.work/tests/`。正式 AgentState 目录通过 `NOVEL_AGENT_STATE_DIRECTORY` 配置，默认 `data/agent-sessions`。
+
+启动脚本检查服务端口后，将运行包复制到固定的 `.work/runtime/novel-agent.jar`。候选记忆保存在任务结果和模型响应中，发布时才生成不可变记忆文件；历史版本继续由数据库清单引用。构建上下文时复用本次读取的记忆入口、文件清单、大纲与质量记录。
 
 `LiveWorkflowTest` 受 `NOVEL_LOCAL_WORKFLOW_TEST=true` 控制，仅允许连接本机8317端口且计费方式必须为 `unmetered`。该验证使用实际 TaskEngine 调度、真实模型请求和独立文件数据库，允许自动流程停在阶段审核、重要变更审核或修改额度耗尽后的人工处理状态；接口检查通过与正文被接受分别记录。
 

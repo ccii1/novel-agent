@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_MARKDOWN_LIVE_TEST",matches="true")
 @ActiveProfiles("local")
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:file:./.work/markdown-live;DB_CLOSE_ON_EXIT=FALSE",
-        "novel.engine-enabled=false","novel.redis.enabled=false","novel.memory-directory=./.work/markdown-live-files",
+        "novel.engine-enabled=false","novel.redis.enabled=false","novel.memory-directory=./.work/tests/books/markdown-live",
         "spring.config.import=optional:file:./config/application-local.yml","novel.model.requests-per-minute=60"})
 class LiveMarkdownMemoryTest {
     @Autowired Store store;

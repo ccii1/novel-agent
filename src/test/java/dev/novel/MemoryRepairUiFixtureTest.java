@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="NOVEL_UI_FIXTURE",matches="true")
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:file:./.work/memory-repair-ui;DB_CLOSE_ON_EXIT=FALSE","novel.engine-enabled=false"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:file:./.work/memory-repair-ui;DB_CLOSE_ON_EXIT=FALSE","novel.engine-enabled=false","novel.tests.keep-files=true"})
 class MemoryRepairUiFixtureTest {
     @Autowired TestDatabase db;
     @Autowired Store store;

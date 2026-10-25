@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_NEO4J_TEST",matches="true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"spring.datasource.url=jdbc:h2:mem:neo4j-tests;DB_CLOSE_DELAY=-1",
         "novel.engine-enabled=false","novel.redis.enabled=false","novel.neo4j.enabled=true",
-        "novel.memory-directory=./.work/neo4j-memory-tests"})
+        "novel.memory-directory=./.work/tests/books/neo4j"})
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class Neo4jIntegrationTest {
     private static final String NAMESPACE="novel-neo4j-test-"+UUID.randomUUID();

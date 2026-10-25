@@ -541,15 +541,4 @@ public class MemoryFileService {
         }
         register(novel,version,base,chapter-1,0,"restore:"+target,rows);
     }
-    public void stage(Map<String,Object> task,JsonNode delta) {
-        String novel=Store.string(task,"novel_id");long base=Store.number(task,"memory_version");
-        validateBase(novel,base,delta);
-        String taskId=Store.string(task,"id");
-        if(!taskId.matches("[a-zA-Z0-9-]+")) throw new IllegalArgumentException("候选目录的任务标识无效");
-        for(var item:delta.path("files")) {
-            Path target=location(novel,"staging/"+taskId+"/"+path(item.path("path").asText()));
-            try { Files.createDirectories(target.getParent());Files.writeString(target,item.path("content").asText(),StandardCharsets.UTF_8); }
-            catch(IOException failure) { throw new IllegalStateException("候选记忆文件保存失败",failure); }
-        }
-    }
 }

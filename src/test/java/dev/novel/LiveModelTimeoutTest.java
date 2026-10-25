@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_TIMEOUT_LIVE_TEST",matches="true")
 @ActiveProfiles("local")
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:timeout-live;DB_CLOSE_DELAY=-1",
-        "novel.engine-enabled=false","novel.redis.enabled=false","novel.memory-directory=./.work/timeout-live-files",
+        "novel.engine-enabled=false","novel.redis.enabled=false","novel.memory-directory=./.work/tests/books/timeout-live",
         "novel.agent-tool-rounds.memory=1"})
 class LiveModelTimeoutTest {
     private static final AtomicInteger SECONDS=new AtomicInteger(1);

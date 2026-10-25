@@ -23,14 +23,17 @@ public class AgentRuntimeFactory {
     private final Json json;
     private final int toolResultBytes;
     private final int totalToolBytes;
+    private final java.nio.file.Path stateDirectory;
     public AgentRuntimeFactory(ObjectProvider<AgentService> agents,AgentContextService context,MemoryService memory,Store store,Json json,
             @Value("${novel.max-context-bytes}") int maxContext,@Value("${novel.agent-tool-result-bytes:24000}") int toolResultBytes,
-            @Value("${novel.agent-tool-total-bytes:60000}") int totalToolBytes) {
+            @Value("${novel.agent-tool-total-bytes:60000}") int totalToolBytes,
+            @Value("${novel.agent-state-directory:./data/agent-sessions}") String stateDirectory) {
         this.agents=agents;this.context=context;this.memory=memory;this.store=store;this.json=json;
         if(toolResultBytes<1024) throw new IllegalArgumentException("工具返回预算至少为1024字节");
         if(totalToolBytes<toolResultBytes) throw new IllegalArgumentException("累计工具预算不能小于单次工具预算");
         this.toolResultBytes=Math.min(toolResultBytes,maxContext/3);
         this.totalToolBytes=Math.min(totalToolBytes,maxContext);
+        this.stateDirectory=java.nio.file.Path.of(stateDirectory).toAbsolutePath().normalize();
     }
     public AgentRuntimeSpec spec(String kind) { return agents.getObject().runtime(kind); }
     public void validateDelegation(Map<String,Object> task,Handle handle,String output) {
@@ -55,7 +58,7 @@ public class AgentRuntimeFactory {
         store.event((String)task.get("novel_id"),Store.string(task,"id"),"AGENT_RUNTIME_BUILT",json.write(spec),(String)task.get("execution_id"));
         var agent=ReActAgent.builder().name(spec.name()).description(spec.description()).sysPrompt(system)
                 .model(model).toolkit(toolkit).maxIters(spec.maxIterations()).generateOptions(options)
-                .stateStore(new io.agentscope.core.state.JsonFileAgentStateStore(java.nio.file.Path.of("data","agent-sessions")))
+                .stateStore(new io.agentscope.core.state.JsonFileAgentStateStore(stateDirectory))
                 .defaultSessionId(Store.string(task,"id"))
                 .toolExecutionConfig(ExecutionConfig.builder().maxAttempts(1).build()).middleware(contextHook).middleware(middleware).build();
         return new Handle(agent,tools);

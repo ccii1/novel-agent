@@ -78,6 +78,8 @@ Controller 按作品、选题、大纲修改、协调、执行观测、Agent、�
 | `data` | 实际运行数据与日志 |
 | `data/agent-sessions` | 框架持久化的 Agent 工作状态，按用户和任务隔离 |
 | `.work` | 独立验证数据库、日志与临时验证程序，由 Git 忽略 |
+| `.work/tests` | 测试记忆、AgentState 与日志；测试类结束后清理新增文件，UI 资料按配置保留 |
+| `.work/runtime/novel-agent.jar` | 启动脚本复用的运行包 |
 | 根目录 `start*.ps1` | 应用与本机依赖启动入口 |
 | `migrate-mysql.ps1` | 编译后调用迁移主类，核对并迁移全部业务表 |
 

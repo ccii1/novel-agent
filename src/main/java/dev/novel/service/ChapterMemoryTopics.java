@@ -20,11 +20,11 @@ public class ChapterMemoryTopics {
         if(limit<2048) throw new IllegalArgumentException("本章主题预算至少为2048字节");
         this.markdown=markdown;this.json=json;this.limit=limit;
     }
-    public Map<String,Object> resolve(MemoryFileService files,String novel,long version,Set<String> terms) {
+    public Map<String,Object> resolve(MemoryFileService files,String novel,long version,Set<String> terms,List<Map<String,Object>> manifest) {
         var required=new LinkedHashMap<String,String>();
         var groups=new LinkedHashMap<String,List<Map<String,Object>>>();
         terms.forEach(term->groups.put(term,new ArrayList<>()));
-        for(var row:files.manifest(novel,version)) {
+        for(var row:manifest) {
             String kind=Store.string(row,"kind");
             if(!Set.of("character","hook","legacy-character","legacy-hook").contains(kind) || terms.isEmpty()) continue;
             var names=new HashSet<>(List.of(Store.string(row,"entity_key"),Store.string(row,"title")));

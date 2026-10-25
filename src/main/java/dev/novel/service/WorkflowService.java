@@ -263,7 +263,7 @@ public class WorkflowService {
         if(delta.has("files")) {
             var draft=store.one("chapters.find",novelId,source.get("chapter_no"));
             delta=memory.validateDelta(delta,Store.string(draft,"body"));
-            memory.files().stage(source,delta);
+            memory.files().validateBase(novelId,Store.number(source,"memory_version"),delta);
             return scheduleFileReview(novel,source,delta,attempt,"AUTO",0,humanApproved);
         }
         return store.enqueue(novelId, "CHECK_MEMORY", Store.integer(source, "chapter_no"),

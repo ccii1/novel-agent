@@ -11,10 +11,6 @@ import dev.novel.repository.mapper.TaskDispatchMapper;
 import dev.novel.service.ObservationService;
 import dev.novel.service.TaskProgressService;
 import dev.novel.service.ChapterQualityService;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
 import java.util.UUID;
 import java.math.BigDecimal;
 import java.util.Map;
@@ -23,7 +19,6 @@ import static org.assertj.core.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="NOVEL_MYSQL_TEST",matches="true")
 @ActiveProfiles("mysql")
 class MySqlIntegrationTest extends DomainIntegrationTest {
-    private static final String DATABASE="novel_agent_test_"+UUID.randomUUID().toString().replace("-","");
     @Autowired Store repository;
     @Autowired TaskDispatchMapper dispatch;
     @Autowired ObservationService observations;
@@ -77,15 +72,9 @@ class MySqlIntegrationTest extends DomainIntegrationTest {
     }
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
-        var properties=new Properties();
-        try(var input=Files.newInputStream(Path.of("config/mysql-local.properties"))) { properties.load(input); }
-        var source=URI.create(properties.getProperty("spring.datasource.url").substring("jdbc:".length()));
-        String url="jdbc:"+source.resolve("/"+DATABASE+"?"+source.getRawQuery());
-        registry.add("spring.datasource.url",()->url);
-        registry.add("spring.datasource.username",()->properties.getProperty("spring.datasource.username"));
-        registry.add("spring.datasource.password",()->properties.getProperty("spring.datasource.password"));
-        registry.add("novel.redis.enabled",()->false);
+        MySqlTestDatabase.configure(registry);
     }
+    @org.junit.jupiter.api.AfterAll static void releaseDatabase() throws Exception { MySqlTestDatabase.release(); }
 
     @Test void mysqlPersistsDraftRevisionsTaskTimingAndObservationFeedback() {
         String novel=projects.create("修理铺","追查失物单","保持知情范围",1,BigDecimal.TEN,BigDecimal.ONE);
