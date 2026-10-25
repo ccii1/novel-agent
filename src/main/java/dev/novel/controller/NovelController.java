@@ -144,12 +144,6 @@ public class NovelController {
         return SUCCESS;
     }
 
-    @GetMapping("/novels/{id}/graph")
-    public GraphResponse graph(@PathVariable String id, @RequestParam(defaultValue = "") List<String> characters,
-                               @RequestParam(defaultValue = "2") int depth) {
-        return responses.to(workspace.graph(id, characters, depth), GraphResponse.class);
-    }
-
     @GetMapping("/novels/{id}/memories")
     public List<MemoryResponse> memories(@PathVariable String id) {
         return responses.list(workspace.memories(id), MemoryResponse.class);

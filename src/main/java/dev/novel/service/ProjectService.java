@@ -216,6 +216,7 @@ public class ProjectService {
             String novelId = (String) original.get("novel_id");
             Map<String, Object> novel = novelId == null ? null : store.lockNovel(novelId);
             var task = store.one("tasks.lock", taskId);
+            if(!AgentService.TASK_KINDS.contains(task.get("kind"))) throw new IllegalArgumentException("此历史任务的功能已移除，请从作品当前流程继续");
             if (!"ERROR".equals(task.get("status"))) throw new IllegalStateException("仅可重新执行失败任务");
             if (calls.pendingTaskCount(taskId) > 0)
                 throw new IllegalStateException("请先核对供应商费用");
@@ -238,18 +239,10 @@ public class ProjectService {
             store.update("tasks.cancel", taskId);
             String next = store.enqueue(novelId, (String) task.get("kind"), Store.integer(task, "chapter_no"), Store.integer(task, "revision"), Store.number(task, "memory_version"),
                     task.get("task_key") + ":retry:" + UUID.randomUUID(), retryPayload);
-            if (task.get("research_id") != null) store.update("tasks.linkResearch", task.get("research_id"), next);
             if (choice != null) store.update("tasks.modelChoice", choice.provider(), choice.model(), next);
             else if (task.get("provider") != null)
                 store.update("tasks.modelChoice", task.get("provider"), task.get("model_name"), next);
             store.update("tasks.reasoning", override ? Objects.toString(reasoningEffort, "") : task.get("reasoning_effort"), next);
-            if (Set.of("PLAN_CHANGE", "COORDINATE").contains(task.get("kind"))) {
-                require(novel, "PAUSED", "AWAITING_PLAN", "AWAITING_STAGE_REVIEW", "AWAITING_CHANGE", "AWAITING_HELP");
-                if ("PLAN_CHANGE".equals(task.get("kind")))
-                    store.update("planChanges.task", next, json.read(Store.string(task, "payload")).path("changeId").asText());
-                store.event(novelId, next, "RETRY_APPROVED", "重新执行所选 Agent 任务，可能产生新的调用费用");
-                return next;
-            }
             if (novel != null) {
                 require(novel, "ERROR", "BUDGET_PAUSED", "PLANNING", "WRITING", "CHECKING", "REFLECTING", "EXTRACTING", "CHECKING_MEMORY");
                 if (Set.of("ERROR", "BUDGET_PAUSED").contains(novel.get("status")))

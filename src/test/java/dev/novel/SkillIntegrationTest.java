@@ -1,6 +1,5 @@
 package dev.novel;
 
-import dev.novel.agent.orchestration.AgentRoles;
 
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
@@ -35,7 +34,7 @@ class SkillIntegrationTest {
     }
     private String novel() { return projects.create("密信","围绕密信展开悬疑故事","保持人物知情范围",2,new BigDecimal("100"),new BigDecimal("5")); }
     @Test void everyRoleLoadsPinnedMainSkillAndRoleReferences() {
-        for(String role:List.of("RESEARCH","PLAN","WRITE","REWRITE","CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING","CHECK_STYLE","CHECK_CHAPTER","REFLECT","MEMORY","MEMORY_REPAIR","CHECK_MEMORY")) {
+        for(String role:List.of("PLAN","WRITE","REWRITE","CHECK_CHAPTER","MEMORY","MEMORY_REPAIR","CHECK_MEMORY")) {
             var snapshot=skills.load(role,10);
             assertThat(snapshot.files()).contains("SKILL.md","runtime-rules.md");
             if(role.startsWith("CHECK_") || role.equals("MEMORY") || role.equals("MEMORY_REPAIR"))
@@ -48,12 +47,12 @@ class SkillIntegrationTest {
         }
     }
     @Test void roleFamiliesReuseStableReferenceFingerprint() {
-        var normal=skills.load("CHECK_STYLE",4);var review=skills.load("CHECK_STYLE",10);
+        var normal=skills.load("CHECK_CHAPTER",4);var review=skills.load("CHECK_CHAPTER",10);
         assertThat(normal.files()).contains("references/ai-detox-guide.md","references/pattern-detection.md");
         assertThat(normal.fingerprint()).isEqualTo(review.fingerprint());
         assertThat(skills.load("CHECK_CHAPTER",4).fingerprint()).isEqualTo(normal.fingerprint());
         assertThat(skills.load("MEMORY",4).fingerprint()).isNotEqualTo(normal.fingerprint());
-        assertThat(skills.load("CHECK_STYLE",4).fingerprint()).isEqualTo(normal.fingerprint());
+        assertThat(skills.load("CHECK_CHAPTER",4).fingerprint()).isEqualTo(normal.fingerprint());
         assertThatThrownBy(()->skills.load("UNSUPPORTED",1)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void measuresChineseQuotesAndIgnoresEmptyLines() {
@@ -107,11 +106,11 @@ class SkillIntegrationTest {
         store.update("UPDATE novels SET status='CHECKING' WHERE id=?",id);
         store.update("INSERT INTO chapters(novel_id,number,stage_no,revision,title,body,status,memory_version) VALUES(?,1,1,0,'密信','林舟推开仓库大门。','DRAFT',0)",id);
         var novel=store.novel(id);
-        for(String role:List.of("CHECK_CHARACTER","CHECK_PLOT","CHECK_PACING")) workflow.schedule(novel,role,1,0,Map.of());
+        workflow.schedule(novel,"CHECK_CHAPTER",1,0,Map.of());
         engine.recover();engine.recover();
         var checks=store.list("SELECT kind FROM tasks WHERE novel_id=? AND kind LIKE 'CHECK_%'",id);
-        assertThat(checks).hasSize(4);
-        assertThat(checks.stream().map(row->row.get("kind")).toList()).containsExactlyInAnyOrderElementsOf(AgentRoles.CHAPTER_CHECKS);
+        assertThat(checks).hasSize(1);
+        assertThat(checks.get(0).get("kind")).isEqualTo("CHECK_CHAPTER");
     }
     @Test void callReservationPersistsSkillManifestAndRequestWithoutApiKey() {
         String id=novel();var task=store.one("SELECT * FROM tasks WHERE novel_id=?",id);

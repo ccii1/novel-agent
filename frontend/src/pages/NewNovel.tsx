@@ -1,17 +1,16 @@
 import {useState} from 'react';
-import {useLocation, useNavigate} from 'react-router-dom';
+import {useNavigate} from 'react-router-dom';
 import {ArrowRight} from 'lucide-react';
 import {useAction, useDraft} from '../api';
 import {ErrorBox, PageTitle, Panel} from '../ui';
 import ModelSelect from '../components/ModelSelect';
-import type {Choice, Idea} from '../domain';
+import type {Choice} from '../domain';
 
 export default function NewNovel() {
   const navigate = useNavigate();
-  const idea = (useLocation().state as {idea?: Idea} | null)?.idea;
-  const draftId = idea ? `idea:${idea.title}` : 'new';
-  const [title, setTitle, clearTitle] = useDraft(`${draftId}:title`, idea?.title ?? '');
-  const [premise, setPremise, clearPremise] = useDraft(`${draftId}:premise`, idea ? JSON.stringify(idea, null, 2) : '');
+  const draftId = 'new';
+  const [title, setTitle, clearTitle] = useDraft(`${draftId}:title`);
+  const [premise, setPremise, clearPremise] = useDraft(`${draftId}:premise`);
   const [bible, setBible, clearBible] = useDraft(`${draftId}:bible`);
   const [choice, setChoice] = useState<Choice>({provider:'', model:''});
   const [ready, setReady] = useState(false);

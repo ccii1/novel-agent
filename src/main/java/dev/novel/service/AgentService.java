@@ -12,6 +12,7 @@ import java.util.*;
 
 @Service
 public class AgentService {
+    public static final Set<String> TASK_KINDS=Set.of("PLAN","WRITE","REWRITE","MEMORY","MEMORY_REPAIR","CHECK_MEMORY","CHECK_CHAPTER");
     private final Map<String, NovelAgent> registry;
     private final ModelClient model;
     private final Store store;
@@ -20,15 +21,14 @@ public class AgentService {
     private final org.springframework.core.env.Environment environment;
 
     public AgentService(List<NovelAgent> agents, ModelClient model, Store store, Json json, AgentMetricsMapper metrics, org.springframework.core.env.Environment environment) {
-        if (agents.size() > 6) throw new IllegalStateException("业务 Agent 组件数量不能超过6个");
+        if (agents.size() != 4) throw new IllegalStateException("创作流程需要4个业务 Agent 组件");
         Map<String, NovelAgent> registered = new TreeMap<>();
         for (var agent : agents)
             for (String kind : agent.kinds()) {
                 if (registered.putIfAbsent(kind, agent) != null)
                     throw new IllegalStateException("Agent 任务类型重复：" + kind);
             }
-        Set<String> expected = Set.of("COORDINATE", "PLAN", "PLAN_CHANGE", "WRITE", "REWRITE", "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE",
-                "REFLECT", "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY", "CHECK_CHAPTER", "RESEARCH", "RESEARCH_CHAT");
+        Set<String> expected = TASK_KINDS;
         if (!registered.keySet().equals(expected)) throw new IllegalStateException("Agent 注册类型与业务流程不一致");
         this.registry = Map.copyOf(registered);
         this.model = model;

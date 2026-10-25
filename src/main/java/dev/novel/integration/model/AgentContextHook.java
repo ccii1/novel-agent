@@ -23,7 +23,7 @@ import org.springframework.core.env.Environment;
 import reactor.core.publisher.Flux;
 
 public final class AgentContextHook implements MiddlewareBase {
-    public static final String RULES = "只使用已授权工具。已完整提供的资料无需重复读取。未知路径先用 lookup_memory 按标识或名称定位。路径必须来自上下文、目录或搜索；" +
+    public static final String RULES = "只使用已授权工具。已完整提供的资料无需重复读取。未知路径通过目录或关键词搜索定位。路径必须来自上下文、目录或搜索；" +
             "NOT_FOUND 是查询结果，需要重新定位；published 与 candidate 分别表示正式版本与未发布提案。" +
             "资料不足时明确指出未核对内容，不能编造。压缩摘要仅用于执行进度，引用证据需要原文。正式修改由审批流程提交。";
     private static final String SUMMARY = "将以下执行历史整理为 JSON {summary:string}，summary 最多2500个字符。" +

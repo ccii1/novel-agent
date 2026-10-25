@@ -43,14 +43,6 @@ public class WorkspaceService {
         return store.one("chapters.find", id, number);
     }
 
-    public List<Map<String, Object>> researchReports() {
-        return store.list("research.all");
-    }
-
-    public List<Map<String, Object>> researchTasks() {
-        return store.list("tasks.research");
-    }
-
     public void published(String id, int number, boolean published) {
         store.transaction(() -> {
             store.lockNovel(id);
@@ -59,10 +51,6 @@ public class WorkspaceService {
             store.event(id, null, "PUBLICATION_MARKED", "第" + number + "章" + (published ? "已标记发布" : "已取消发布标记"));
             return null;
         });
-    }
-
-    public Map<String, Object> graph(String id, List<String> characters, int depth) {
-        return memory.graph(id, Store.number(store.novel(id), "memory_version"), characters.stream().filter(s -> !s.isBlank()).toList(), depth);
     }
 
     public List<Map<String, Object>> memories(String id) {

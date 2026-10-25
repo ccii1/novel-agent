@@ -150,7 +150,7 @@ public class TaskEngine {
             observations.finish(task, "ERROR", null, message);
             store.update("tasks.fail", message, taskId);
             // 独立建议任务失败时，作品当前的创作流程继续保留自己的状态。
-            if (novelId != null && !Set.of("PLAN_CHANGE", "COORDINATE").contains(task.get("kind"))) {
+            if (novelId != null) {
                 String status = error instanceof BudgetService.BudgetExceeded ? "BUDGET_PAUSED" : "ERROR";
                 store.update("novels.fail", status, message, novelId);
             }

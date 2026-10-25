@@ -77,9 +77,8 @@ class DomainIntegrationTest {
             """);
         memory.validateDelta(closed,"林舟收回仓库钥匙。沈月沉默不语。");
         store.transaction(()-> {memory.commit(id,2,2,closed);return null;});
-        assertThat((List<?>)memory.graph(id,1,List.of("林舟"),2).get("edges")).hasSize(2);
-        assertThat((List<?>)memory.graph(id,2,List.of(),2).get("edges")).hasSize(1);
-        assertThat((List<?>)memory.graph(id,2,List.of("林舟"),2).get("edges")).isEmpty();
+        assertThat(memory.snapshot(id,1).stream().filter(row->"RELATION".equals(row.get("kind")))).hasSize(2);
+        assertThat(memory.snapshot(id,2).stream().filter(row->"RELATION".equals(row.get("kind")))).hasSize(1);
     }
     @Test void memoryEvidenceMustExistInActualChapter() {
         var delta=json.read("""
@@ -124,8 +123,8 @@ class DomainIntegrationTest {
         projects.approveEdit((String)edit.get("id"),true);
         assertThat(store.novel(id).get("status")).isEqualTo("PLANNING");
         assertThat(Store.integer(store.novel(id),"chapter_no")).isEqualTo(1);
-        assertThat((List<?>)memory.graph(id,2,List.of(),2).get("edges")).isEmpty();
-        assertThat((List<?>)memory.graph(id,1,List.of(),2).get("edges")).hasSize(1);
+        assertThat(memory.snapshot(id,2).stream().filter(row->"RELATION".equals(row.get("kind")))).isEmpty();
+        assertThat(memory.snapshot(id,1).stream().filter(row->"RELATION".equals(row.get("kind")))).hasSize(1);
         assertThat(store.list("SELECT * FROM chapters WHERE novel_id=? AND status='INVALIDATED'",id)).hasSize(2);
     }
     @Test void interruptedCallPausesOnlyItsNovelAndKeepsReservation() {
@@ -142,19 +141,12 @@ class DomainIntegrationTest {
         assertThat(store.novel(first).get("status")).isEqualTo("PLANNING");
         assertThat(budget.novelUsed(first)).isEqualByComparingTo("0.4");
     }
-    @Test void simultaneousFailedChecksCanEachBeExplicitlyRetried() {
+    @Test void failedReviewCanBeExplicitlyRetried() {
         String id=novel();store.update("UPDATE novels SET status='ERROR',resume_status='CHECKING' WHERE id=?",id);
-        String first=store.enqueue(id,"CHECK_CHARACTER",1,0,0,"check-one",Map.of());
-        String second=store.enqueue(id,"CHECK_PLOT",1,0,0,"check-two",Map.of());
-        store.update("UPDATE tasks SET status='ERROR' WHERE id IN (?,?)",first,second);
-        projects.retry(first);projects.retry(second);
-        assertThat(store.list("SELECT * FROM tasks WHERE novel_id=? AND kind LIKE 'CHECK%' AND status='WAITING'",id)).hasSize(2);
+        String first=store.enqueue(id,"CHECK_CHAPTER",1,0,0,"check-one",Map.of());
+        store.update("UPDATE tasks SET status='ERROR' WHERE id=?",first);
+        projects.retry(first);
+        assertThat(store.list("SELECT * FROM tasks WHERE novel_id=? AND kind='CHECK_CHAPTER' AND status='WAITING'",id)).hasSize(1);
         assertThat(store.novel(id).get("status")).isEqualTo("CHECKING");
-    }
-    @Test void sourceCollectionRejectsNonPublicHostsBeforeNetworkAccess() {
-        String id=store.enqueue(null,"RESEARCH",0,0,0,"private-url",Map.of("urls",List.of("http://127.0.0.1:8096/api/budget")));
-        var task=store.one("SELECT * FROM tasks WHERE id=?",id);
-        assertThatThrownBy(()->agents.execute(task)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("仅接受");
-        assertThat(store.list("SELECT * FROM model_calls")).isEmpty();
     }
 }

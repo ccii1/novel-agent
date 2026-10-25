@@ -95,14 +95,6 @@ class MarkdownMemoryIntegrationTest {
         assertThat(files.hash(id,0,"characters/char_001.md")).isEmpty();
         assertThat(store.one("chapters.find",id,1).get("status")).isEqualTo("DRAFT");
     }
-    @Test void candidateReadPreservesOriginalFileIndices() {
-        String id=novel();var delta=delta(id);
-        var extraction=source(id);extraction.put("payload",json.write(Map.of("delta",delta)));
-        var tool=new StoryReadTools(extraction,context,memory,store,json);
-        var candidate=json.read(tool.candidate("characters/char_001.md",0));
-        assertThat(candidate.path("quotePath").asText()).isEqualTo("/files/0/content");
-        assertThat(candidate.path("content").asText()).contains("已经交出铜钥匙");
-    }
     @Test void checksReferencesStableIdsConflictsAndPublishedFileIntegrity() throws Exception {
         String id=novel();var delta=delta(id);
         var conflict=delta.deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)conflict.path("files").get(0)).put("expectedHash","incorrect");
@@ -252,10 +244,5 @@ class MarkdownMemoryIntegrationTest {
         assertThatThrownBy(()->validator.validate(review,BODY,delta,Map.of())).hasMessageContaining("正式记忆引用路径");
         ((com.fasterxml.jackson.databind.node.ObjectNode)review.path("issues").get(0)).put("quote","没有交出银钥匙。");
         assertThatThrownBy(()->validator.validate(review,BODY,delta,sources)).hasMessageContaining("正式记忆引用");
-        var source=source(id);source.put("payload",json.write(Map.of("delta",delta)));source.put("memory_version",1L);
-        var tools=new StoryReadTools(source,context,memory,store,json);
-        var candidate=json.read(tools.candidate("characters/char_002.md",0));
-        assertThat(candidate.path("quoteSource").asText()).isEqualTo("MEMORY");
-        assertThat(candidate.path("quotePath").asText()).isEqualTo("/files/1/content");
     }
 }

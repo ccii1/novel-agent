@@ -102,7 +102,6 @@ public class AgentScopeExecutor {
             handle.tools().check();
             if (reply == null || reply.getTextContent().isBlank())
                 throw new IllegalStateException("AgentScope 未返回文本");
-            runtimes.validateDelegation(task, handle, reply.getTextContent());
             return reply.getTextContent();
         } finally {
             transport.close();

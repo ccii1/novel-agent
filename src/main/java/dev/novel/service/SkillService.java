@@ -50,10 +50,8 @@ public class SkillService {
 
     public Snapshot load(String role, int chapter) {
         String family = switch (role) {
-            case "REWRITE", "REFLECT" -> "WRITE";
+            case "REWRITE" -> "WRITE";
             case "MEMORY_REPAIR" -> "MEMORY";
-            case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE" -> "CHECK_CHAPTER";
-            case "RESEARCH_CHAT" -> "RESEARCH";
             default -> role;
         };
         return snapshots.computeIfAbsent(family, this::compile);
@@ -63,18 +61,13 @@ public class SkillService {
         var files = new LinkedHashSet<String>();
         files.add("SKILL.md");
         switch (role) {
-            case "RESEARCH", "RESEARCH_CHAT" -> references(files, "commercial-review.md", "fanqie-platform-rules.md");
-            case "PLAN", "PLAN_CHANGE", "COORDINATE" ->
+            case "PLAN" ->
                     references(files, "commercial-review.md", "pattern-detection.md");
             case "WRITE", "REWRITE" ->
                     references(files, "ai-detox-guide.md", "battle-scene-guide.md", "dialogue-monitor.md");
-            case "CHECK_PACING" ->
-                    references(files, "battle-scene-guide.md", "dialogue-monitor.md", "pattern-detection.md");
-            case "CHECK_STYLE" -> references(files, "ai-detox-guide.md", "commercial-review.md");
             case "CHECK_CHAPTER" ->
                     references(files, "audit-dimensions.md", "battle-scene-guide.md", "dialogue-monitor.md", "pattern-detection.md", "ai-detox-guide.md", "commercial-review.md");
-            case "REFLECT" -> references(files, "audit-dimensions.md", "ai-detox-guide.md");
-            case "CHECK_CHARACTER", "CHECK_PLOT", "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" ->
+            case "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" ->
                     references(files, "audit-dimensions.md");
             default -> throw new IllegalArgumentException("未知技能角色：" + role);
         }

@@ -42,10 +42,7 @@ class MemoryEvidenceIntegrationTest {
         assertThat(stored).hasSize(2);
         assertThat(stored.stream().map(row->json.read((String)row.get("content")).path("evidence").asText()))
                 .containsExactlyInAnyOrder("林舟交出钥匙","沈月收起密信");
-        var graph=memory.graph(novel,1,List.of(),2);
-        var edges=(List<?>)graph.get("edges");
-        assertThat(edges).hasSize(1);
-        assertThat(((Map<?,?>)edges.get(0)).get("evidence")).isEqualTo("沈月收起密信");
+        assertThat(stored.stream().filter(row->"RELATION".equals(row.get("kind")))).hasSize(1);
         assertThat(memory.snapshot(novel,0)).isEmpty();
     }
 
@@ -72,8 +69,8 @@ class MemoryEvidenceIntegrationTest {
         memory.commit(novel,1,1,result);
         assertThat(memory.snapshot(novel,1).stream().map(row->json.read((String)row.get("content")).path("evidence").asText()))
                 .containsExactlyInAnyOrder(fact,relation);
-        var edges=(List<?>)memory.graph(novel,1,List.of(),2).get("edges");
-        assertThat(((Map<?,?>)edges.get(0)).get("evidence")).isEqualTo(relation);
+        assertThat(memory.snapshot(novel,1).stream().filter(row->"RELATION".equals(row.get("kind")))
+                .map(row->json.read((String)row.get("content")).path("evidence").asText())).containsExactly(relation);
     }
 
     @Test void modelWhitespaceCanDifferWhileBodyQuotesRemainPresent() {

@@ -22,8 +22,7 @@ public final class SystemResponses {
     public record SystemStatusResponse(
             EngineStatusResponse engine, boolean modelConfigured, String timezone,
             SkillStatusResponse skill, String agentFramework, String persistence,
-            String rateLimiter, boolean researchModelSelection, boolean retryModelSelection, String database,
-            String graphDatabase) {
+            String rateLimiter, boolean retryModelSelection, String database) {
     }
 
     public record AgentResponse(

@@ -24,8 +24,6 @@ logging:
 mybatis:
   mapper-locations: classpath:mappers/*.xml
 spring:
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.neo4j.Neo4jAutoConfiguration
   flyway:
     enabled: false
   datasource:
@@ -44,15 +42,10 @@ spring:
       pool:
         size: 1
 novel:
-  neo4j:
-    enabled: ${NOVEL_NEO4J_ENABLED:false}
-    config-file: ${NOVEL_NEO4J_CONFIG:./config/neo4j-local.json}
-    namespace: ${NOVEL_NEO4J_NAMESPACE:novel-agent}
   memory-directory: ${NOVEL_MEMORY_DIRECTORY:./data/books}
   agent-state-directory: ${NOVEL_AGENT_STATE_DIRECTORY:./data/agent-sessions}
   memory-file-bytes: 16000
   memory-entry-bytes: 6000
-  review-mode: ${NOVEL_REVIEW_MODE:combined}
   redis:
     enabled: ${NOVEL_REDIS_ENABLED:false}
     address: ${NOVEL_REDIS_ADDRESS:redis://127.0.0.1:6379}
@@ -66,7 +59,6 @@ novel:
   memory-initial-topic-bytes: 16000
   agent-tool-rounds:
     default: 8
-    coordinate: 2
   model:
     billing-mode: metered
     endpoint: ${NOVEL_MODEL_ENDPOINT:}

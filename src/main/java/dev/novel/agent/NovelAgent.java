@@ -14,7 +14,7 @@ public interface NovelAgent {
     default dev.novel.agent.runtime.AgentRuntimeSpec runtime() {
         var allowed = new java.util.HashSet<>(tools());
         if (allowed.contains("read_memory"))
-            allowed.addAll(Set.of("list_memory_files", "search_memory", "lookup_memory", "read_source", "read_candidate_memory", "read_memory_batch"));
+            allowed.addAll(Set.of("list_memory_files", "search_memory", "read_source", "read_memory_batch"));
         return new dev.novel.agent.runtime.AgentRuntimeSpec(getClass().getSimpleName(), purpose(), allowed, allowed.isEmpty() ? 1 : 2);
     }
 

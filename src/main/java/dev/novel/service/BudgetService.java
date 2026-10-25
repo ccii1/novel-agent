@@ -83,8 +83,7 @@ public class BudgetService {
         String novelId = (String) task.get("novel_id");
         if (novelId != null) {
             var novel = store.lockNovel(novelId);
-            boolean outlineRequest = Set.of("PLAN_CHANGE", "COORDINATE").contains(task.get("kind")) && PlanChangeService.allowedStatus(novel.get("status"));
-            if (!outlineRequest && !Set.of("PLANNING", "WRITING", "CHECKING", "REFLECTING", "EXTRACTING", "CHECKING_MEMORY").contains(novel.get("status")))
+            if (!Set.of("PLANNING", "WRITING", "CHECKING", "EXTRACTING", "CHECKING_MEMORY").contains(novel.get("status")))
                 throw new IllegalStateException("小说已暂停或正在等待审核");
             if (metered && calls.novelMonthlyUsed(novelId, billingMonth).add(amount).compareTo((BigDecimal) novel.get("novel_budget")) > 0)
                 throw new BudgetExceeded("本小说本月预算不足");

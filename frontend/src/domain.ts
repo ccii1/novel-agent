@@ -20,12 +20,8 @@ export interface NovelDetail {novel: Novel; chapters: Chapter[]; tasks: Task[]; 
 export interface Provider {id: string; label: string; ready: boolean; defaultModel: string; billingMode: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string}
 export interface Catalog {defaultProvider: string; providers: Provider[]}
 export interface Choice {provider: string; model: string; reasoningEffort?: string}
-export interface Idea {title: string; premise: string; audience: string; genre: string; hook: string; longTermConflict: string; risks: string[]; sources: string[]}
-export interface Report {id: string; brief: string; ideas: string; sources: string; created_at: string}
-export interface ResearchDetail {report: Report; tasks: Task[]; modelChoice: Choice; messages: {id: number; role: string; content: string; created_at: string; ideas: string | null; task_id: string | null}[]}
 export interface Progress {task: Row; stage: string; events: Event[]}
 export interface Quality {totals: {chapters: number; stored_characters: number}; dialogueRising: boolean; recent: {chapter_no: number; characters: number; dialogue_lines: number; total_lines: number; dialogue_ratio: number; pacing_data: string | null}[]}
-export interface Graph {version: number; nodes: {id: string; name: string}[]; edges: {subject: string; predicate: string; object: string; chapter: number; evidence: string; detail: string}[]}
 export interface Memory {id: string; memory_key: string; kind: string; chapter_no: number; content: string}
 export interface Agent {kind: string; kinds: string[]; agent: string; purpose: string; runtime?: {name: string; description: string; tools: string[]; maxIterations: number}}
 export interface Observation {summary: Row[]; tasks: (Task & Row)[]; total: number; page: number; pageSize: number; storage: string; historicalTiming: string}

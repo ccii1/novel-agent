@@ -44,12 +44,7 @@ class ResponseContractIntegrationTest {
         String id=json.read(created.body()).path("id").asText();
         var detail=json.read(http.request("/api/novels/"+id,null).body());
         assertThat(detail.path("novel").path("reasoning_effort").asText()).isEqualTo("high");
-        var research=http.request("/api/research", "{\"brief\":\"调查信件\",\"reasoningEffort\":\"low\"}");
-        assertThat(research.statusCode()).isEqualTo(200);
-        String taskId=json.read(research.body()).path("id").asText();
-        var task=json.read(http.request("/api/observability/tasks/"+taskId,null).body());
-        assertThat(task.path("task").path("reasoning_effort").asText()).isEqualTo("low");
-        assertThat(http.request("/api/research", "{\"brief\":\"调查信件\",\"reasoningEffort\":\"invalid\"}").statusCode()).isEqualTo(400);
+        assertThat(http.request("/api/novels/"+id+"/model", "{\"provider\":\"default\",\"reasoningEffort\":\"invalid\"}").statusCode()).isEqualTo(400);
     }
 
     @Test void preservesFieldNamesAndProjectsOnlyDeclaredDatabaseColumns() throws Exception {
@@ -98,7 +93,7 @@ class ResponseContractIntegrationTest {
         assertThat(progress.path("pollAfterMs").asInt()).isEqualTo(5000);
     }
 
-    @Test void preservesDynamicOutlineValuesAndGraphAndQualityShapes() throws Exception {
+    @Test void preservesApprovedOutlineAndQualityShapes() throws Exception {
         var http = AuthHttp.owner(port);
         String id = create(http);
         store.update("tasks.cancelNovel", id);
@@ -106,17 +101,8 @@ class ResponseContractIntegrationTest {
                 {"stageGoal":"调查信件","coreMilestones":["核对签名"],
                  "chapters":[{"number":1,"title":"信件","goal":"核对笔迹","characters":["陆禾"],"foreshadowIds":[]}]}
                 """, id);
-        var plan = json.read(http.request("/api/novels/" + id + "/plan-changes", null).body());
-        assertThat(plan.path("targets").get(0).path("value").isTextual()).isTrue();
-        assertThat(plan.path("targets").get(1).path("value").isArray()).isTrue();
-        var created = http.request("/api/novels/" + id + "/plan-changes",
-                "{\"path\":\"/stageGoal\",\"instructions\":\"保留身份悬念\"}");
-        assertThat(created.statusCode()).isEqualTo(200);
-        var changes = json.read(http.request("/api/novels/" + id + "/plan-changes", null).body());
-        assertThat(changes.path("changes").get(0).path("target_label").asText()).isEqualTo("阶段目标");
-        var graph = json.read(http.request("/api/novels/" + id + "/graph", null).body());
-        assertThat(graph.path("nodes").isArray()).isTrue();
-        assertThat(graph.path("edges").isArray()).isTrue();
+        var detail = json.read(http.request("/api/novels/" + id, null).body());
+        assertThat(json.read(detail.path("novel").path("plan").asText()).path("stageGoal").asText()).isEqualTo("调查信件");
         var quality = json.read(http.request("/api/novels/" + id + "/quality", null).body());
         assertThat(quality.path("totals").path("stored_characters").isNumber()).isTrue();
     }
@@ -124,7 +110,7 @@ class ResponseContractIntegrationTest {
     @Test void exposesTypedCatalogueAndConciseValidationErrors() throws Exception {
         var http = AuthHttp.owner(port);
         var agents = json.read(http.request("/api/agents", null).body());
-        assertThat(agents.size()).isEqualTo(6);
+        assertThat(agents.size()).isEqualTo(4);
         assertThat(agents.get(0).path("runtime").path("maxIterations").asInt()).isPositive();
         assertThat(agents.get(0).path("runtime").path("tools").isArray()).isTrue();
         var invalid = http.request("/api/novels", "{}");

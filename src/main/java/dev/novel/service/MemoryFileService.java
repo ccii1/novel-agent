@@ -305,7 +305,7 @@ public class MemoryFileService {
         var row = mapper.file(novel, version, path(path));
         if (row == null)
             return Map.of("status", "NOT_FOUND", "scope", "published", "memoryVersion", version, "path", path,
-                    "instruction", "当前正式版本没有此文件。使用目录或搜索定位真实路径；未发布文件使用 read_candidate_memory。");
+                    "instruction", "当前正式版本没有此文件。使用目录或搜索定位真实路径。");
         return page(path, version, Store.string(row, "fingerprint"), content(novel, row), offset, length, budget, Store.string(row, "kind").startsWith("legacy-"));
     }
 

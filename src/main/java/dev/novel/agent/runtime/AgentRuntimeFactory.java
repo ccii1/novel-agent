@@ -46,14 +46,6 @@ public class AgentRuntimeFactory {
         return agents.getObject().runtime(kind);
     }
 
-    public void validateDelegation(Map<String, Object> task, Handle handle, String output) {
-        if (!"COORDINATE".equals(task.get("kind"))) return;
-        var selected = handle.tools().delegation();
-        var result = json.read(output);
-        if (selected == null || !selected.get("target").equals(result.path("target").asText()) || !selected.get("path").equals(result.path("path").asText()))
-            throw new IllegalArgumentException("协调 Agent 必须通过委派工具选择处理角色，最终结果须与工具选择一致");
-    }
-
     public record Handle(ReActAgent agent, StoryReadTools tools) implements AutoCloseable {
         public void close() {
             agent.close();

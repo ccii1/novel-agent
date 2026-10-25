@@ -13,17 +13,6 @@ public final class ApiRequests {
     public record Registration(String username, String password) {
     }
 
-    public record CoordinationRequest(@NotBlank @Size(max = 12000) String instructions) {
-    }
-
-    public record PlanChangeRequest(
-            @NotBlank @Size(max = 200) String path,
-            @NotBlank @Size(max = 12000) String instructions) {
-    }
-
-    public record PlanChangeApproval(boolean acknowledgeCore, boolean acknowledgeCompleted) {
-    }
-
     public record CreateNovel(
             @NotBlank @Size(max = 200) String title,
             @NotBlank @Size(max = 12000) String premise,
@@ -42,19 +31,6 @@ public final class ApiRequests {
 
     public record RetryTask(@Size(max = 80) String provider, @Size(max = 200) String model,
                             @Size(max = 20) String reasoningEffort) {
-    }
-
-    public record ResearchRequest(
-            @Size(max = 5) List<@NotBlank @Size(max = 1500) String> urls,
-            @Size(max = 4000) String brief,
-            @Size(max = 80) String provider,
-            @Size(max = 200) String model, @Size(max = 20) String reasoningEffort) {
-    }
-
-    public record ResearchMessage(
-            @NotBlank @Size(max = 4000) String message,
-            @Size(max = 80) String provider,
-            @Size(max = 200) String model, @Size(max = 20) String reasoningEffort) {
     }
 
     public record Revision(

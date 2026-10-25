@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
@@ -33,13 +34,12 @@ class ChapterLengthIntegrationTest {
     @Autowired Json json;
 
     @ParameterizedTest
-    @ValueSource(strings={"climax","combat"})
-    void narrativeBooleanErrorsIdentifyTheExactField(String field) {
-        var narrative=json.tree(Map.of("opening","开篇说明","activity","行动说明","ending","结尾说明","resolution","结果说明",
-                "pattern","模式说明","climax",false,"combat",false));
-        ((com.fasterxml.jackson.databind.node.ObjectNode)narrative).put(field,"无法评估");
-        assertThatThrownBy(()->outputs.read(narrative,AgentOutputs.Narrative.class))
-                .hasMessageContaining("Narrative."+field,"Boolean");
+    @ValueSource(strings={"approved","majorChange"})
+    void reviewBooleanErrorsIdentifyTheExactField(String field) {
+        var review=json.tree(Map.of("approved",false,"majorChange",false,"issues",List.of()));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)review).put(field,"无法评估");
+        assertThatThrownBy(()->outputs.read(review,AgentOutputs.Review.class))
+                .hasMessageContaining("Review."+field,"Boolean");
     }
     @Test void blockedGenerationCannotBeAcceptedAsAChapter() {
         var blocked=json.tree(Map.of("status","BLOCKED","reason","缺少批准章纲","title","执行说明","body","本轮未生成小说正文。"));

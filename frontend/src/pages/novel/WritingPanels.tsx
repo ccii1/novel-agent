@@ -6,8 +6,6 @@ import ModelSelect from '../../components/ModelSelect';
 import TaskProgress from '../../components/TaskProgress';
 import MemoryRepairPanel from '../../components/MemoryRepairPanel';
 import CopyChapterButton from '../../components/CopyChapterButton';
-import PlanChangePanel from '../../components/PlanChangePanel';
-import CoordinationPanel from '../../components/CoordinationPanel';
 import type {Chapter, Choice, Novel, NovelDetail} from '../../domain';
 
 export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: string) => void}) {
@@ -19,7 +17,6 @@ export function Overview({data,inspect}: {data: NovelDetail; inspect: (id: strin
   return <>
     <Stats items={[{label:'已接受章节',value:data.chapters.filter(chapter => chapter.status === 'ACCEPTED').length},{label:'待处理任务',value:active.length},{label:'当前记忆版本',value:novel.memory_version}]}/>
     <div className="workspace-columns"><div>
-      {['AWAITING_CHANGE','AWAITING_HELP','AWAITING_PLAN','AWAITING_STAGE_REVIEW','PAUSED'].includes(novel.status) && <CoordinationPanel novel={novel}/>}
       <Panel title="创作设定"><p className="prose">{novel.premise}</p>{novel.bible && <div className="setting-text">{novel.bible}</div>}</Panel>
       {awaiting && <div id="intervention">{pending?.pending ? <MemoryRepairPanel key={pending.taskId} novel={novel} pending={pending}/> : <RevisionForm novel={novel}/>}</div>}
       <Panel title="当前执行"><div className="task-grid">{active.map(task => <TaskProgress key={task.id} task={task} inspect={inspect}/>)}</div>{active.length === 0 && <p className="muted">当前没有执行中的任务。<Link to={`/books/${novel.id}/plan`}>查看阶段大纲</Link></p>}</Panel>
@@ -41,9 +38,20 @@ function BookModel({novel}: {novel: Novel}) {
 }
 function RevisionForm({novel}: {novel: Novel}) {
   const [instructions,setInstructions] = useDraft(`revision:${novel.id}`);
+  const [plan,setPlan] = useDraft(`revision-plan:${novel.id}`,novel.plan ?? '');
+  const [planError,setPlanError] = useState<Error | null>(null);
   const action = useAction();
   const [approved,setApproved] = useState(false);
-  return <Panel title="人工修改要求">{novel.reflection && <JsonView value={novel.reflection} title="检查与修改计划"/>}<p><Link to={`/books/${novel.id}/plan`}>局部修改大纲：选择章节、人物或伏笔并审核变化</Link></p><form onSubmit={event => {event.preventDefault(); action.mutate({path:`/novels/${novel.id}/revise`,body:{instructions,useCurrentPlan:novel.status === 'AWAITING_CHANGE'}});}}><label>批准的修改要求<textarea rows={5} required maxLength={12000} value={instructions} onChange={event => setInstructions(event.target.value)}/></label>{novel.status === 'AWAITING_CHANGE' && <label className="checkbox-label"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)}/>我已审核重要变更，同意按当前已保存大纲修改正文</label>}<ErrorBox error={action.error}/><button disabled={action.isPending || novel.status === 'AWAITING_CHANGE' && !approved}>批准修改并重新检查</button></form></Panel>;
+  return <Panel title="人工修改要求">{novel.reflection && <JsonView value={novel.reflection} title="检查与修改要求"/>}<form onSubmit={event => {
+    event.preventDefault();setPlanError(null);
+    let approvedPlan: unknown;
+    if (novel.status === 'AWAITING_CHANGE') {
+      try {approvedPlan=JSON.parse(plan);} catch (failure) {setPlanError(failure instanceof Error ? failure : new Error('大纲JSON格式无效'));return;}
+    }
+    action.mutate({path:`/novels/${novel.id}/revise`,body:{instructions,plan:approvedPlan}});
+  }}><label>批准的修改要求<textarea rows={5} required maxLength={12000} value={instructions} onChange={event => setInstructions(event.target.value)}/></label>
+    {novel.status === 'AWAITING_CHANGE' && <><label>批准后的完整大纲<textarea rows={14} required value={plan} onChange={event => setPlan(event.target.value)}/></label><label className="checkbox-label"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)}/>我已确认以上大纲和修改要求</label></>}
+    <ErrorBox error={planError ?? action.error}/><button disabled={action.isPending || novel.status === 'AWAITING_CHANGE' && !approved}>批准修改并重新检查</button></form></Panel>;
 }
 export function Plan({novel}: {novel: Novel}) {
   if (!novel.plan) return <Panel><Empty title="阶段大纲正在规划">生成完成后会自动出现在这里，无需刷新页面。</Empty></Panel>;
@@ -51,7 +59,14 @@ export function Plan({novel}: {novel: Novel}) {
 }
 function PlanEditor({novel}: {novel: Novel}) {
   const action = useAction();
-  return <><PlanChangePanel novel={novel}/><Panel title="阶段大纲"><JsonView value={novel.plan} title="展开完整阶段大纲"/><ErrorBox error={action.error}/>{novel.status === 'AWAITING_PLAN' && <button disabled={action.isPending} onClick={() => action.mutate({path:`/novels/${novel.id}/approve-plan?useCurrentPlan=true`})}>批准已保存大纲并开始创作</button>}</Panel></>;
+  const [plan,setPlan] = useDraft(`plan:${novel.id}:${novel.stage_no}`,novel.plan ?? '');
+  const [planError,setPlanError] = useState<Error | null>(null);
+  return <Panel title="阶段大纲">{novel.status === 'AWAITING_PLAN' ? <form onSubmit={event => {
+    event.preventDefault();setPlanError(null);
+    let approvedPlan: unknown;
+    try {approvedPlan=JSON.parse(plan);} catch (failure) {setPlanError(failure instanceof Error ? failure : new Error('大纲JSON格式无效'));return;}
+    action.mutate({path:`/novels/${novel.id}/approve-plan`,body:approvedPlan});
+  }}><label>确认或编辑完整大纲<textarea rows={18} required value={plan} onChange={event => setPlan(event.target.value)}/></label><button disabled={action.isPending}>确认大纲并开始创作</button></form> : <JsonView value={novel.plan} title="展开完整阶段大纲"/>}<ErrorBox error={planError ?? action.error}/></Panel>;
 }
 export function Chapters({id,chapters}: {id: string; chapters: Chapter[]}) {
   const [reading,setReading] = useState<number | null>(null);

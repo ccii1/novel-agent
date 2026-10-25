@@ -27,7 +27,7 @@ class LiveReasoningEffortTest {
     @Test @Timeout(180)
     void sdkSendsSelectedEffortAndPersistsActualRequestsAndUsage() throws Exception {
         for (String effort : new String[]{"low", "high"}) {
-            String id=store.enqueue(null,"RESEARCH",0,0,0,"reasoning-probe:"+UUID.randomUUID(),Map.of());
+            String id=store.enqueue(null,"PLAN",0,0,0,"reasoning-probe:"+UUID.randomUUID(),Map.of());
             store.update("tasks.modelChoice","local","gpt-5.6-terra",id);
             store.update("tasks.reasoning",effort,id);
             var result=model.call(store.one("tasks.find",id),

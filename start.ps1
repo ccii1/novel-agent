@@ -12,11 +12,6 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'
 if ($Database -eq 'mysql') {
     & "$PSScriptRoot\start-mysql.ps1"
 }
-if ([string]::IsNullOrWhiteSpace($env:NOVEL_NEO4J_ENABLED)) { $env:NOVEL_NEO4J_ENABLED = 'true' }
-if ($env:NOVEL_NEO4J_ENABLED -eq 'true') {
-    & "$PSScriptRoot\start-neo4j.ps1"
-    if ($LASTEXITCODE -ne 0) { throw 'Neo4j 启动失败' }
-}
 if ([string]::IsNullOrWhiteSpace($env:NOVEL_REDIS_ENABLED)) { $env:NOVEL_REDIS_ENABLED = 'true' }
 if ($env:NOVEL_REDIS_ENABLED -eq 'true' -and [string]::IsNullOrWhiteSpace($env:NOVEL_REDIS_ADDRESS)) {
     & "$PSScriptRoot\start-redis.ps1"

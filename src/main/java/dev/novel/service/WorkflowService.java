@@ -1,7 +1,6 @@
 package dev.novel.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.novel.agent.orchestration.ReviewOrchestrator;
 import dev.novel.repository.Store;
 import dev.novel.support.Json;
 import org.springframework.stereotype.Service;
@@ -20,21 +19,15 @@ public class WorkflowService {
     private final Json json;
     private final MemoryService memory;
     private final ChapterQualityService quality;
-    private final ResearchService research;
-    private final PlanChangeService planChanges;
-    private final ReviewOrchestrator reviews;
     private final TaskScheduler scheduler;
     private final ObservationService observations;
 
     public WorkflowService(Store store, Json json, MemoryService memory, ChapterQualityService quality,
-                           ResearchService research, PlanChangeService planChanges, ReviewOrchestrator reviews, TaskScheduler scheduler, ObservationService observations) {
+                           TaskScheduler scheduler, ObservationService observations) {
         this.store = store;
         this.json = json;
         this.memory = memory;
         this.quality = quality;
-        this.research = research;
-        this.planChanges = planChanges;
-        this.reviews = reviews;
         this.scheduler = scheduler;
         this.observations = observations;
     }
@@ -76,12 +69,6 @@ public class WorkflowService {
         var persisted = store.one("tasks.lock", taskId);
         if (!"RUNNING".equals(persisted.get("status"))) return;
 
-        // 修改建议独立保存，正式变更在人工确认时再次检查来源版本。
-        if (kind.equals("PLAN_CHANGE") || kind.equals("COORDINATE")) {
-            if (kind.equals("PLAN_CHANGE")) planChanges.finished(task, result);
-            markDone(task, result);
-            return;
-        }
         if (novel != null && SUSPENDED.contains(novel.get("status"))) {
             store.update("tasks.ready", json.write(result), taskId);
             return;
@@ -93,12 +80,9 @@ public class WorkflowService {
 
         markDone(task, result);
         switch (kind) {
-            case "RESEARCH", "RESEARCH_CHAT" -> research.finished(task, result);
             case "PLAN" -> store.update("novels.awaitPlan", json.write(result), novelId);
             case "WRITE", "REWRITE" -> saveDraft(novel, task, result);
-            case "CHECK_CHARACTER", "CHECK_PLOT", "CHECK_PACING", "CHECK_STYLE", "CHECK_CHAPTER" ->
-                    finishChapterReview(novel, task, result);
-            case "REFLECT" -> finishReflection(novel, task, result);
+            case "CHECK_CHAPTER" -> finishChapterReview(novel, task, result);
             case "MEMORY", "MEMORY_REPAIR", "CHECK_MEMORY" -> commitApprovedChapter(novel, task, result, prepared);
             default -> throw new IllegalArgumentException("未知流程步骤：" + kind);
         }
@@ -135,33 +119,23 @@ public class WorkflowService {
         boolean approved = result.path("approved").asBoolean();
         store.event(novelId, Store.string(task, "id"), approved ? "REVIEW_APPROVED" : "REVIEW_REJECTED",
                 approved ? "正文审核通过" : "正文审核未通过：" + result.path("issues").size() + "项问题");
-        if (kind.equals("CHECK_PACING") || kind.equals("CHECK_CHAPTER")) {
-            store.update("quality.pacing", json.write(result.path("narrative")), novelId, chapter, revision);
-        }
-        var round = reviews.collect(novel, chapter, revision);
-        // 等待同一版本的全部审核结果，单个 Agent 完成不会提前推进章节。
-        if (!round.ready()) return;
-        if (round.approved()) {
+        if (approved) {
             state(novelId, "EXTRACTING");
             schedule(novel, "MEMORY", chapter, revision, Map.of());
         } else {
-            var reports = store.list("tasks.reviews", novelId, chapter, revision, novel.get("memory_version"));
-            var instructions = new java.util.ArrayList<Object>();
-            for (var report : reports) instructions.add(json.read(Store.string(report, "result")));
-            finishReflection(novel, task, json.tree(Map.of("majorChange", round.majorChange(),
-                    "planConflict", round.planConflict(),
-                    "instructions", "逐项处理有原文依据的审核问题，保留已通过内容。审核报告：" + json.write(instructions), "conflicts", java.util.List.of())));
+            scheduleRevision(novel, task, json.tree(Map.of("majorChange", result.path("majorChange").asBoolean(),
+                    "planConflict", result.path("planConflict").asBoolean(),
+                    "instructions", "处理有正文依据的问题，保留已通过内容。审核报告：" + json.write(result))));
         }
     }
 
-    private void finishReflection(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
+    private void scheduleRevision(Map<String, Object> novel, Map<String, Object> task, JsonNode result) {
         String novelId = Store.string(novel, "id");
         int chapter = Store.integer(task, "chapter_no");
         int revision = Store.integer(task, "revision");
-        var round = reviews.collect(novel, chapter, revision);
-        boolean major = result.path("majorChange").asBoolean() || round.majorChange();
+        boolean major = result.path("majorChange").asBoolean();
         store.update("novels.reflection", json.write(result), novelId);
-        if (major || result.path("planConflict").asBoolean() || round.planConflict()) {
+        if (major || result.path("planConflict").asBoolean()) {
             state(novelId, "AWAITING_CHANGE");
         } else if (revision >= REVISION_LIMIT) {
             state(novelId, "AWAITING_HELP");
@@ -203,7 +177,7 @@ public class WorkflowService {
     }
 
     public void ensureReviewTasks(Map<String, Object> novel, int chapter, int revision) {
-        reviews.start(novel, chapter, revision);
+        schedule(novel,"CHECK_CHAPTER",chapter,revision,Map.of());
     }
 
     public static JsonNode memoryDelta(JsonNode payload) {

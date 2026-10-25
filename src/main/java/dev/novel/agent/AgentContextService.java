@@ -67,7 +67,7 @@ public class AgentContextService {
         int available = maxContext - budget.bytes(skills.load(kind, chapter).instruction()) - 12000 - 4096 - budget.bytes(additionalInput);
         if (available < 1024)
             throw new IllegalStateException("必需正文、任务资料与固定技能超过当前上下文预算，尚未请求模型");
-        boolean fullPlan = Set.of("PLAN", "PLAN_CHANGE", "COORDINATE").contains(kind);
+        boolean fullPlan = "PLAN".equals(kind);
         var packed = budget.pack(documents, available, fullPlan, chapter);
         int omitted = 0;
         for (var count : packed.path("_contextBudget").path("omittedRecords")) omitted += count.asInt();
