@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Loop Lab" type="Application" factoryName="Application">
+    <option name="ALTERNATIVE_JRE_PATH" value="17" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+    <option name="MAIN_CLASS_NAME" value="dev.novel.loop.LoopMain" />
+    <module name="loop-lab" />
+    <option name="PROGRAM_PARAMETERS" value="&quot;$PROJECT_DIR$/../config/application-local.yml&quot; &quot;$PROJECT_DIR$/notes.md&quot; &quot;调用read_notes，回答项目名和验证口令&quot;" />
+    <option name="VM_PARAMETERS" value="-Dfile.encoding=UTF-8" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

@@ -8,6 +8,8 @@
 
 本地文件检查2项通过。真实模型验收需要本机8317服务，当前连接失败，尚未确认模型循环通过。
 
+IDEA 打开 `loop-lab/pom.xml` 并选择 **Open as Project**。该项目提供 `Loop Lab` 和 `Loop Lab Checks` 共享运行配置，分别执行模型示例和本地检查，SDK 使用本机 `17`。
+
 ## 创作流程
 
 ```mermaid

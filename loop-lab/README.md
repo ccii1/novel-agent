@@ -4,6 +4,16 @@
 
 ## 运行
 
+### IDEA
+
+1. 选择 **File → Open**，打开 `D:\java_learning\novel-agent\loop-lab\pom.xml`，选择 **Open as Project**。已打开该目录时，可以右键 `pom.xml` 选择 **Add as Maven Project**。
+2. 等待 Maven 导入完成，Project SDK 选择本机已配置的 `17`，路径为 `C:\Program Files\Java\jdk-17`。
+3. 顶部运行配置选择 **Loop Lab Checks** 可以执行本地文件检查；选择 **Loop Lab** 可以运行真实模型示例。两个配置已保存到本目录的 `.run`。
+
+`Loop Lab` 已设置主类、模型配置文件、说明文件、问题和工作目录。真实模型示例需要8317服务，连接失败时检查该服务是否启动。
+
+### PowerShell
+
 在项目根目录执行，Java 使用17。模型服务需要监听8317；配置来自已有的 `config/application-local.yml`，本单元使用 `local / gpt-6-luna / high`。
 
 ```powershell
