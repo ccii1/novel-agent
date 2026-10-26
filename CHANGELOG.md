@@ -2,6 +2,7 @@
 
 ## 未发布 — 2026-10-26
 
+- 为 Loop Lab 的 AgentScope 主循环和只读工具增加逐段中文说明，解释 ReActAgent、Toolkit、Middleware、消息事件和异步调用中的原子状态。
 - Loop Lab 提供 IDEA Application 与 JUnit 共享运行配置，指定 Java 17、启动参数、UTF-8 和工作目录；补充 Maven 项目导入说明，忽略本机 IDEA 文件。
 
 - 增加独立的 loop-lab 学习单元及 SDD-001 规格：单个 ReActAgent、只读说明文件工具、固定提示词和独立会话。

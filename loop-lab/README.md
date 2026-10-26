@@ -46,8 +46,8 @@ Remove-Item Env:LOOP_LIVE
 
 1. `LoopMain`：取得三个参数并启动任务。
 2. `LoopConfig`：读取已有配置，限定本机免费服务，隐藏凭据。
-3. `AgentLoop`：构建模型、注册工具和 Middleware，交给 ReActAgent 执行循环。
-4. `ReadNotesTool`：读取指定文件，检查字节数，记录调用与异常。
+3. `AgentLoop`：代码带有逐段中文注释，解释模型、Toolkit、Middleware、ReActAgent 和事件流如何连接。
+4. `ReadNotesTool`：代码带有逐段中文注释，解释 `@Tool`、文件读取、调用次数与错误处理。
 
 用户输入、工具返回和请求次数均有上限，因此本单元不需要摘要压缩。它没有跨任务记忆。token 用量来自每次模型响应，未提供时显示未知。
 
